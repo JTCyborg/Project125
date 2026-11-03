@@ -94,8 +94,6 @@ main_loop:
         jp      z, command_reset
         cp      CMD_LOAD_X86
         jp      z, command_load_x86
-        cp      CMD_RUN_X86
-        jp      z, command_run_x86
         cp      CMD_GET_STATUS
         jp      z, command_get_status
         cp      CMD_MEM_TEST
@@ -215,70 +213,8 @@ neogs_dma_handler_end:
 ; -------------------------------------------------------------------------
 ; CMD_RUN_X86 — execute the length-framed payload beginning at $5002.
 ; -------------------------------------------------------------------------
-command_run_x86:
-        call    execute_neogs_x86
-        ld      a, #03
-        call    neo_set_pg1             ; restore firmware/trampoline page
-        xor     a
-        out     (CLRCBIT), a
-        jp      main_loop
-
-execute_neogs_x86:
-        ld      a, (neo_dma_error)
-        or      a
-        jr      z, .dma_ok
-        ld      hl, $FFFF
-        ld      (saved_x86_ax), hl
-        ld      a, 3
-        ld      (x86_exit_status), a
-        ret
-
-.dma_ok:
-        ; Emit a live NeoGS-side dump before interpreting the DMA payload.
-        ; The host drains this stream and mirrors it to emulator port #EF.
-        call    neo_debug_dump_dma_frame
-
-        ; DMA frame begins with a little-endian x86 byte length at $5000.
-        ld      hl, (X86_DMA_HEADER_ADDR)
-        ld      a, h
-        or      l
-        jp      z, .invalid_x86_length
-
-        ; Maximum code length is $2FFE: $5002 + length must not exceed $8000.
-        ld      a, h
-        cp      #2F
-        jr      c, .x86_length_valid
-        jp      nz, .invalid_x86_length
-        ld      a, l
-        cp      #FF
-        jp      nc, .invalid_x86_length
-
-.x86_length_valid:
-        ld      de, X86_RAM_RUN_ADDR
-        add     hl, de
-        ld      (x86_program_end), hl
-
-        ld      hl, 0
-        ld      (saved_z80_ax), hl
-        ld      hl, #FFFF
-        ld      (x86_steps_remaining), hl
-        xor     a
-        ld      (x86_exit_status), a
-
-        ld      bc, X86_RAM_RUN_ADDR
-        call    x86_execute_loop
-
-        ld      hl, (saved_z80_ax)
-        ld      (saved_x86_ax), hl
-        ret
-
-.invalid_x86_length:
-        ld      hl, #FFFF
-        ld      (saved_z80_ax), hl
-        ld      (saved_x86_ax), hl
-        ld      a, 4
-        ld      (x86_exit_status), a
-        ret
+; Project125 does not link the legacy flat-mode Project124 interpreter.
+; BIOS execution uses the bounded 8086 real-mode CS:IP executor below.
 
 ; Execute the loaded DMA task as bounded guest code at 0000:5002.
 ; The DMA frame is copied into the x86 physical-memory backend before execution.
@@ -725,7 +661,6 @@ rom_return_trampoline_end:
         INCLUDE "x86_memory.asm"
         INCLUDE "bios/bios_core.asm"
         INCLUDE "x86_modrm.asm"
-        INCLUDE "x86_interpreter.asm"
         INCLUDE "x86_interrupt.asm"
         INCLUDE "x86_real_mode.asm"
         INCLUDE "x86_real_alu.asm"
