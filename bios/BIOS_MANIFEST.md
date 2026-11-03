@@ -26,13 +26,13 @@
 | Guest ROM size | 2000h (8192 bytes) |
 | Guest ROM end | FFFFFh inclusive |
 | Reset vector | FFFF0h |
-| Reset CS:IP | F000:FFF0 |
+| 8086 reset CS:IP | FFFF:0000 |
 | Reset far-jump target | F000:E05B |
 | Resolved target physical address | FE05Bh |
 | Backing reservation | NeoGS page 75, first 8 KiB (provisional loader mapping) |
 | Access | guest read/execute; guest writes rejected |
 
-The guest ROM base and entry calculation are derived from this image's size and reset-vector bytes. They are not universal constants for other BIOS images.
+The 8086 architectural reset state is CS:IP=FFFF:0000, which generates physical FFFF0h. The ROM reset-vector instruction then performs JMP F000:E05B. The guest ROM base and entry calculation are derived from this image's size and reset-vector bytes. They are not universal constants for other BIOS images.
 
 ## Important status
 
