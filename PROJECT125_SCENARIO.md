@@ -825,3 +825,15 @@
 - **Статус:** SOURCE UPDATED / NOT BUILT / NOT RUNTIME.
 
 | 2026-11-03 | A1.49 distinguish host and NeoGS trace markers | SOURCE UPDATED | NeoGS uses B/C/R/1/2; host uses J/K/4/T/X/L/H. No transport logic changed. |
+
+
+## A1.50 — NeoGS ожидает потребления READY перед приёмом длины (2026-11-03)
+
+- [x] Runtime A36: NeoGS trace `BCR1` при host error phase #06 показал, что bootstrap входил в приём длины при DBIT, всё ещё установленном собственной отправкой READY #A1.
+- [x] Добавлено bounded ожидание DBIT=0 после публикации #A1 и перед первым вызовом приёмника длины. Тайм-аут ведёт в существующий bootstrap_timeout.
+- [x] Host turnaround #0400, формат длины, ACK, payload и остальные тайминги не менялись.
+- [ ] build.bat: проверить размер NEOLOAD.C (не более 254 байт), ASSERT и сборку host.
+- [ ] Runtime: ожидаем NeoGS trace `BCR` без `1` до host marker `L`; затем `BCR1` и `BCR12`, host `JK4TLH`, ACK #A3 и передача NEOFW.
+- **Статус:** SOURCE FIX APPLIED / NOT BUILT / NOT RUNTIME.
+
+| 2026-11-03 | Wait for host to consume READY before receiving length | SOURCE FIX APPLIED | Prevent bootstrap from reading its own #A1 as the first length byte. |
