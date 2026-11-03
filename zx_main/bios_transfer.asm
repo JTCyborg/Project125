@@ -122,6 +122,12 @@ neogs_bios_transfer_finish:
         ret
 
 .bios_transfer_success:
+        ld      a, (bios_host_transfer_error)
+        or      a
+        jr      z, .bios_transfer_clean
+        scf
+        ret
+.bios_transfer_clean:
         xor     a
         ld      (bios_host_transfer_error), a
         or      a
