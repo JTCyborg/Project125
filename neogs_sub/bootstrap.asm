@@ -38,6 +38,11 @@ neogs_bootstrap_start:
         ; the operational stack to WIN1 after PG1 has been restored to page #03.
         ld      sp, #FFFE
 
+        ; Establish a known host-to-NeoGS data-channel baseline before READY.
+        ; Reading ZXDATRD consumes any stale incoming byte and clears DBIT.
+        ; This is required before the host starts the length stream after #A1.
+        in      a, (ZXDATRD)
+
         ; Tell Spectrum that the tiny loader is running and waiting for length.
         ld      a, NGS_BOOTSTRAP_READY_ACK
         call    bootstrap_send_data_byte
@@ -131,10 +136,18 @@ bootstrap_timeout:
 ; Waiting indefinitely avoids a false timeout that would leave host DBIT set.
 bootstrap_receive_length_byte:
 .length_wait:
-        in      a, (ZXSTAT)
+        ; Use IN A,(C) with an explicit high address byte. IN A,(n) forms
+        ; the I/O address from A:n, so its upper byte is not guaranteed to
+        ; select the NeoGS local-port page while polling the host DBIT.
+        ld      bc, #FF04              ; ZXSTAT, full local I/O address
+        in      a, (c)
         bit     B_DBIT, a
         jr      z, .length_wait
-        in      a, (ZXDATRD)
+
+        ; Reading ZXDATRD is the documented acknowledge operation: it
+        ; consumes the host byte and clears DBIT.
+        ld      bc, #FF02              ; ZXDATRD, full local I/O address
+        in      a, (c)
         ret
 
 ; Wait for one byte from Spectrum. Reading ZXDATRD clears DBIT.
