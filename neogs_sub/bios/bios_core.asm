@@ -1,23 +1,24 @@
 ; =========================================================================
 ; PROJECT 125 — BIOS ROM integration and low-memory foundation
 ;
-; Establishes the guest-visible low-memory data layout for a future 8086
-; real-mode BIOS. This module validates the loaded BIOS ROM image and initializes the 8086 reset
-; state; it does not yet implement the BIOS firmware's own services. IVT is initialized to zero; vectors are installed only after the
-; CPU INT/IRET path and guest stack semantics are implemented.
+; Establishes the guest-visible low-memory data layout and initial BIOS ROM
+; integration path. The selected 8 KiB ROM is loaded into NeoGS page 75,
+; mapped at FE000h-FFFFFh, and exposed read-only by x86_memory.asm.
+; The actual BIOS services remain guest x86 code and are not yet emulated.
 ;
 ; Physical memory profile:
 ;   00000-003FF  IVT (256 entries, 4 bytes each)
 ;   00400-004FF  BIOS Data Area (BDA)
 ;   00500-9FFFF  conventional RAM profile (640 KiB)
 ;   A0000-BFFFF  reserved video memory
-;   C0000-EFFFF  reserved option-ROM/device window
-;   F0000-FFFFF  reserved P124 BIOS ROM (not read-only yet)
+;   C0000-FDFFF  reserved option-ROM/device window
+;   FE000-FFFFF  selected 8 KiB BIOS ROM (read-only overlay)
 ;
 ; Entry: bios_post
 ; Success: x86_exit_status=0, saved_x86_ax=#B105
 ; Failure: x86_exit_status=7, saved_x86_ax=#B1xx
-; NeoGS DMA receive command is implemented in main.asm; ATM host sender remains pending.
+; NeoGS DMA receive command is implemented in main.asm; ATM host sender is
+; implemented in zx_main/bios_transfer.asm but TR-DOS integration is pending.
 ; =========================================================================
 
 BIOS_IVT_BASE             EQU #00000
