@@ -1040,8 +1040,19 @@ gs_boot_receive_data_byte:
 .receive_ready:
         in      a, (GSDAT)
         ld      (neo_fw_last_rx_byte), a
-        ; Match the proven Project124 V1 transport exactly: reading GSDAT
-        ; clears DBIT and returns immediately. No host-side turnaround delay.
+        ; DBIT is shared by both directions. Give the NeoGS sender time to
+        ; observe the cleared slot before the host starts its next TX byte.
+        ; This is the turnaround wait present in the working Project124 V1.
+        push    af
+        push    bc
+        ld      bc, #0400
+.receive_turnaround_delay:
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .receive_turnaround_delay
+        pop     bc
+        pop     af
         or      a
         ret
 
@@ -1159,4 +1170,4 @@ msg_p7_high_tx:        db "[P125] PH7 TX HIGH", 13, 10, 0
 msg_p7_high_ok:       db "[P125] PH7 HIGH ACK", 13, 10, 0
 msg_p7_wait_a3:        db "[P125] PH7 WAIT A3", 13, 10, 0
 msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A39", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A40", 13, 10, 0
