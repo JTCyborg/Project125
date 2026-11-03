@@ -429,8 +429,6 @@ upload_firmware::
         ld      bc, #0200
 .phase5_ready_turnaround:
         in      a, (GSSTAT)
-        bit     B_DBIT, a
-        jr      nz, .phase5_ready_turnaround
         dec     bc
         ld      a, b
         or      c
