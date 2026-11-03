@@ -154,8 +154,10 @@ bootstrap_timeout:
         jr      nz, .timeout_wait_host
         jp      bootstrap_halt
 
-; Wait for one byte from Spectrum. Keep the proven Project124 V1
-; local-port access sequence: DBIT polling followed by ZXDATRD read.
+; Byte-stream receive path (GS105a loader/bootstrap): DBIT signals that a
+; data byte is waiting; ZXDATRD consumes that byte. This is NOT the
+; CBIT/ZXCMD command interface described in the NeoGS programmer example.
+; Keep the proven Project124 V1 local-port access sequence.
 bootstrap_receive_data_byte:
         ld      bc, #FFFF
 .rx_wait:
@@ -171,7 +173,9 @@ bootstrap_receive_data_byte:
         in      a, (ZXDATRD)
         ret
 
-; Send one byte to Spectrum. Host reads GSDAT and clears DBIT.
+; Byte-stream transmit path (GS105a loader/bootstrap): write ZXDATWR,
+; then wait for the Spectrum host to read GSDAT and clear DBIT.
+; Command dispatch through ZXCMD/CBIT is a separate interface.
 bootstrap_send_data_byte:
         ld      (bootstrap_tx_byte), a
         ld      bc, #FFFF
