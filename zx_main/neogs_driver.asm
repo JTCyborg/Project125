@@ -14,9 +14,19 @@ IPC_CMD_TIMEOUT EQU #FFFF
 ; firmware is streamed to NeoGS. The complete file is NEVER staged in host RAM.
 ; OUT: Carry clear, first sector at #C000, file length and next-sector cursor set.
 ; -------------------------------------------------------------------------
+load_neogs_bootstrap_file::
+        ld      hl, neo_fw_loader_filename
+        jp      neo_fw_open_file
+
 load_neogs_firmware_file::
-        ; Search the exact 8.3 catalogue name neoprog.C.
-        ld      hl, neo_fw_filename
+        ld      hl, neo_fw_firmware_filename
+        jp      neo_fw_open_file
+
+; HL points to an eight-character TR-DOS filename (extension is always C).
+neo_fw_open_file:
+        ld      (neo_fw_requested_name_ptr), hl
+        ld      hl, (neo_fw_requested_name_ptr)
+        ; Search the requested exact 8.3 catalogue name.
         ld      de, #5CDD
         ld      bc, 8
         ldir
@@ -50,13 +60,6 @@ load_neogs_firmware_file::
         ld      a, h
         or      l
         jp      z, .bad_length
-        ld      a, h
-        or      a
-        jr      nz, .package_minimum_ok
-        ld      a, l
-        cp      3
-        jp      c, .bad_length
-.package_minimum_ok:
         ; Verify sector count = ceil(file_length / 256).
         ld      hl, (neo_fw_file_length)
         ld      de, 255
@@ -166,120 +169,19 @@ neo_fw_read_next_sector:
 ;   send custom firmware bytes to RAM $0000, receive #A2 firmware ready
 ; -------------------------------------------------------------------------
 upload_firmware::
-        ; Only the first sector is resident at #C000. Remaining sectors are
-        ; read into this same buffer as the firmware stream consumes them.
-        ; Layout: WORD bootstrap_length, bootstrap bytes, then firmware bytes.
-        ld      (neo_fw_package_source), hl
-        ld      (neo_fw_package_length), de
-
-        ; Decode and validate the bootstrap length from the package header.
+        ; Input file is NEOLOAD.C, already read into #C000.
+        ; Loader and resident firmware are independent TR-DOS files.
+        ld      (neo_fw_bootstrap_source), hl
+        ld      (neo_fw_bootstrap_length), de
         ld      a, d
         or      a
-        jr      nz, .package_header_present
-        ld      a, e
-        cp      3
-        jp      c, .upload_failed
-.package_header_present:
-        ld      a, (hl)
-        ld      (neo_fw_bootstrap_length), a
-        inc     hl
-        ld      a, (hl)
-        ld      (neo_fw_bootstrap_length+1), a
-        ld      hl, (neo_fw_bootstrap_length)
-        ld      a, h
-        or      l
-        jp      z, .upload_failed
-        ; Bootstrap must fit entirely in the first 256-byte sector because it
-        ; is needed before the receiver can be started. The package itself may
-        ; be much larger; only this first sector is buffered at a time.
-        ld      a, h
-        or      a
         jp      nz, .upload_failed
-        ld      a, l
-        cp      255                   ; maximum length 254 bytes
+        ld      a, e
+        or      a
+        jp      z, .upload_failed
+        cp      255
         jp      nc, .upload_failed
 
-        ; V2 has an explicit V2S1 marker after its stage-0 image. Check only
-        ; when the marker and stage-1 length word are guaranteed to be in
-        ; sector 0 (stage0 <= 248). A non-match follows the untouched v1 path.
-        ld      hl, (neo_fw_bootstrap_length)
-        ld      a, h
-        or      a
-        jr      nz, .v1_package_format
-        ld      a, l
-        cp      249
-        jr      nc, .v1_package_format
-        ld      hl, (neo_fw_package_source)
-        inc     hl
-        inc     hl
-        ld      de, (neo_fw_bootstrap_length)
-        add     hl, de
-        ld      a, (hl)
-        cp      'V'
-        jr      nz, .v1_package_format
-        inc     hl
-        ld      a, (hl)
-        cp      '2'
-        jr      nz, .v1_package_format
-        inc     hl
-        ld      a, (hl)
-        cp      'S'
-        jr      nz, .v1_package_format
-        inc     hl
-        ld      a, (hl)
-        cp      '1'
-        jp      z, upload_firmware_v2
-.v1_package_format:
-
-        ; Firmware length = package length - header - bootstrap length.
-        ld      hl, (neo_fw_package_length)
-        ld      de, 2
-        or      a
-        sbc     hl, de
-        jp      c, .upload_failed
-        ld      de, (neo_fw_bootstrap_length)
-        or      a
-        sbc     hl, de
-        jp      c, .upload_failed
-        ld      (neo_fw_length), hl
-
-        ; Bootstrap and the beginning of firmware follow the two-byte header
-        ; in the first sector. The firmware pointer is advanced as bytes go.
-        ld      hl, (neo_fw_package_source)
-        inc     hl
-        inc     hl
-        ld      (neo_fw_bootstrap_source), hl
-        ld      de, (neo_fw_bootstrap_length)
-        add     hl, de
-        ld      (neo_fw_source), hl
-
-        ; Number of firmware bytes remaining in the first sector:
-        ; 256 - (2-byte header + bootstrap length) = 254 - bootstrap length.
-        ld      hl, 254
-        or      a
-        sbc     hl, de
-        ld      (neo_fw_buffer_remaining), hl
-
-        ; V1 resident firmware is still limited to WIN0. During transfer the bootstrap
-        ; stack remains at #FFFE in WIN3; the resident entry later moves its stack
-        ; to WIN1/#4FFE, leaving WIN2 available for the future banked-image format.
-        ld      hl, (neo_fw_length)
-        ld      a, h
-        or      a
-        jp      nz, .firmware_high_nonzero
-        ld      a, l
-        or      a
-        jp      z, .upload_failed
-        jr      .firmware_length_valid
-.firmware_high_nonzero:
-        ld      a, h
-        cp      #40
-        jr      c, .firmware_length_valid
-        jp      nz, .upload_failed
-        ld      a, l
-        or      a
-        jp      nz, .upload_failed
-.firmware_length_valid:
         xor     a
         ld      (neo_fw_bytes_sent), a
         ld      (neo_fw_bytes_sent+1), a
@@ -438,6 +340,29 @@ upload_firmware::
 
 .phase5_jump_ready:
         ; Bootstrap has enabled RAM-over-ROM and is waiting at $0000.
+
+        ; The bootstrap is running and has sent READY. Open NEOF W.C
+        ; independently; its descriptor, length and sector cursor are new.
+        call    load_neogs_firmware_file
+        jp      c, .upload_failed
+        ld      hl, (neo_fw_file_length)
+        ld      a, h
+        or      l
+        jp      z, .upload_failed
+        ld      a, h
+        cp      #40
+        jr      c, .firmware_file_length_ok
+        jp      nz, .upload_failed
+        ld      a, l
+        or      a
+        jp      nz, .upload_failed
+.firmware_file_length_ok:
+        ld      hl, (neo_fw_file_length)
+        ld      (neo_fw_length), hl
+        ld      hl, #C000
+        ld      (neo_fw_source), hl
+        ld      hl, 256
+        ld      (neo_fw_buffer_remaining), hl
 
         ; Phase 7: send firmware length low/high and require ACK #A3.
         ld      a, 7
@@ -1204,7 +1129,9 @@ neogs_wait_data_byte::
         ret
 
 ; TR-DOS NeoGS package loader state and fixed 8-character filename.
-neo_fw_filename:        db "neoprog "
+neo_fw_loader_filename:  db "NEOLOAD "
+neo_fw_firmware_filename: db "NEOFW   "
+neo_fw_requested_name_ptr: dw 0
 neo_fw_load_buffer:     dw 0
 neo_fw_load_remaining:  db 0
 neo_fw_buffer_remaining: dw 0
@@ -1240,4 +1167,4 @@ neo_fw_initial_status:  db 0
 neo_fw_last_status:     db 0
 neo_fw_timeout_phase:   db 0
 neo_fw_last_tx_phase:   db 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A15", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A16", 13, 10, 0
