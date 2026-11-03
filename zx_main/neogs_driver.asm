@@ -420,20 +420,13 @@ upload_firmware::
         jp      nz, .upload_failed
 
 .phase5_jump_ready:
-        ; The host has consumed READY (#A1), which clears DBIT. In Unreal
-        ; Speccy the NeoGS CPU is advanced by flush_gs_z80() on GS port I/O.
-        ; A pure Z80 delay does not force that scheduler to run, so explicitly
-        ; read GSSTAT repeatedly. Each IN #BB flushes NeoGS and lets its
-        ; READY-consumed loop observe DBIT=0 before length low is published.
-        push    bc
-        ld      bc, #0200
-.phase5_ready_turnaround:
-        in      a, (GSSTAT)
-        dec     bc
-        ld      a, b
-        or      c
-        jr      nz, .phase5_ready_turnaround
-        pop     bc
+        ; Do not use the short DBIT-low interval as a second handshake.
+        ; Unreal Speccy advances the NeoGS Z80 from host-side GS I/O, so a
+        ; persistent CBIT command is deterministic: bootstrap acknowledges
+        ; it by clearing CBIT only after it has left the READY state.
+        ld      a, #A6
+        call    gs_boot_send_command
+        jp      c, .upload_failed
 
         ; Phase 7: send length low/high and receive the #A3 acceptance ACK.
         ld      a, 7
@@ -1210,4 +1203,4 @@ msg_p7_high_tx:        db "[P125] PH7 TX HIGH", 13, 10, 0
 msg_p7_high_ok:       db "[P125] PH7 HIGH ACK", 13, 10, 0
 msg_p7_wait_a3:        db "[P125] PH7 WAIT A3", 13, 10, 0
 msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A36", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A37", 13, 10, 0
