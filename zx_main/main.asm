@@ -77,6 +77,10 @@ Init_Z80_System:
         call    p125_print_string
         ld      a, (neo_fw_tx_wait_state)
         call    p125_print_hex8
+        ld      hl, msg_fw_txphase
+        call    p125_print_string
+        ld      a, (neo_fw_last_tx_phase)
+        call    p125_print_hex8
         ld      hl, msg_fw_txbyte
         call    p125_print_string
         ld      a, (neo_fw_last_tx_byte)
@@ -185,6 +189,7 @@ msg_fw_file_error:    defb "[P125] ERROR: NEOGS PACKAGE FILE #", 0
 msg_fw_upload_error:  defb "[P125] ERROR: NEOGS FIRMWARE UPLOAD PHASE #", 0
 msg_fw_status:        defb " GSSTAT #", 0
 msg_fw_txstate:       defb " TXSTATE #", 0
+msg_fw_txphase:       defb " TXPHASE #", 0
 msg_fw_txbyte:        defb " TXBYTE #", 0
 msg_fw_ready:         defb "[P125] NEOGS FIRMWARE READY", 13, 10, 0
 msg_bios_load:        defb "[P125] LOAD BIOS.C TO PAGE 75", 13, 10, 0
