@@ -588,6 +588,7 @@
 - [ ] Windows build: проверить размер NEOLOAD.C (максимум 254 байта), sjasmplus и относительные переходы.
 - [ ] Runtime: проверить #C5/#3D, ACK #A3, передачу NEOFW.C и ACK #A2.
 - Статус: IMPLEMENTED / NOT BUILT / NOT RUN. Проверка runtime обязательна.
+<<<<<<< HEAD
 
 
 ## NGT-RW — новая реализация NeoGS loader/driver (2026-11-03)
@@ -606,3 +607,5 @@
 - [ ] Тест на физической ATM Turbo 2+ / NeoGS.
 
 Статус: IMPLEMENTED (файлы созданы) / NOT BUILT / NOT TESTED / NOT RUNTIME. Новые модули пока изолированы и не включены в `main.asm`; старый драйвер оставлен для сохранения существующего запуска до прохождения тестов.
+=======
+>>>>>>> 55cb0948bef102b56e2ce921eab813d6bc5b5298
