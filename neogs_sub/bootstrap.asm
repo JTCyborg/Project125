@@ -154,22 +154,21 @@ bootstrap_timeout:
         jr      nz, .timeout_wait_host
         jp      bootstrap_halt
 
-; Wait for one byte from Spectrum. Reading ZXDATRD clears DBIT.
+; Wait for one byte from Spectrum. Keep the proven Project124 V1
+; local-port access sequence: DBIT polling followed by ZXDATRD read.
 bootstrap_receive_data_byte:
-        ld      de, #FFFF
+        ld      bc, #FFFF
 .rx_wait:
-        ld      bc, #FF04
-        in      a, (c)
+        in      a, (ZXSTAT)
         bit     B_DBIT, a
         jr      nz, .rx_ready
-        dec     de
-        ld      a, d
-        or      e
+        dec     bc
+        ld      a, b
+        or      c
         jr      nz, .rx_wait
         jp      bootstrap_timeout
 .rx_ready:
-        ld      bc, #FF02
-        in      a, (c)
+        in      a, (ZXDATRD)
         ret
 
 ; Send one byte to Spectrum. Host reads GSDAT and clears DBIT.
