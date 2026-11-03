@@ -1060,3 +1060,16 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.67 report actual byte on BIOS ROM validation mismatch | SOURCE COMMITTED | AX now carries the byte actually read at the failing ROM address as #B2xx. |
+
+
+## A1.68 — сравнение reset-vector до и после BIOS DMA (2026-11-04)
+
+- [x] Runtime A1.67: validator прочитал #00 по guest physical FFFF0h вместо ожидаемого #EA (AX #B200).
+- [x] Добавлен Host dump пяти байтов BIOS.C по смещению #1FF0 непосредственно из буфера последнего TR-DOS сектора до передачи DMA: строка `[BIOS SRC FFF0]`.
+- [x] Добавлен NeoGS dump пяти байтов физической страницы 75 по смещению #1FF0 после отключения DMA и до ROM validator: строка `[BIOS DST FFF0]`.
+- [x] Не менялись DMA target, размер и порядок передачи, TR-DOS чтение, memory mapping и handshake.
+- [ ] Сборка `build.bat`: проверить SjASMPlus, локальные метки и размер firmware.
+- [ ] Runtime: сравнить `[BIOS SRC FFF0]` и `[BIOS DST FFF0]`. Если source начинается `EA 5B E0 00 F0`, а destination отличается — проблема в DMA записи/счётчике; если source уже отличается — проблема в выборе/чтении BIOS.C.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / NOT BUILT / NOT RUNTIME.
+
+| 2026-11-04 | A1.68 compare BIOS reset-vector bytes before and after DMA | SOURCE COMMITTED | Host and NeoGS each print the five reset-vector bytes at BIOS image offset #1FF0. |
