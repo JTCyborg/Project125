@@ -136,10 +136,18 @@ bootstrap_timeout:
 ; Waiting indefinitely avoids a false timeout that would leave host DBIT set.
 bootstrap_receive_length_byte:
 .length_wait:
-        in      a, (ZXSTAT)
+        ; Use IN A,(C) with an explicit high address byte. IN A,(n) forms
+        ; the I/O address from A:n, so its upper byte is not guaranteed to
+        ; select the NeoGS local-port page while polling the host DBIT.
+        ld      bc, #FF04              ; ZXSTAT, full local I/O address
+        in      a, (c)
         bit     B_DBIT, a
         jr      z, .length_wait
-        in      a, (ZXDATRD)
+
+        ; Reading ZXDATRD is the documented acknowledge operation: it
+        ; consumes the host byte and clears DBIT.
+        ld      bc, #FF02              ; ZXDATRD, full local I/O address
+        in      a, (c)
         ret
 
 ; Wait for one byte from Spectrum. Reading ZXDATRD clears DBIT.
