@@ -328,7 +328,6 @@ upload_firmware::
         or      a
         sbc     hl, de                  ; HL = -bootstrap length
         ld      (neo_fw_block_length), hl
-        ld      ld, a
         ld      a, #30
         ld      (neo_fw_timeout_phase), a
         ld      a, (neo_fw_block_length)
