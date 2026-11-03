@@ -161,6 +161,8 @@ neogs_bios_boot_and_wait:
         jr      nz, .bios_boot_inner
         dec     d
         jr      nz, .bios_boot_outer
+        ld      a, 7
+        ld      (bios_host_transfer_error), a
         scf
         ret
 .bios_boot_done:
@@ -228,6 +230,8 @@ neogs_bios_wait_data_byte:
         ld      a, d
         or      e
         jr      nz, .bios_data_wait
+        ld      a, 8
+        ld      (bios_host_transfer_error), a
         scf
         ret
 .bios_data_ready:
