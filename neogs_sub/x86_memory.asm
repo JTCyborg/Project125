@@ -189,6 +189,8 @@ x86_mem_test:
         ; word access across a 16 KiB page, 16-bit offset wrap, and 20-bit wrap.
         call    x86_mem_word_test
         ret     c
+        call    x86_mem_rom_protect_test
+        jp      c, x86_mem_word_fail_3
 
         ; Success: AX=0001 means all memory/addressing tests passed.
         ld      hl, 1
@@ -370,6 +372,9 @@ x86_mem_word_fail_1:
         jr      x86_mem_word_fail
 x86_mem_word_fail_2:
         ld      a, 7
+        jr      x86_mem_word_fail
+x86_mem_word_fail_3:
+        ld      a, 8
 x86_mem_word_fail:
         ld      (x86_mem_phase), a
         ld      a, (x86_mem_phase)
@@ -402,6 +407,25 @@ x86_mem_test_fail:
         ld      (saved_x86_ax), hl
         ld      a, 5
         ld      (x86_exit_status), a
+        ret
+
+; Verify that guest writes to the BIOS ROM overlay are rejected.
+; This test does not require the BIOS image to have been loaded yet.
+x86_mem_rom_protect_test:
+        ld      hl, 0
+        ld      (x86_mem_addr), hl
+        ld      a, #E0
+        ld      (x86_mem_addr+1), a
+        ld      a, #0F
+        ld      (x86_mem_addr+2), a
+        ld      a, #5A
+        ld      (x86_mem_value), a
+        call    x86_mem_write8
+        jr      nc, .rom_write_was_allowed
+        or      a
+        ret
+.rom_write_was_allowed:
+        scf
         ret
 
 ; Build page * 4000h, offset 0000.
