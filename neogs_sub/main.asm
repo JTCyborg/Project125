@@ -13,6 +13,7 @@
 ; =========================================================================
 
         INCLUDE "../shared/neogs_io.inc"
+        INCLUDE "../shared/video_frame.inc"
 
         ORG     $0000
 
