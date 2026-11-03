@@ -206,6 +206,10 @@ bios_trdos_read_next_sector:
         or      b
         jr      nz, .bios_sector_io_error
 
+        ; Verify that C=#05 actually replaced the reusable sector buffer.
+        ; The same in-sector offset #F0 is sampled after every successful read.
+        call    bios_trdos_debug_dump_sector_sample
+
         ; TR-DOS 5.04T internal sector IDs are 0..15; roll over to 0.
         ld      a, (bios_trdos_sector)
         inc     a
@@ -262,6 +266,43 @@ bios_trdos_debug_dump_position:
         pop     de
         pop     bc
         pop     af
+        ret
+
+; Emit bytes at buffer offset #00F0 after each successful TR-DOS read.
+; This proves whether C=#05 overwrites the reusable #C000 buffer.
+bios_trdos_debug_dump_sector_sample:
+        push    bc
+        push    de
+        push    hl
+        ld      hl, bios_trdos_sample_prefix
+.bios_sample_prefix_loop:
+        ld      a, (hl)
+        inc     hl
+        or      a
+        jr      z, .bios_sample_prefix_done
+        ld      bc, #00EF
+        out     (c), a
+        jr      .bios_sample_prefix_loop
+.bios_sample_prefix_done:
+        ld      hl, BIOS_TRDOS_BUFFER + #00F0
+        ld      e, 5
+.bios_sample_loop:
+        ld      a, (hl)
+        call    bios_trdos_debug_hex8
+        ld      a, ' '
+        ld      bc, #00EF
+        out     (c), a
+        inc     hl
+        dec     e
+        jr      nz, .bios_sample_loop
+        ld      a, 13
+        ld      bc, #00EF
+        out     (c), a
+        ld      a, 10
+        out     (c), a
+        pop     hl
+        pop     de
+        pop     bc
         ret
 
 ; Emit BIOS file bytes at offsets 1FF0..1FF4 from the final sector.
@@ -324,6 +365,8 @@ bios_trdos_debug_hex_nibble:
 
 bios_trdos_position_prefix:
         defb    "[BIOS READ] ", 0
+bios_trdos_sample_prefix:
+        defb    "[BIOS DATA F0] ", 0
 bios_trdos_debug_prefix:
         defb    "[BIOS SRC FFF0] ", 0
 
