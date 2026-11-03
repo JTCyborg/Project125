@@ -59,8 +59,6 @@ start_neoprogram:
 
         xor     a
         ld      (neo_dma_error), a
-        ld      (saved_z80_ax), a
-        ld      (saved_z80_ax+1), a
         ld      (saved_x86_ax), a
         ld      (saved_x86_ax+1), a
         ld      (x86_exit_status), a
@@ -644,7 +642,6 @@ neo_set_pg1:
 neo_command:       db 0
 neo_tx_byte:       db 0
 neo_dma_error:     db 0
-saved_z80_ax:      dw 0
 saved_x86_ax:      dw 0
 
 ; This code is copied to $4000 during startup. Its OUT changes the ROM map,
