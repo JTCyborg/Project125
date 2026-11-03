@@ -672,6 +672,8 @@ neo_command:       db 0
 neo_tx_byte:       db 0
 neo_dma_error:     db 0
 saved_x86_ax:      dw 0
+saved_z80_ax:      dw 0
+x86_exit_status:   db 0
 
 ; This code is copied to $4000 during startup. Its OUT changes the ROM map,
 ; but the following JP is still fetched from RAM because PC remains in $4000.
