@@ -765,3 +765,16 @@
 - **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Причина ошибки подтверждается семантикой Z80 `IN A,(n)`; исправление ожидает сборку и runtime-проверку.
 
 | 2026-11-03 | Fix NeoGS stale-latch read address before READY | IMPLEMENTED / NOT BUILT | Use BC=#FF02 with IN A,(C), not IN A,(n), to read the actual NeoGS local data port. |
+
+
+## A1.45 — trace границы GS105a #13 → bootstrap READY (2026-11-03)
+
+- [x] Удалён hex helper A1.43: он портил A после чтения байта и не мог использоваться для диагностики длины. Теперь `bootstrap_receive_length_byte` возвращает исходный байт без изменения.
+- [x] Добавлены локальные NeoGS markers: `B` — вход bootstrap; `C` — после очистки stale latch чтением #FF02; `R` — непосредственно перед публикацией READY #A1; `l`/`h` — после приёма первого/второго байта длины.
+- [x] Добавлены host markers: `J` — перед GS105a #13; `K` — после завершения CBIT команды; `4` — перед отправкой high address byte #40; `T` — sender #40 завершился успешно; `X` — sender #40 вернул carry.
+- [x] Driver marker обновлён до A35. Протокол, значения команд, задержки и таймауты не изменялись.
+- [ ] Build: проверить размер NEOLOAD.C (допустимый диапазон 1..254), все ASSERT и отсутствие переполнения первого сектора.
+- [ ] Runtime: прислать полную трассу #EF и host error diagnostics. Последовательность markers определит, дошёл ли host до #13, вошёл ли bootstrap, очистился ли latch, был ли опубликован READY и кто первым изменил DBIT.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME.
+
+| 2026-11-03 | A1.45 trace ROM jump / bootstrap READY boundary | IMPLEMENTED / NOT BUILT | Host J/K/4/T/X and NeoGS B/C/R/l/h markers; raw received A is preserved. |
