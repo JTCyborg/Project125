@@ -524,14 +524,15 @@ bios_rom_debug_dump_tail:
         ld      hl, bios_rom_tail_prefix
         call    neo_debug_send_string
         ld      hl, #DFF0
-        ld      b, 5
+        ld      e, 5
 .bios_tail_dump_loop:
         ld      a, (hl)
         call    neo_debug_hex8
         ld      a, ' '
         call    neo_send_data_byte
         inc     hl
-        djnz    .bios_tail_dump_loop
+        dec     e
+        jr      nz, .bios_tail_dump_loop
         ld      a, 13
         call    neo_send_data_byte
         ld      a, 10
