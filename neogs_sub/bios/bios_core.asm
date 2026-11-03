@@ -17,7 +17,7 @@
 ; Entry: bios_post
 ; Success: x86_exit_status=0, saved_x86_ax=#B105
 ; Failure: x86_exit_status=7, saved_x86_ax=#B1xx
-; No DMA/IPC transport changes.
+; NeoGS DMA receive command is implemented in main.asm; ATM host sender remains pending.
 ; =========================================================================
 
 BIOS_IVT_BASE             EQU #00000
