@@ -164,6 +164,8 @@ The x86 memory-region decoder maps the BIOS image into the configured guest ROM 
 
 The common 8086 PC/XT top-of-memory mapping (for example, a ROM region ending at FFFFFh) is a **profile choice**, not a hard-coded assumption. The actual mapping must be derived from the selected BIOS image layout and reset-vector bytes. For a 64-KiB image the reserved backing range can hold the full image; for an 8-KiB image the manifest identifies its exact offset and mapping. Never silently pad, truncate, mirror or relocate an image without an explicit manifest rule.
 
+For the currently selected Project124 Turbo XT BIOS candidate, the 8-KiB image is mapped at FE000h-FFFFFh and stored in the first 8 KiB of NeoGS page 75. Guest physical FE000h-FFFFFh is therefore a read-only ROM overlay; only FC000h-FDFFFh remains writable within the final 16-KiB guest RAM page. The 8086 reset register state is CS:IP=FFFF:0000 (physical FFFF0h); the first instruction is a far JMP to F000:E05B (physical FE05Bh). This mapping is image-specific.
+
 ### 10.3 Physical RAM capacity gate
 
 Pages 68-78 require at least 79 unique physical 16-KiB pages in the board's RAM map (pages are numbered from zero). This is 1,294,336 bytes of addressable physical RAM. A 2-MiB NeoGS board with 128 unique pages satisfies the numerical requirement; the actual board must still be probed for aliases/mirroring and write/read integrity before these pages are accepted.
