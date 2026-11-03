@@ -121,6 +121,7 @@ bios_rom_expect_byte:
         ld      (x86_mem_addr+2), a
         call    x86_mem_read8
         ret     c
+        ld      (bios_rom_actual), a
         ld      b, a
         ld      a, (bios_rom_expected)
         cp      b
@@ -129,6 +130,7 @@ bios_rom_expect_byte:
         ret
 
 bios_rom_expected: db 0
+bios_rom_actual:   db 0
 bios_rom_loaded:   db 0
 
 bios_post:
