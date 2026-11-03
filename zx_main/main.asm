@@ -16,6 +16,7 @@
 
         DEVICE ZXSPECTRUM128
         INCLUDE "../shared/video_frame.inc"
+        INCLUDE "../shared/neogs_io.inc"
         EMPTYTRD "disk_A.trd"
 
 HOST_PROGRAM_START EQU 24576
@@ -68,6 +69,18 @@ Init_Z80_System:
 
 .firmware_ready:
         ld      hl, msg_fw_ready
+        call    p125_print_string
+
+        ; Verify the shared video CRC primitive before using the frame ABI.
+        call    p125_video_crc_selftest
+        jr      nc, .video_crc_ok
+        ld      hl, msg_video_crc_error
+        call    p125_print_string
+        ld      a, (bios_host_transfer_error)
+        call    p125_print_hex8
+        jr      p125_halt
+.video_crc_ok:
+        ld      hl, msg_video_crc_ok
         call    p125_print_string
 
         ; Stage 2: read BIOS.C as 32 sectors and stream each sector to page 75.
@@ -160,6 +173,8 @@ msg_bios_valid:       defb "[P125] BIOS ROM VALIDATED", 13, 10, 0
 msg_bios_run:         defb "[P125] EXECUTE 8086 BIOS FROM FFFF:0000", 13, 10, 0
 msg_bios_run_error:   defb "[P125] ERROR: BIOS EXECUTION IPC #", 0
 msg_bios_result:      defb "[P125] BIOS RETURN STATUS/AX: ", 0
+msg_video_crc_error:  defb "[P125] VIDEO CRC SELFTEST FAILED #", 0
+msg_video_crc_ok:     defb "[P125] VIDEO CRC SELFTEST PASS", 13, 10, 0
 
 P125_OLD_SP: dw 0
 
@@ -167,6 +182,7 @@ P125_OLD_SP: dw 0
         INCLUDE "neogs_driver.asm"
         INCLUDE "bios_transfer.asm"
         INCLUDE "bios_file_loader.asm"
+        INCLUDE "video_transfer.asm"
 
 ; Keep the resident host image below the stack at AFFFh.
 ProgramEnd:
