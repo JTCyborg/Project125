@@ -2,65 +2,91 @@
 
 Дата начала: 2026-11-03
 Ветка: main
-Статус: старт проекта; исходники в Project125 ещё не перенесены.
+Статус: архитектурное расширение зафиксировано; исходники runtime ещё не перенесены.
 
 ## Правила ведения
-- Пункты отмечаются [x] только после проверки.
-- Сборка, unit/regression test и запуск на реальном ATM/NeoGS фиксируются отдельно.
+- Пункты [x] отмечаются только после проверки.
+- Архитектурное решение, сборка, unit/regression test, emulator test и реальный ATM/NeoGS runtime фиксируются отдельно.
 - Для каждого сбоя сохраняются входные данные, полный лог, ожидаемое и фактическое поведение.
 - Не менять одновременно CPU core, memory map и I/O backend без отдельных контрольных тестов.
 - Пользователю выдавать полные готовые файлы, а не фрагменты для ручной вставки.
+- Не объявлять совместимость или PASS на основании одного статического аудита.
+
+## A0 — архитектурный фундамент
+- [x] Создан отдельный репозиторий Project125.
+- [x] Зафиксировано разделение ATM host / NeoGS x86 execution / guest PC platform.
+- [x] Зафиксирован запрет прямого отображения guest PC I/O на физические порты ATM/NeoGS.
+- [x] Зафиксированы отдельные CPU, memory, I/O, device, host service и transport layers.
+- [x] Зафиксован конфигурируемый guest memory region map и BIOS ROM manifest.
+- [x] Зафиксированы абстракции IRQ, DMA, virtual time и video presenter.
+- [x] Зафиксирована модульная модель устройств и host storage service.
+- [x] Зафиксирован IPC с версиями, capabilities, request IDs, fragmentation, CRC, flow control, timeout и recovery.
+- [x] Зафиксированы уровни доказательств и критерии PASS.
+- [ ] Проверить архитектуру на фактических ограничениях NeoGS RAM, CPU throughput и DMA/bank mapping.
+- [ ] Зафиксировать точные бинарные форматы IPC и machine configuration.
+- [ ] Утвердить начальный PC/XT machine profile по выбранному BIOS.
 
 ## P0 — исходные данные и BIOS
-- [x] Создан отдельный репозиторий Project125.
-- [x] Проверено, что исходный Project125 был пустым, кроме README.md.
-- [x] Найден BIOS-кандидат в Project124: bios/BIOS.BIN, 8192 байта.
+- [x] Найден BIOS-кандидат в Project124: bios/BIOS.BIN, заявленный размер 8192 байта.
 - [x] Найдены BIOS source/listing: bios/bios.asm и bios/bios.txt.
 - [x] Найден активный x86 real-mode executor в Project124/neogs_sub.
 - [ ] Подтвердить, что BIOS.BIN из Project124 — именно тот бинарник, который запускаем в Project125.
 - [ ] Получить SHA-256 BIOS.BIN и сохранить его в манифесте.
 - [ ] Проверить reset vector по физическому адресу FFFF0h.
 - [ ] Сверить бинарник с исходником/listing и установить точную модель BIOS.
+- [ ] Выделить BIOS I/O/memory/interrupt dependencies из trace/disassembly.
 
-## P1 — x86 runtime в NeoGS
-- [ ] Перенести активные модули x86 executor из Project124.
-- [ ] Составить список зависимостей каждого ASM-модуля.
-- [ ] Зафиксировать состояние CPU 8086 и reset values.
-- [ ] Реализовать/проверить 20-битную физическую адресацию.
-- [ ] Реализовать BIOS ROM map 8 KiB (предварительно FE000h–FFFFFh).
-- [ ] Добавить тест чтения reset vector FFFF:0000 -> FFFF0h.
-- [ ] Добавить trace CS:IP/opcode/registers/FLAGS.
+## P1 — x86 runtime foundation в NeoGS
+- [ ] Перенести активные модули x86 executor из Project124 после dependency audit.
+- [ ] Составить граф include/call/data dependencies каждого ASM-модуля.
+- [ ] Зафиксировать CPU reset state и opcode coverage matrix.
+- [ ] Реализовать/проверить guest memory region map.
+- [ ] Проверить 20-bit physical addressing, wrap-around и A20 policy.
+- [ ] Реализовать ROM read-only mapping и selectable BIOS image.
+- [ ] Реализовать guest I/O dispatcher и unknown-port policy.
+- [ ] Добавить unified trace hooks для CPU/memory/I/O/IRQ/IPC.
 
-## P2 — минимальный запуск
-- [ ] Выполнить reset fetch.
-- [ ] Выполнить минимальный тест инструкций 8086.
-- [ ] Подключить BIOS binary к памяти гостя.
-- [ ] Получить первый runtime trace оригинального BIOS.
-- [ ] Сверить trace с дизассемблированием BIOS.
+## P2 — CPU, memory and IPC tests
+- [ ] CPU register/flags/stack/instruction regression suite.
+- [ ] Memory boundary/alias/ROM protection/A20 tests.
+- [ ] IPC version/capability negotiation.
+- [ ] IPC packet framing and endian test vectors.
+- [ ] IPC fragmentation/reassembly and large payload tests (>16 KiB, then >48 KiB).
+- [ ] IPC CRC, duplicate, sequence, timeout, cancellation and recovery tests.
+- [ ] Prove CPU memory and DMA paths use the same guest memory backend.
+- [ ] Confirm NeoGS RAM bank mapping and physical memory budget.
 
-## P3 — POST и устройства
-- [ ] Построить фактическую матрицу opcode по BIOS trace.
-- [ ] Реализовать недостающие инструкции по приоритету.
-- [ ] Реализовать гостевую PC I/O bus.
-- [ ] Согласовать IPC протокол NeoGS <-> ATM host.
-- [ ] Реализовать минимальный набор PC/XT устройств по фактическому POST.
-- [ ] Получить BIOS POST PASS.
+## P3 — BIOS execution and chipset
+- [ ] Execute reset fetch from configured ROM.
+- [ ] Execute CPU smoke tests and validate flags.
+- [ ] Connect selected BIOS binary and capture first instruction trace.
+- [ ] Compare runtime trace with disassembly.
+- [ ] Build BIOS-driven opcode coverage and prioritize missing families.
+- [ ] Implement guest IRQ controller and interrupt acknowledge path.
+- [ ] Implement required PIT/PPI/keyboard/device models based on BIOS trace.
+- [ ] Obtain BIOS POST PASS with documented terminal state.
 
-## P4 — видеосистема и диски
-- [ ] Определить видеостандарт и карту видеопамяти BIOS.
-- [ ] Подключить гостевой видеовывод к ATM.
-- [ ] Реализовать дисковый host service через ATM/TR-DOS.
-- [ ] Проверить чтение сектора и boot sector handoff.
+## P4 — video and storage
+- [ ] Determine required guest video adapter from BIOS/profile.
+- [ ] Implement guest video register/memory model independently of ATM presenter.
+- [ ] Connect video presenter to ATM modes and verify text/graphics.
+- [ ] Implement guest block/disk request abstraction and host storage service.
+- [ ] Select first storage backend (TR-DOS/file/raw image/physical device).
+- [ ] Decide and document FDC emulation versus explicit host-assisted BIOS path.
+- [ ] Verify sector transfer integrity and boot-sector handoff.
 
-## P5 — системная интеграция
-- [ ] Клавиатура и IRQ.
-- [ ] PIT/PIC и системные таймеры.
-- [ ] Перезапуск и обработка ошибок.
-- [ ] Полный сценарий запуска с логом.
-- [ ] Документировать ограничения совместимости.
+## P5 — full platform integration
+- [ ] Keyboard event delivery and IRQ behavior.
+- [ ] PIT/PIC timing and deterministic virtual clock.
+- [ ] DMA behavior and memory coherency.
+- [ ] COM/LPT and optional device models as required.
+- [ ] Reset/recovery/watchdog and error handling.
+- [ ] Long-duration and large-transfer stress tests.
+- [ ] Complete cold-boot/warm-reset scenario with logs.
 
-## Журнал запусков
+## Журнал архитектурных изменений и запусков
 
-| Дата | Сборка | Тест | Результат | Лог/комментарий |
-|---|---|---|---|---|
-| 2026-11-03 | — | Инвентаризация репозиториев | PASS | Project125 пустой; в Project124 найден x86 executor и BIOS-кандидат 8 KiB |
+| Дата | Изменение/тест | Результат | Комментарий |
+|---|---|---|---|
+| 2026-11-03 | Инвентаризация Project124/125 | PASS | BIOS candidate 8 KiB and active x86 executor identified; not yet validated |
+| 2026-11-03 | Architecture v2.0 | DOCUMENTED | Expanded modular architecture; implementation and hardware constraints still require validation |
