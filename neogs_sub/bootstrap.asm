@@ -15,6 +15,8 @@
 
 neogs_bootstrap_start:
         di
+        ld      a, 'B'
+        out     (#EF), a              ; NeoGS-local debug port: bootstrap entered
 
         ; GS105a RECEIVE BLOCK (#14) may leave the Spectrum DMA module
         ; enabled. The bootstrap changes to byte-wise GSDAT transfers, so
@@ -58,6 +60,8 @@ neogs_bootstrap_start:
         in      a, (ZXDATRD)
 
         ; Tell Spectrum that the tiny loader is running and waiting for length.
+        ld      a, '1'
+        out     (#EF), a              ; about to publish READY #A1
         ld      a, NGS_BOOTSTRAP_READY_ACK
         call    bootstrap_send_data_byte
 
@@ -148,13 +152,21 @@ bootstrap_timeout:
 ; with B=#FF so the status/data ports are addressed consistently.
 ; Reading ZXDATRD consumes the host byte and clears DBIT.
 bootstrap_receive_length_byte:
+        ld      a, 'L'
+        out     (#EF), a              ; entered length-byte receiver
 .length_wait:
         ld      bc, #FF04              ; ZXSTAT
         in      a, (c)
         bit     B_DBIT, a
         jr      z, .length_wait
+        ld      a, 'S'
+        out     (#EF), a              ; ZXSTAT observed DBIT=1
         ld      bc, #FF02              ; ZXDATRD
         in      a, (c)
+        push    af
+        ld      a, 'R'
+        out     (#EF), a              ; ZXDATRD read completed
+        pop     af
         ret
 
 ; Wait for one byte from Spectrum. Reading ZXDATRD clears DBIT.
