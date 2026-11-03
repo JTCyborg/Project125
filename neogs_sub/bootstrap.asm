@@ -74,6 +74,21 @@ neogs_bootstrap_start:
         ld      a, NGS_BOOTSTRAP_READY_ACK
         out     (ZXDATWR), a
 
+        ; READY is an outgoing byte. Do not let the receiver mistake its
+        ; still-set DBIT for an incoming length byte. Host consumes #A1,
+        ; clears DBIT, then waits its turnaround before sending length low.
+        ld      bc, #FFFF
+.ready_wait_consumed:
+        in      a, (ZXSTAT)
+        bit     B_DBIT, a
+        jr      z, .ready_consumed
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .ready_wait_consumed
+        jp      bootstrap_timeout
+.ready_consumed:
+
         ; Host sends length low byte, then high byte. Use the same bounded
         ; receiver as the firmware payload so all host-to-NeoGS bytes follow
         ; exactly one ZXSTAT/ZXDATRD implementation. A timeout reports #E1.
