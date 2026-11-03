@@ -438,7 +438,7 @@ upload_firmware::
         ld      a, 7
         ld      (neo_fw_timeout_phase), a
         ld      hl, (neo_fw_length)
-        ld      a, 'l'
+        ld      a, 'L'
         out     (#EF), a              ; host is about to send length low byte
         ld      a, l
         call    gs_boot_send_data_byte
@@ -457,7 +457,7 @@ upload_firmware::
         pop     bc
 
         ld      hl, (neo_fw_length)
-        ld      a, 'h'
+        ld      a, 'H'
         out     (#EF), a              ; host is about to send length high byte
         ld      a, h
         call    gs_boot_send_data_byte
@@ -1209,4 +1209,4 @@ msg_p7_high_tx:        db "[P125] PH7 TX HIGH", 13, 10, 0
 msg_p7_high_ok:       db "[P125] PH7 HIGH ACK", 13, 10, 0
 msg_p7_wait_a3:        db "[P125] PH7 WAIT A3", 13, 10, 0
 msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A35", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A36", 13, 10, 0
