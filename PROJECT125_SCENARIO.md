@@ -1036,3 +1036,14 @@ A1.50–A1.53 признаны неудачными экспериментами
 | 2026-11-04 | A1.65 identify exact failing BIOS validation byte | SOURCE COMMITTED | Validator now returns a distinct AX code for header and each reset-vector byte. |
 
 - [x] Исправлена полярность проверки carry в диагностической цепочке: переход к следующему байту выполняется только после успешной проверки; при mismatch validator немедленно возвращает ошибку.
+
+
+## A1.66 — передача кода ROM validator в AX (2026-11-04)
+
+- [x] По повторному runtime #B101 обнаружено, что `neogs_sub/main.asm` жёстко записывал #B101 после любого отказа validator и тем самым скрывал диагностический индекс, подготовленный `bios_rom_validate`.
+- [x] Исправлено: при отказе AX теперь формируется как #B110 + `bios_rom_check_id`: #B110 — заголовок FE000; #B111..#B115 — FFF0..FFF4.
+- [x] DMA target, приём данных, handshake и успешный код #B105 не менялись.
+- [ ] Пересобрать `build.bat` и проверить runtime AX.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.66 propagate BIOS validator check index | SOURCE COMMITTED | Host-visible AX now reports the exact failing validation byte. |
