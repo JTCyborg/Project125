@@ -363,14 +363,20 @@ upload_firmware::
 
         ; Phase 5: #13 JUMP TO ADDRESS. The low byte is the command's
         ; first argument and must be written before issuing the command.
-        ld      a, 5
+        ; Split phase 5 into sub-phases so a real GS105a handshake failure
+        ; identifies whether the low argument, command, or high argument stalled.
+        ld      a, #51                  ; 5.1: preload entry address low byte
         ld      (neo_fw_timeout_phase), a
         xor     a                       ; entry address low = $00
         call    gs_boot_write_command_argument
         jp      c, .upload_failed
+        ld      a, #52                  ; 5.2: issue #13 and wait for CBIT clear
+        ld      (neo_fw_timeout_phase), a
         ld      a, GS_CMD_JUMP_ADDRESS
         call    gs_boot_send_command
         jp      c, .upload_failed
+        ld      a, #53                  ; 5.3: send entry address high byte
+        ld      (neo_fw_timeout_phase), a
         ld      a, #40                  ; entry address high = $40
         call    gs_boot_send_data_byte
         jp      c, .upload_failed
