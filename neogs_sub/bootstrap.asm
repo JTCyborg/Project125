@@ -38,6 +38,11 @@ neogs_bootstrap_start:
         ; the operational stack to WIN1 after PG1 has been restored to page #03.
         ld      sp, #FFFE
 
+        ; Establish a known host-to-NeoGS data-channel baseline before READY.
+        ; Reading ZXDATRD consumes any stale incoming byte and clears DBIT.
+        ; This is required before the host starts the length stream after #A1.
+        in      a, (ZXDATRD)
+
         ; Tell Spectrum that the tiny loader is running and waiting for length.
         ld      a, NGS_BOOTSTRAP_READY_ACK
         call    bootstrap_send_data_byte
