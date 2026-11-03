@@ -172,3 +172,24 @@
 | 2026-11-03 | ATM host BIOS pipeline | IMPLEMENTED, NOT BUILT | Added TR-DOS BIOS.C reader, exact 32-sector DMA sender, NeoGS result-frame retrieval, host boot loop/debug drain and disk image assembly. Runtime and assembler build are still pending. |
 
 | 2026-11-03 | First reset-vector opcode audit | STATIC PASS | BIOS reset vector starts with EA far JMP; executor dispatches EA to x86_real_jmp_far. No assembled/runtime trace yet. |
+
+
+## A1.3 — Video frame ABI v1 (2026-11-03)
+
+- [x] Создана отдельная спецификация `PROJECT125_VIDEO_ABI.md`.
+- [x] Определён начальный 24-байтовый descriptor: magic/version/flags/mode/format/layout/dimensions/stride/length/sequence/palette count/CRC16.
+- [x] Зафиксированы little-endian поля и CRC-16/CCITT-FALSE (poly 1021h, init FFFFh, refin/refout false, xorout 0000h).
+- [x] Создан общий assembler include `shared/video_frame.inc` с offsets, flags и резервированием frame slots.
+- [x] Подключены общие ABI-константы в исходники ATM host и NeoGS firmware.
+- [ ] Проверить сборку sjasmplus после подключения include.
+- [ ] Проверить, что все descriptor offsets и размер 24 байта совпадают с тестовыми векторами.
+- [ ] Назначить mode/pixel/layout IDs после аудита Project112.
+- [ ] Зафиксировать fragment header, команды, ACK/abort и timeout/retry.
+- [ ] Реализовать NeoGS slot mapping, descriptor serialization и payload CRC.
+- [ ] Реализовать ATM host receiver и проверку полного кадра.
+- [ ] Реализовать ATM presenter и проверить native layout/VSync.
+
+Журнал:
+| Дата | Изменение/тест | Результат | Комментарий |
+|---|---|---|---|
+| 2026-11-03 | Video Frame ABI v1 | SPECIFIED / NOT BUILT | Добавлены 24-byte descriptor spec и shared constants; transport/presenter/runtime не реализованы и сборка не запускалась. |
