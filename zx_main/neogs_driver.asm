@@ -316,30 +316,44 @@ upload_firmware::
 .stock_rom_ready:
 
         ; Phase 3: use the native GS105a memory loader, not the MOD player.
-        ; #14 RECEIVE BLOCK expects the first (negative length low) byte
-        ; before the command, then negative length high, address low/high,
-        ; and exactly N payload bytes. The payload is written directly to RAM.
-        ld      a, 3
-        ld      (neo_fw_timeout_phase), a
+        ; #14 RECEIVE BLOCK header is diagnosed byte-by-byte. These values
+        ; are deliberately distinct from the old aggregate phase 3:
+        ; #30 = preload negative-length low byte (before #14)
+        ; #31 = negative-length high byte
+        ; #32 = destination low byte ($00)
+        ; #33 = destination high byte ($40)
+        ; The first byte is preloaded before issuing the command.
         ld      hl, 0
         ld      de, (neo_fw_bootstrap_length)
         or      a
         sbc     hl, de                  ; HL = -bootstrap length
         ld      (neo_fw_block_length), hl
-        ld      a, l
+        ld      a, #30
+        ld      (neo_fw_timeout_phase), a
+        ld      a, (neo_fw_block_length)
         call    gs_boot_write_command_argument
         jp      c, .upload_failed
+
+        ; Command #14 switches the ROM loader into RECEIVE BLOCK mode.
+        ld      a, #31
+        ld      (neo_fw_timeout_phase), a
         ld      a, GS_CMD_RECEIVE_BLOCK
         call    gs_boot_send_command
         jp      c, .upload_failed
 
         ; Remaining #14 header: -length high, destination $4000.
+        ld      a, #31
+        ld      (neo_fw_timeout_phase), a
         ld      a, (neo_fw_block_length+1)
         call    gs_boot_send_data_byte
         jp      c, .upload_failed
+        ld      a, #32
+        ld      (neo_fw_timeout_phase), a
         xor     a
         call    gs_boot_send_data_byte  ; destination low = $00
         jp      c, .upload_failed
+        ld      a, #33
+        ld      (neo_fw_timeout_phase), a
         ld      a, #40
         call    gs_boot_send_data_byte  ; destination high = $40
         jp      c, .upload_failed
@@ -1163,3 +1177,4 @@ neo_fw_bytes_sent:      dw 0
 neo_fw_initial_status:  db 0
 neo_fw_last_status:     db 0
 neo_fw_timeout_phase:   db 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A12", 13, 10, 0

@@ -44,6 +44,10 @@ Init_Z80_System:
 
         ld      hl, msg_p125_start
         call    p125_print_string
+        ld      hl, msg_p125_build_id
+        call    p125_print_string
+        ld      hl, neo_fw_driver_build_id
+        call    p125_print_string
 
         ; Stage 1: load the separate NeoGS bootstrap + firmware package.
         ld      hl, msg_fw_load
@@ -175,6 +179,7 @@ p125_print_hex_nibble:
         ret
 
 msg_p125_start:       defb "[P125] ATM HOST START", 13, 10, 0
+msg_p125_build_id:    defb "[P125] BUILD 20261103-A11", 13, 10, 0
 msg_fw_load:          defb "[P125] LOAD NEOGS FIRMWARE", 13, 10, 0
 msg_fw_file_error:    defb "[P125] ERROR: NEOGS PACKAGE FILE #", 0
 msg_fw_upload_error:  defb "[P125] ERROR: NEOGS FIRMWARE UPLOAD PHASE #", 0
