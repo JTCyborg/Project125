@@ -812,3 +812,16 @@
 - **Статус:** SOURCE FIX APPLIED / NOT BUILT / NOT RUNTIME.
 
 | 2026-11-03 | A1.48 fix local label declaration | SOURCE FIX APPLIED | Corrected `.phase5_jump_tx_done` declaration; previous local build confirms bootstrap size limit passed, host assembly still pending. |
+
+
+## A1.49 — разделение host/NeoGS trace markers (2026-11-03)
+
+- [x] Runtime A35 host trace JK4T и NeoGS trace BCRl подтвердили вход в bootstrap и достижение READY; маркер l неоднозначен, поскольку его использовали обе стороны.
+- [x] NeoGS bootstrap markers: B — вход, C — после чтения latch, R — публикация READY, 1 — принят первый байт длины, 2 — принят второй байт.
+- [x] Host markers длины изменены на L и H; J/K/4/T/X сохранены. Driver build ID обновлён до A36.
+- [x] Протокол, порядок байтов, тайминги, ожидания DBIT и ACK не менялись. Только диагностическое разделение потоков.
+- [ ] Собрать через build.bat; проверить NEOLOAD.C <=254 байта и отсутствие ошибок ATM host.
+- [ ] Прислать полный host trace и отдельный NeoGS trace после A36. BCR1 означает, что NeoGS принял первый байт длины; JK4TL показывает, что host прошёл READY и начал передачу длины.
+- **Статус:** SOURCE UPDATED / NOT BUILT / NOT RUNTIME.
+
+| 2026-11-03 | A1.49 distinguish host and NeoGS trace markers | SOURCE UPDATED | NeoGS uses B/C/R/1/2; host uses J/K/4/T/X/L/H. No transport logic changed. |
