@@ -36,7 +36,7 @@
 - [ ] Реализовать и испытать stage-0/stage-1 загрузчик в Project125.
 - [ ] Проверить безопасный возврат из RAM-over-ROM к stock ROM.
 - [ ] Проверить stack guard, DMA ownership, bank-call/IRQ safety.
-- [ ] Проверить BIOS image backing store и guest ROM write protection.
+- [x] Реализован исходный 8 KiB guest ROM overlay и write protection в коде; hardware backing-store validation остаётся отдельным тестом.
 
 
 
@@ -48,8 +48,8 @@
 - [x] Зафиксирован capacity gate: минимум 79 уникальных 16-KiB страниц (1,294,336 bytes), без aliasing.
 - [ ] Реализовать физический page probe и подтвердить уникальность страниц 0-78 на целевой NeoGS.
 - [ ] Реализовать firmware segment manifest/loader с лимитом 128 KiB, проверкой overlap, CRC/hash и безопасной commit/recovery.
-- [ ] Реализовать BIOS manifest/loader для 8-64 KiB и backing pages 75-78.
-- [ ] Проверить BIOS guest mapping, reset vector, read-only behavior и отсутствие alias с x86 RAM.
+- [ ] Расширить начальный фиксированный 8 KiB loader до manifest-driven 8-64 KiB загрузки в pages 75-78.
+- [ ] Проверить BIOS guest mapping, reset vector, read-only behavior и отсутствие alias с x86 RAM на сборке/эмуляторе/железе.
 - [ ] Провести стресс-тест одновременной работы resident firmware, overlay bank switching, x86 guest RAM, BIOS fetch и DMA.
 
 
@@ -86,7 +86,7 @@
 - [ ] Зафиксировать CPU reset state и opcode coverage matrix.
 - [ ] Реализовать/проверить guest memory region map.
 - [ ] Проверить 20-bit physical addressing, wrap-around и A20 policy.
-- [ ] Реализовать ROM read-only mapping и selectable BIOS image.
+- [x] Реализован фиксированный 8 KiB ROM overlay для выбранного BIOS; selectable image sizes/manifest-driven relocation остаются pending.
 - [ ] Реализовать guest I/O dispatcher и unknown-port policy.
 - [ ] Добавить unified trace hooks для CPU/memory/I/O/IRQ/IPC.
 
