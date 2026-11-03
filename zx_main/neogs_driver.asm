@@ -370,12 +370,20 @@ upload_firmware::
         xor     a
         call    gs_boot_write_command_argument
         jp      c, .upload_failed
+        ld      a, 'J'
+        out     (#EF), a              ; before issuing GS105a #13
         ld      a, GS_CMD_JUMP_ADDRESS
         call    gs_boot_send_command
         jp      c, .upload_failed
+        ld      a, 'K'
+        out     (#EF), a              ; #13 command CBIT completed
+        ld      a, '4'
+        out     (#EF), a              ; about to publish jump high byte #40
         ld      a, #40
         call    gs_boot_send_data_byte
         jr      nc, .phase5_jump_tx_done
+        ld      a, 'X'
+        out     (#EF), a              ; #40 sender returned carry
 
         ; The bootstrap can consume #40 and publish #A1 before the host
         ; samples the brief DBIT-low interval. DBIT high can mean #A1 pending.
@@ -402,7 +410,9 @@ upload_firmware::
         ld      (neo_fw_tx_wait_state), a
         jr      .phase5_jump_ready
 
-.phase5_jump_tx_done:
+ .phase5_jump_tx_done:
+        ld      a, 'T'
+        out     (#EF), a              ; #40 sender completed
         ld      a, 6
         ld      (neo_fw_timeout_phase), a
         call    gs_boot_receive_data_byte
@@ -1200,4 +1210,4 @@ msg_p7_high_tx:        db "[P125] PH7 TX HIGH", 13, 10, 0
 msg_p7_high_ok:       db "[P125] PH7 HIGH ACK", 13, 10, 0
 msg_p7_wait_a3:        db "[P125] PH7 WAIT A3", 13, 10, 0
 msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A34", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A35", 13, 10, 0
