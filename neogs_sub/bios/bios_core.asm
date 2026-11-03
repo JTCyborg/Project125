@@ -117,6 +117,7 @@ bios_rom_expect_byte:
         ret
 
 bios_rom_expected: db 0
+bios_rom_loaded:   db 0
 
 bios_post:
         call    x86_mem_init
