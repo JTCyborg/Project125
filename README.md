@@ -41,3 +41,5 @@ BIOS-кандидат: `bios/BIOS.BIN` — Generic Turbo XT BIOS 1987, 8192 ба
 Сборка и запуск пока не подтверждены: сначала требуется получить лог sjasmplus и проверить итоговый TR-DOS каталог.
 
 Первый запуск пока является диагностическим: ожидаем выполнить reset-vector far JMP `EA F000:E05B`, затем остановиться на первой неподдерживаемой инструкции BIOS. NeoGS выдаёт остановочный `CS:IP` через DBIT, ATM host зеркалирует его на порт `#EF`; это не заявка на полный BIOS POST.
+
+Project125 активирует только 8086 real-mode executor; legacy flat-mode interpreter Project124 не включается в resident firmware, чтобы оставить место для BIOS ROM integration.
