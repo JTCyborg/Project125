@@ -9,7 +9,7 @@
 - [Сценарий разработки и испытаний](PROJECT125_SCENARIO.md)
 
 ## Статус
-Начало проекта: 2026-11-03. Создана базовая документация, импортирован исходный x86 real-mode executor из Project124, добавлен BIOS-кандидат 8 KiB и начальная проверка его reset vector. Добавлены NeoGS-команды загрузки BIOS в page 75 и запуска 8086 reset sequence, а также read-only ROM overlay FE000h..FFFFFh. Host-side transfer, сборка и runtime пока не проверены.
+Начало проекта: 2026-11-03. Создана базовая документация, импортирован исходный x86 real-mode executor из Project124, добавлен BIOS-кандидат 8 KiB и начальная проверка его reset vector. Добавлены NeoGS-команды загрузки BIOS в page 75 и запуска 8086 reset sequence, а также read-only ROM overlay FE000h..FFFFFh. ATM host-side DMA sender module добавлен, но подключение к TR-DOS file reader, сборка и runtime пока не проверены.
 
 BIOS-кандидат: `bios/BIOS.BIN` — Generic Turbo XT BIOS 1987, 8192 байта. Reset vector проверен: `EA 5B E0 00 F0` по смещению `1FF0h`; начальная карта образа — `FE000h..FFFFFh`. См. `bios/BIOS_MANIFEST.md`.
 
@@ -22,3 +22,5 @@ BIOS-кандидат: `bios/BIOS.BIN` — Generic Turbo XT BIOS 1987, 8192 ба
 - `CMD_LOAD_BIOS` (`0Ch`): принимает 8192 байта DMA-потоком в физический page 75 по адресу `12C000h`; проверяет идентификаторный байт и reset vector.
 - `CMD_BOOT_BIOS` (`0Dh`): запускает x86 executor с 8086 reset state `FFFF:0000`.
 - Guest ROM overlay: `FE000h..FFFFFh` читает page 75; запись в ROM запрещена. Полная передача с ATM host и аппаратная проверка ещё впереди.
+
+- `zx_main/bios_transfer.asm` — host-side DMA stream sender: принимает 32 сектора по 256 байт, закрывает поток и читает NeoGS result frame; TR-DOS file reader ещё не подключён.
