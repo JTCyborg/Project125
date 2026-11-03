@@ -1,116 +1,276 @@
-# Project125 — архитектура x86-компьютера на АТМ Turbo 2+ / NeoGS
+# Project125 — расширяемая архитектура x86-компьютера на ATM Turbo 2+ / NeoGS
 
-## Цель
+Версия документа: 2.0
+Дата: 2026-11-03
+Статус: архитектурная спецификация; реализация ещё не подтверждена.
 
-Запустить оригинальный бинарный BIOS 8086 на x86-исполнителе, работающем в NeoGS. АТМ Turbo 2+ остаётся главным системным процессором и обеспечивает связь x86-подсистемы с памятью, экраном, дисками и периферией.
+## 1. Цель и базовый принцип
 
-Это не перенос IBM PC целиком на Z80 и не запуск BIOS на эмуляторе PCem. Исполнение x86-команд выполняется в NeoGS; основной Z80 управляет системной интеграцией и обслуживает запросы устройств.
+Project125 создаёт компьютер с совместимой x86-подсистемой: x86-код исполняется в NeoGS, ATM Turbo 2+ выступает системным контроллером и предоставляет физические ресурсы. Первый этап — запуск выбранного BIOS 8086, но архитектура не должна ограничивать проект одним BIOS, одной моделью CPU, одним видеорежимом или одним типом накопителя.
 
-## Исходная база
+Это не запуск PCem и не перенос PC целиком на Z80. Исполнение x86-команд выполняется в NeoGS. ATM отвечает за интеграцию с реальной платформой, системные сервисы и доступ к физическим ресурсам.
+
+**Непереступаемая граница:** гостевой x86-компьютер видит собственные виртуальные шины памяти, I/O, прерываний и DMA. Его адреса и порты никогда не трактуются как физические адреса/порты ATM или NeoGS напрямую.
+
+## 2. Цели совместимости и этапность
+
+Архитектура предусматривает:
+- IBM PC/XT-совместимый real mode как первый целевой профиль.
+- Разделение модели CPU и платформенного профиля.
+- Возможность добавления вариантов 8086/8088 и расширения набора инструкций без переписывания устройств.
+- Возможность в будущем добавить более развитую модель CPU и адресации, если это будет подтверждено ресурсами NeoGS и требованиями ПО. Protected mode/80286 не входят в первый этап и не должны считаться реализованными.
+- Несколько BIOS ROM profiles и конфигураций устройств.
+- Возможность заменить host backend (TR-DOS, другой дисковый сервис, физический носитель) без изменения BIOS-facing интерфейса.
+
+Первый реальный target фиксируется после проверки BIOS binary. Нельзя заранее объявлять полную совместимость IBM PC/XT или 8086 ISA.
+
+## 3. Разделение ответственности
+
+### 3.1 ATM Turbo 2+ — host/system controller
+- Запуск, остановка, сброс и конфигурирование x86-подсистемы.
+- Загрузка NeoGS firmware, BIOS ROM и конфигурации.
+- Host IPC endpoint, очереди запросов/ответов и транспорт больших блоков.
+- Доступ к физическим дискам/файловой системе/носителям через host services.
+- Доставка событий клавиатуры и других физических устройств.
+- Интеграция видеовывода гостя с видеосистемой ATM.
+- Предоставление времени/событий, диагностика, логирование и watchdog.
+- Контроль ресурсов и восстановление после ошибок.
+
+### 3.2 NeoGS — x86 execution subsystem
+- CPU state, fetch/decode/execute и трассировка.
+- Гостевая физическая память и адресный декодер.
+- Гостевая I/O bus и диспетчер устройств.
+- Interrupt controller interface, IRQ routing и DMA abstraction.
+- BIOS ROM mapping и конфигурация гостевой машины.
+- IPC client, буферизация и обработка асинхронных host responses.
+- Кэширование/буферизация там, где это не меняет видимое гостю поведение.
+
+### 3.3 Гостевая платформа PC
+Гостевая платформа — отдельный слой. Она описывает, какие устройства существуют, какие адреса/порты они занимают, какие IRQ/DMA используют, как ведут себя после reset и какие BIOS services ожидают. Это не физическая схема ATM.
+
+## 4. Слои программной архитектуры
+
+Зависимости должны идти сверху вниз через интерфейсы; CPU core не должен знать о TR-DOS, ATM video или реальных портах NeoGS.
+
+1. CPU core: состояние, decoder, execution units, flags, stack, interrupt entry/return.
+2. Memory subsystem: 20-bit physical address generation, address decoder, RAM/ROM/device regions, read/write/fetch permissions.
+3. I/O subsystem: 16-bit guest port space, decode, device registry, IN/OUT dispatch.
+4. Platform/chipset: PC/XT profile, IRQ routing, PIC/PIT/PPI, DMA policy, reset defaults.
+5. Device models: video, keyboard, timer, disk controller, serial/parallel and optional devices.
+6. Host services: block storage, physical keyboard, display presentation, clock/event source, debug.
+7. Transport: versioned IPC, packet framing, queues, fragmentation, integrity, retries/timeouts.
+8. ATM hardware backend: конкретные порты, DMA, NeoGS bank switching, TR-DOS and native video integration.
+
+Любой слой должен иметь тестируемую реализацию без обязательного запуска всей системы.
+
+## 5. CPU core
+
+CPU core не содержит код конкретного BIOS и не выполняет физический I/O.
+
+Обязательные отдельные компоненты:
+- CPU state и reset state.
+- Instruction fetch и decode.
+- Execution units по семействам инструкций.
+- Flags semantics.
+- ModR/M and effective address generation.
+- Memory access interface.
+- I/O access interface.
+- Interrupt and exception entry/return.
+- Trace/debug hooks.
+
+Для каждого opcode отдельно фиксируются: decode support, execution support, flag correctness, memory side effects, cycle/timing policy (если применимо), regression tests. «Опкод встречается в таблице» не означает, что он корректно реализован.
+
+Архитектура должна позволять расширять decoder/executor независимо от memory, I/O и устройств. Неизвестная инструкция должна приводить к диагностируемому CPU fault/stop, а не к тихому пропуску.
+
+## 6. Гостевая память
+
+### 6.1 Адресация
+Первый профиль — 8086 real mode: физический адрес (segment << 4) + offset, 20-битный результат и wrap-around при A20=0. A20 реализовать как явный управляемый механизм, а не разбрасывать маскирование адреса по коду. Это позволит позднее добавить другой режим адресации без переписывания каждого memory client.
+
+### 6.2 Декодер регионов
+Memory map строится таблицей регионов/дескрипторов, а не набором несвязанных сравнений в CPU:
+- RAM (read/write/execute).
+- ROM (read/execute, write запрещён или отдельно определённый shadowing).
+- Video memory.
+- Memory-mapped device windows.
+- Reserved/unmapped regions с детерминированным поведением и диагностикой.
+
+У региона должны быть base, size, type, permissions, backend и правила зеркалирования/alias, если они нужны. Приоритет перекрытий должен быть явным и тестируемым.
+
+### 6.3 BIOS ROM
+BIOS — отдельный образ с метаданными: размер, checksum/hash, load mapping, reset vector, версия/идентификатор, platform profile. Поддержать несколько ROM images и возможность выбора конфигурации.
+
+Кандидат Project124 BIOS.BIN имеет заявленный размер 8192 байта. Предварительное отображение FE000h–FFFFFh — только гипотеза до проверки бинарника и reset vector. BIOS нельзя встраивать жёстко в CPU core.
+
+### 6.4 Реализация памяти в NeoGS
+Гостевая память логически непрерывна и не зависит от физических bank windows NeoGS. Backend отображает гостевые страницы на физические банки/страницы NeoGS. Все операции пересечения границ страниц, DMA и bank switching должны иметь единый контракт. CPU не должен самостоятельно переключать банки.
+
+## 7. Гостевая I/O bus и устройства
+
+Все IN/OUT 8086 идут через I/O dispatcher с 16-битным пространством портов. Устройства регистрируют диапазоны портов и callbacks read/write; конфликт диапазонов выявляется при конфигурации. Неизвестный порт имеет настраиваемую политику (open bus/default value/log/fault), а не случайное поведение.
+
+Устройство имеет lifecycle reset/init/shutdown, state, port/memory handlers, IRQ/DMA endpoints, event/tick hooks и диагностический идентификатор.
+
+Планируемые модели (не означает, что они уже реализованы):
+- PIC 8259-compatible и маршрутизация IRQ.
+- PIT 8253/8254-compatible.
+- PPI 8255/PC system board functions.
+- Keyboard controller/input queue.
+- CGA/MDA display adapter как первый возможный video profile; другие адаптеры — отдельные профили.
+- FDC и diskette services.
+- COM/serial, LPT/parallel.
+- DMA controller и дополнительные устройства по потребности BIOS/ПО.
+
+Устройства добавляются по фактическим обращениям BIOS и выбранному профилю. Нельзя подменять PC ports прямыми OUT к физическим портам ATM/NeoGS.
+
+## 8. Прерывания, DMA и время
+
+### Interrupts
+CPU принимает абстрактные IRQ/NMI/reset events от platform controller. Устройства не меняют CPU state напрямую. PIC/platform layer определяет приоритет, маскирование, acknowledge и вектор. IVT остаётся в гостевой памяти.
+
+### DMA
+Гостевой DMA — отдельная подсистема с адресами гостевой физической памяти. Host/NeoGS transport DMA не является гостевым DMA. Нужен общий memory backend access path, чтобы DMA и CPU видели согласованную память и права регионов.
+
+### Clock and scheduling
+Время устройств не должно зависеть от скорости передачи IPC или случайных задержек host. Предусмотреть абстрактные ticks/events и режимы синхронизации. На первом этапе допустима функциональная, не cycle-accurate модель, но таймеры и IRQ должны быть детерминированы относительно виртуального времени. Точная тактовая совместимость не заявляется без отдельной реализации и тестов.
+
+## 9. Видео
+
+Гостевой видеоконтроллер и вывод на физический экран ATM — разные слои:
+- Video device model принимает guest register/memory writes.
+- Video backend формирует логическое изображение/текст/кадровые данные.
+- ATM presenter переводит его в доступный режим ATM.
+- Конкретная раскладка ATM видеопамяти не должна просачиваться в BIOS-facing CGA/MDA interface.
+
+Предусмотреть текстовый и графический backend, dirty regions/partial updates, палитры, stride/planes и разные guest adapters. Первый adapter выбирается по реальному BIOS и тестовой трассе. Не объявлять CGA/EGA/VGA совместимость до реализации соответствующих регистров и режимов.
+
+## 10. Диски и host services
+
+BIOS видит гостевой контроллер/BIOS disk interface, а не TR-DOS напрямую. Disk controller model преобразует гостевые команды в абстрактные block requests. Host service ATM выполняет физическое чтение/запись через выбранный backend.
+
+Block request должен содержать device ID, operation, LBA/CHS согласно модели, sector size/count, buffer/transfer ID, sequence и status. Обязательно проверять границы, ошибки носителя, write protection и завершение. Поддержать разные backend: TR-DOS image/file, raw image, физический накопитель — по мере реализации.
+
+INT 13h может быть диагностическим/временным host-assisted путём только если это явно выбрано платформенным профилем; он не должен незаметно подменять эмуляцию FDC, если BIOS ожидает реальный контроллер.
+
+## 11. IPC NeoGS <-> ATM
+
+IPC — самостоятельный транспорт, независимый от CPU opcode и моделей устройств.
+
+### 11.1 Пакет
+Минимальный заголовок:
+- magic/signature;
+- protocol major/minor;
+- message type (request/response/event/cancel);
+- command/service ID;
+- flags;
+- sequence/request ID;
+- payload length;
+- fragment index/count или offset;
+- status;
+- integrity field (CRC/checksum).
+
+Формат, размер полей и endian фиксируются отдельной спецификацией и тест-векторами. Нельзя полагаться на неоговорённую раскладку структур компилятора.
+
+### 11.2 Поведение
+- Request/response и unsolicited events.
+- Несколько очередей или классов приоритета: control, realtime events, bulk transfer, debug.
+- Фрагментация и сборка произвольно больших payload; ограничение одного пакета не должно ограничивать размер BIOS/диска/прошивки.
+- Flow control/backpressure и bounded buffers.
+- ACK/status, timeout, cancellation, duplicate detection.
+- Sequence numbers и защита от устаревших ответов.
+- CRC/integrity проверки целых сообщений и фрагментов.
+- Negotiation версии и capabilities при старте.
+- Recovery после reset/потери пакета и watchdog.
+- Диагностика потерь, повторов, переполнения и задержек.
+
+Не выполнять длительную операцию устройства в блокирующем обработчике CPU. CPU может продолжить работу или перейти в определённое ожидание, а host response приходит как событие.
+
+### 11.3 Сервисы
+Сервисы отделены от транспорта: storage, keyboard/input, video/present, clock, debug, configuration, host memory (если будет нужен). Для каждого сервиса описываются команды, payload, ошибки, права и версии.
+
+## 12. Конфигурация и загрузка
+
+Стартовая последовательность:
+1. ATM проверяет наличие NeoGS и запускает firmware.
+2. NeoGS сообщает версию firmware и возможности.
+3. ATM и NeoGS согласуют IPC protocol version/capabilities.
+4. ATM передаёт machine profile и конфигурацию памяти/устройств.
+5. Загружается BIOS image с проверкой размера и integrity.
+6. NeoGS создаёт CPU/platform state и memory map.
+7. Выполняется reset vector.
+8. Включаются trace и диагностические счётчики.
+9. Host services активируются по мере готовности.
+
+Конфигурация должна задавать CPU profile, RAM size, ROM image/map, A20 policy, device set, IRQ/DMA map, video adapter, storage backend и debug level. Не кодировать эти значения в десятках исходников.
+
+## 13. Диагностика и тестирование
+
+Единый trace format должен включать timestamp/tick, CS:IP, opcode bytes, registers/FLAGS по режиму, memory/I/O event, IRQ, device ID, IPC sequence/status. Поддержать фильтры и уровни детализации, иначе трасса BIOS быстро переполнится.
+
+Уровни доказательств всегда разделяются:
+1. Static/source audit.
+2. Assembly/build.
+3. Unit tests CPU/memory/I/O/protocol.
+4. Integration tests на тестовых backends.
+5. Emulator runtime.
+6. Реальный ATM + NeoGS hardware runtime.
+
+PASS присваивается только конкретному уровню. Для IPC нужны тесты потерь/дубликатов/повреждения/фрагментации/переполнения и payload больше 16 KiB. Для memory — boundary/alias/ROM-write/A20 tests. Для CPU — opcode-family tests и BIOS trace replay.
+
+## 14. Структура исходников (целевая, не утверждение о текущем состоянии)
+
+- cpu/ — state, decoder, execution, flags, interrupts.
+- memory/ — address generation, region map, RAM/ROM backends.
+- io/ — port bus and device registry.
+- platform/pcxt/ — machine profile, reset defaults, IRQ/DMA routing.
+- devices/pic/, pit/, ppi/, keyboard/, video/, fdc/, serial/.
+- host/ — service interfaces and request handlers.
+- ipc/ — framing, queues, fragmentation, integrity, negotiation.
+- storage/ — block layer and backends.
+- video/ — guest adapter and ATM presenter.
+- config/ — machine profiles and BIOS manifest.
+- tests/ — unit, regression, integration and trace tests.
+- docs/ — maps, protocol, device specs, test scenario.
+
+Реальное дерево будет адаптировано под SjASMPlus/NeoGS toolchain, но логические границы должны сохраниться даже если сборка использует include-файлы.
+
+## 15. Этапы реализации
+
+- P0 — BIOS и platform definition: точный ROM, hash, reset vector, BIOS trace requirements, initial PC profile.
+- P1 — foundation: CPU core isolation, guest memory region map, ROM backend, I/O dispatcher, trace.
+- P2 — boot: reset fetch, CPU smoke, первые BIOS instructions.
+- P3 — chipset and POST: IRQ/PIC/PIT/PPI/keyboard and only devices required by BIOS trace.
+- P4 — video/storage: guest adapter to ATM presenter; guest disk controller to host block service.
+- P5 — system integration: keyboard, timing, recovery, long transfers, extended device set.
+- P6 — compatibility growth: additional CPU/device/BIOS profiles based on measured resources and tests.
+
+## 16. Критерии готовности
+
+- RESET FETCH PASS — opcode fetched from mapped BIOS reset vector.
+- CPU SMOKE PASS — instruction and flag tests pass.
+- MEMORY MAP PASS — region boundary, ROM protection, wrap/A20 tests pass.
+- IPC PASS — version negotiation, fragmentation, CRC, retries/timeouts and large transfers pass.
+- BIOS ENTRY PASS — original ROM executes with trace matching disassembly.
+- POST PASS — BIOS completes documented POST path.
+- VIDEO PASS — guest writes produce correct ATM output.
+- DISK PASS — guest disk request completes through host service and boot handoff.
+- STABILITY PASS — repeated cold/warm resets and long-duration transfers pass.
+
+## 17. Исходная база и открытые вопросы
 
 Проверено 2026-11-03:
+- Project124 contains candidate bios/BIOS.BIN (8192 bytes), bios/bios.asm, bios/bios.txt.
+- Active executor in Project124 is neogs_sub/x86_real_mode.asm plus modules listed in its build dependencies; legacy x86_interpreter.asm is not the active core.
+- Project124 BIOS_XT_OPCODE_AUDIT.md identifies substantial missing instruction families and lack of full PC/XT device models.
+- Project125 currently contains architecture/scenario docs; runtime has not yet been ported.
 
-- Project125 (main) изначально содержал только README.md.
-- В Project124 присутствует кандидат BIOS: `bios/BIOS.BIN`, размер 8192 байта; рядом находятся `bios/bios.asm` и `bios/bios.txt`.
-- Активный x86 real-mode executor находится в `neogs_sub/x86_real_mode.asm`, а не в legacy `x86_interpreter.asm`.
-- Сопутствующие модули: `x86_cpu_state.asm`, `x86_decode.asm`, `x86_real_alu.asm`, `x86_real_alu8.asm`, `x86_real_mov.asm`, `x86_interrupt.asm`, `x86_memory.asm`, `x86_io.asm`, `x86_strings.asm`, `x86_modrm.asm`.
-- В Project124 уже есть статический аудит совместимости BIOS с executor: `BIOS_XT_OPCODE_AUDIT.md`. Он прямо указывает, что статическая поддержка инструкций не равна успешному запуску BIOS.
+Open decisions:
+- Exact BIOS binary and provenance.
+- Actual RAM capacity and guest RAM size.
+- Exact initial PC/XT board profile and BIOS expected peripherals.
+- First video adapter.
+- Initial storage backend and whether guest FDC or explicit host-assisted BIOS service is used.
+- IPC physical transport details and achievable throughput.
+- Timing fidelity target.
 
-BIOS.BIN из Project124 считается кандидатом для первого запуска, но до проверки контрольной суммы и соответствия исходнику не объявляется окончательно выбранным ROM.
-
-## Разделение ответственности
-
-### ATM Turbo 2+ — host / системный контроллер
-
-- Запуск и остановка x86-подсистемы.
-- Загрузка firmware и BIOS-образа в NeoGS.
-- Командный канал и обмен пакетами.
-- Доступ x86 к системной памяти и устройствам через согласованный протокол.
-- Передача видеовывода в существующую видеосистему ATM.
-- Дисковые операции и прочие медленные host-сервисы.
-- Диагностика и журналирование через существующий debug-канал.
-
-### NeoGS — x86 execution subsystem
-
-- Состояние 8086: AX/BX/CX/DX, SP/BP/SI/DI, CS/DS/ES/SS, IP, FLAGS.
-- Реальный режим, 20-битная физическая адресация и wrap-around A20=0.
-- Fetch/decode/execute инструкций 8086.
-- Стек, прерывания, IVT и BIOS memory access.
-- Абстрактная шина памяти и отдельная абстрактная шина I/O.
-- IPC с ATM host для обращений к внешним устройствам.
-
-### Гостевая PC/XT-модель
-
-Устройства моделируются по мере того, как их реально использует выбранный BIOS: PIC, PIT, PPI/клавиатура, видеоконтроллер, FDC и другие. Нельзя подменять PC I/O прямым OUT в физические порты NeoGS/ATM. Все гостевые порты проходят через x86 I/O backend; host выполняет запросы по IPC.
-
-## Начальная карта памяти
-
-Для 8086 требуется 20-битное адресное пространство 00000h–FFFFFh. BIOS-кандидат размером 8 KiB предполагает отображение в верхнюю область FE000h–FFFFFh, где reset vector FFFF:0000 (физический FFFF0h) попадает в последние 16 байт образа. Это предварительная схема: окончательное отображение фиксируется после проверки конкретного BIOS.BIN, reset vector и реализации x86_memory.
-
-Обязательные области для первой XT-конфигурации:
-- RAM: 00000h–9FFFFh (объём уточняется тестом доступной NeoGS RAM и картой гостя).
-- Video RAM / ROM / I/O windows: только после выбора конкретной конфигурации PC.
-- BIOS ROM: предварительно FE000h–FFFFFh, 8 KiB.
-- IVT: 00000h–003FFh.
-- BDA: 00400h–004FFh.
-
-Физическая память гостя не должна совпадать с адресами или окнами Z80 firmware. Доступ выполняется через проверенный backend x86_memory и bank switching NeoGS.
-
-## Принципы разработки
-
-1. Сначала запускаем reset vector и минимальный диагностический BIOS path; не реализуем сразу все устройства PC.
-2. Любой opcode считается поддержанным только после decoder + executor + регрессионного теста.
-3. Любой BIOS POST PASS подтверждается реальным runtime-логом, а не статическим анализом.
-4. Все I/O операции гостя отделены от физических портов ATM/NeoGS.
-5. Host IPC проектируется как версионированный пакетный протокол: команда, длина, sequence, payload, status/ACK, timeout.
-6. Передача больших данных потоковая; не требуем держать весь BIOS/диск в буфере Z80.
-7. Не переносим файлы из Project124 вслепую: каждый модуль проверяется на зависимости, память, порты и соответствие новой карте.
-8. В Project125 ведётся сценарий испытаний; PASS ставится только по фактическому результату сборки или запуска.
-
-## Этапы
-
-### P0 — инвентаризация и фиксация BIOS
-- Получить/выбрать точный BIOS binary.
-- Зафиксировать размер, SHA-256, reset vector, сигнатуры и происхождение.
-- Сверить BIOS.BIN с bios.asm / listing, если исходник соответствует бинарнику.
-- Зафиксировать модель BIOS: IBM PC/XT совместимость, требуемые устройства и POST path.
-
-### P1 — перенос минимального x86 runtime
-- Перенести активный x86 real-mode executor из Project124 с необходимыми зависимостями.
-- Отделить x86 RAM от Z80 resident firmware.
-- Реализовать 20-bit адресацию, ROM read-only map и reset state 8086.
-- Добавить тест reset fetch: CS:IP=FFFF:0000, physical=FFFF0h.
-
-### P2 — BIOS reset и первые инструкции
-- Подключить BIOS ROM в x86 memory backend.
-- Выполнить первые инструкции с reset vector.
-- Логировать CS:IP, opcode bytes, регистры, FLAGS и обращения к памяти.
-- Исправлять инструкции только по подтверждённым трассам.
-
-### P3 — BIOS POST и гостевые устройства
-- Добавлять недостающие инструкции по фактическому BIOS trace.
-- Реализовать минимально необходимые PC/XT I/O устройства.
-- Подключить host service IPC к ATM.
-- Добиться прохождения POST до понятной точки остановки/загрузки.
-
-### P4 — экран и диски
-- Выбрать начальный видеорежим (CGA или MDA — по BIOS).
-- Перевести вывод гостя в ATM video backend.
-- Реализовать гостевой диск через host-сервис ATM/TR-DOS.
-- Проверить загрузку сектора и выполнение boot sector.
-
-### P5 — системная интеграция
-- Клавиатура, таймер, IRQ/PIC, звук и остальные устройства по приоритету.
-- Тесты длительной работы и целостности IPC.
-- Полный сценарий запуска и перезапуска.
-
-## Критерии результата
-
-- RESET FETCH PASS: корректно прочитан opcode по FFFF0h из ROM.
-- CPU SMOKE PASS: минимальная последовательность 8086 выполняется с корректными регистрами и FLAGS.
-- BIOS ENTRY PASS: BIOS реально исполняется, трасса соответствует дизассемблированному ROM.
-- POST PASS: BIOS проходит POST до документированной точки.
-- VIDEO PASS: BIOS пишет в гостевую видеопамять/регистры, изображение корректно отображается ATM.
-- DISK PASS: BIOS/boot path читает сектор через host IPC и передаёт управление boot sector.
-
-Не смешивать статический аудит, успешную сборку, эмуляторные unit tests и запуск на реальном Pentagon/ATM с NeoGS: это разные уровни доказательства.
+No feature above is considered implemented merely because it is described here.
