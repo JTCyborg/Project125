@@ -933,6 +933,21 @@ gs_boot_send_command:
         ld      (neo_fw_command_byte), a
         ld      a, (neo_fw_command_byte)
         out     (GSCOM), a
+        ; A1.60 trace: host command write requests CBIT assertion.
+        ld      a, (neo_fw_timeout_phase)
+        cp      5
+        jr      nz, .command_trace_done
+        ld      a, 'H'
+        out     (#EF), a
+        ld      a, 'C'
+        out     (#EF), a
+        ld      a, (neo_fw_command_byte)
+        call    p125_print_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.command_trace_done:
         ld      bc, FW_BYTE_TIMEOUT
 .command_wait:
         in      a, (GSSTAT)
@@ -946,6 +961,21 @@ gs_boot_send_command:
         scf
         ret
 .command_done:
+        ; CBIT is now observed clear by the host; ROM/NeoGS released command.
+        ld      a, (neo_fw_timeout_phase)
+        cp      5
+        jr      nz, .command_done_no_trace
+        ld      a, 'H'
+        out     (#EF), a
+        ld      a, 'c'
+        out     (#EF), a
+        ld      a, '-'
+        out     (#EF), a
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.command_done_no_trace:
         or      a
         ret
 
@@ -997,6 +1027,21 @@ gs_boot_send_data_byte:
 .data_slot_free:
         ld      a, (neo_fw_tx_byte)
         out     (GSDAT), a
+        ; Trace only the failing startup handshake, not the 15-KiB firmware stream.
+        ld      a, (neo_fw_timeout_phase)
+        cp      7
+        jr      nz, .data_tx_trace_done
+        ld      a, 'H'
+        out     (#EF), a
+        ld      a, '+'
+        out     (#EF), a
+        ld      a, (neo_fw_tx_byte)
+        call    p125_print_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.data_tx_trace_done:
         ld      a, 2
         ld      (neo_fw_tx_wait_state), a
         ld      bc, FW_BYTE_TIMEOUT
@@ -1040,6 +1085,25 @@ gs_boot_receive_data_byte:
 .receive_ready:
         in      a, (GSDAT)
         ld      (neo_fw_last_rx_byte), a
+        ; Trace received startup ACKs: reading GSDAT is the host DBIT-clear edge.
+        ld      a, (neo_fw_timeout_phase)
+        cp      6
+        jr      z, .receive_trace
+        cp      7
+        jr      nz, .receive_trace_done
+.receive_trace:
+        ld      a, 'H'
+        out     (#EF), a
+        ld      a, '-'
+        out     (#EF), a
+        ld      a, (neo_fw_last_rx_byte)
+        call    p125_print_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.receive_trace_done:
+        ld      a, (neo_fw_last_rx_byte)
         ; DBIT is shared by both directions. Give the NeoGS sender time to
         ; observe the cleared slot before the host starts its next TX byte.
         ; This is the turnaround wait present in the working Project124 V1.
@@ -1170,4 +1234,4 @@ msg_p7_high_tx:        db "[P125] PH7 TX HIGH", 13, 10, 0
 msg_p7_high_ok:       db "[P125] PH7 HIGH ACK", 13, 10, 0
 msg_p7_wait_a3:        db "[P125] PH7 WAIT A3", 13, 10, 0
 msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A40", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A41 TRACE", 13, 10, 0
