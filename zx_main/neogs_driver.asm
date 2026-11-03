@@ -396,15 +396,47 @@ upload_firmware::
         ld      (neo_fw_timeout_phase), a
         ld      a, #40                  ; entry address high = $40
         call    gs_boot_send_data_byte
-        jp      c, .upload_failed
+        jr      nc, .phase5_jump_tx_done
 
-        ; Phase 6: bootstrap has enabled RAM-over-ROM and is waiting at $0000.
+        ; The bootstrap may consume #40, start immediately and publish #A1
+        ; before the host observes the short DBIT-clear interval. In that
+        ; case DBIT is set by the incoming ACK, not by an unconsumed TX byte.
+        ; Accept this only for a post-write timeout in phase #53.
+        ld      a, (neo_fw_tx_wait_state)
+        cp      2
+        jp      nz, .upload_failed
+        ld      a, (neo_fw_last_tx_phase)
+        cp      #53
+        jp      nz, .upload_failed
+        in      a, (GSSTAT)
+        ld      (neo_fw_last_status), a
+        bit     B_DBIT, a
+        jp      z, .upload_failed
         ld      a, 6
         ld      (neo_fw_timeout_phase), a
         call    gs_boot_receive_data_byte
         jp      c, .upload_failed
         cp      NGS_BOOTSTRAP_READY_ACK
         jp      nz, .upload_failed
+        ; #A1 proves that the pending #40 was consumed.
+        ld      hl, (neo_fw_bytes_sent)
+        inc     hl
+        ld      (neo_fw_bytes_sent), hl
+        xor     a
+        ld      (neo_fw_tx_wait_state), a
+        jr      .phase5_jump_ready
+
+.phase5_jump_tx_done:
+        ; Normal case: #40 was acknowledged by DBIT going low.
+        ld      a, 6
+        ld      (neo_fw_timeout_phase), a
+        call    gs_boot_receive_data_byte
+        jp      c, .upload_failed
+        cp      NGS_BOOTSTRAP_READY_ACK
+        jp      nz, .upload_failed
+
+.phase5_jump_ready:
+        ; Bootstrap has enabled RAM-over-ROM and is waiting at $0000.
 
         ; Phase 7: send firmware length low/high and require ACK #A3.
         ld      a, 7
