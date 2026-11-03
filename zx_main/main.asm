@@ -49,10 +49,10 @@ Init_Z80_System:
         ld      hl, neo_fw_driver_build_id
         call    p125_print_string
 
-        ; Stage 1: load the separate NeoGS bootstrap + firmware package.
+        ; Stage 1: load the standalone NeoGS loader file.
         ld      hl, msg_fw_load
         call    p125_print_string
-        call    load_neogs_firmware_file
+        call    load_neogs_bootstrap_file
         jr      nc, .firmware_file_ok
         ld      hl, msg_fw_file_error
         call    p125_print_string
@@ -193,7 +193,7 @@ p125_print_hex_nibble:
 msg_p125_start:       defb "[P125] ATM HOST START", 13, 10, 0
 msg_p125_build_id:    defb "[P125] BUILD 20261103-A11", 13, 10, 0
 msg_fw_load:          defb "[P125] LOAD NEOGS FIRMWARE", 13, 10, 0
-msg_fw_file_error:    defb "[P125] ERROR: NEOGS PACKAGE FILE #", 0
+msg_fw_file_error:    defb "[P125] ERROR: NEOLOAD.C FILE #", 0
 msg_fw_upload_error:  defb "[P125] ERROR: NEOGS FIRMWARE UPLOAD PHASE #", 0
 msg_fw_status:        defb " GSSTAT #", 0
 msg_fw_txstate:       defb " TXSTATE #", 0
@@ -234,7 +234,7 @@ ProgramEnd:
         SAVETRD "disk_A.trd", "boot.B", BASIC_START, BASIC_END - BASIC_START
 
 ; -------------------------------------------------------------------------
-; BIOS.C and neoprog.C are stored in bank 1 and are streamed from TR-DOS.
+; BIOS.C, NEOLOAD.C and NEOF W.C are independent TR-DOS files.
 ; The complete 8 KiB BIOS is never staged in the host program's resident RAM.
 ; -------------------------------------------------------------------------
         PAGE 1
@@ -245,47 +245,26 @@ p125_bios_image_end:
         ASSERT p125_bios_image_end - p125_bios_image_start = #2000
         SAVETRD "disk_A.trd", "BIOS.C", #C000, #2000
 
-        INCLUDE "neoprog_chunks.inc"
-        ASSERT NEOGS_PACKAGE_CHUNK_COUNT >= 1
-        ASSERT NEOGS_PACKAGE_CHUNK_COUNT <= 4
-        ASSERT NEOGS_PACKAGE_TOTAL_SIZE <= #FF00
+        INCLUDE "neogs_files.inc"
+        ASSERT NEOLOAD_FILE_SIZE >= 1
+        ASSERT NEOLOAD_FILE_SIZE <= 254
+        ASSERT NEOF W_FILE_SIZE >= 1
+        ASSERT NEOF W_FILE_SIZE <= #4000
 
         PAGE 1
         ORG #C000
-p125_neoprog_chunk0_start:
-        INCBIN "zx_main/neoprog_part0.bin"
-p125_neoprog_chunk0_end:
-        ASSERT p125_neoprog_chunk0_end - p125_neoprog_chunk0_start = NEOGS_PACKAGE_CHUNK0_SIZE
-        SAVETRD "disk_A.trd", "neoprog.C", #C000, NEOGS_PACKAGE_CHUNK0_SIZE
+p125_neoload_start:
+        INCBIN "zx_main/neoload.bin"
+p125_neoload_end:
+        ASSERT p125_neoload_end - p125_neoload_start = NEOLOAD_FILE_SIZE
+        SAVETRD "disk_A.trd", "NEOLOAD.C", #C000, NEOLOAD_FILE_SIZE
 
-        IF NEOGS_PACKAGE_CHUNK_COUNT > 1
         PAGE 3
         ORG #C000
-p125_neoprog_chunk1_start:
-        INCBIN "zx_main/neoprog_part1.bin"
-p125_neoprog_chunk1_end:
-        ASSERT p125_neoprog_chunk1_end - p125_neoprog_chunk1_start = NEOGS_PACKAGE_CHUNK1_SIZE
-        SAVETRD "disk_A.trd", &"neoprog.C", #C000, NEOGS_PACKAGE_CHUNK1_SIZE
-        ENDIF
-
-        IF NEOGS_PACKAGE_CHUNK_COUNT > 2
-        PAGE 4
-        ORG #C000
-p125_neoprog_chunk2_start:
-        INCBIN "zx_main/neoprog_part2.bin"
-p125_neoprog_chunk2_end:
-        ASSERT p125_neoprog_chunk2_end - p125_neoprog_chunk2_start = NEOGS_PACKAGE_CHUNK2_SIZE
-        SAVETRD "disk_A.trd", &"neoprog.C", #C000, NEOGS_PACKAGE_CHUNK2_SIZE
-        ENDIF
-
-        IF NEOGS_PACKAGE_CHUNK_COUNT > 3
-        PAGE 6
-        ORG #C000
-p125_neoprog_chunk3_start:
-        INCBIN "zx_main/neoprog_part3.bin"
-p125_neoprog_chunk3_end:
-        ASSERT p125_neoprog_chunk3_end - p125_neoprog_chunk3_start = NEOGS_PACKAGE_CHUNK3_SIZE
-        SAVETRD "disk_A.trd", &"neoprog.C", #C000, NEOGS_PACKAGE_CHUNK3_SIZE
-        ENDIF
+p125_neofw_start:
+        INCBIN "zx_main/neofw.bin"
+p125_neofw_end:
+        ASSERT p125_neofw_end - p125_neofw_start = NEOF W_FILE_SIZE
+        SAVETRD "disk_A.trd", "NEOFW.C", #C000, NEOF W_FILE_SIZE
 
         PAGE 0
