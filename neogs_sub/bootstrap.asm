@@ -79,11 +79,11 @@ neogs_bootstrap_start:
         ; exactly one ZXSTAT/ZXDATRD implementation. A timeout reports #E1.
         call    bootstrap_receive_data_byte
         ld      e, a
-        ld      a, 'l'
+        ld      a, '1'
         out     (#EF), a
         call    bootstrap_receive_data_byte
         ld      d, a
-        ld      a, 'h'
+        ld      a, '2'
         out     (#EF), a
 
         ; Reject zero length and any image larger than the low 16-KiB window ($4000).
