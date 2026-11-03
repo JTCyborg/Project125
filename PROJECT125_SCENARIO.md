@@ -193,3 +193,19 @@
 | Дата | Изменение/тест | Результат | Комментарий |
 |---|---|---|---|
 | 2026-11-03 | Video Frame ABI v1 | SPECIFIED / NOT BUILT | Добавлены 24-byte descriptor spec и shared constants; transport/presenter/runtime не реализованы и сборка не запускалась. |
+
+
+### A1.4 — CRC primitive and first runtime self-test hook
+
+- [x] Добавлена общая Z80-функция `video_crc16_update` (CRC-16/CCITT-FALSE, poly 1021h).
+- [x] Добавлен стандартный test vector `123456789` с ожидаемым CRC `29B1h`.
+- [x] Добавлена NeoGS команда `CMD_VIDEO_CRC_TEST = 0Eh`, вычисляющая тестовый CRC и возвращающая его через существующий result frame.
+- [x] Добавлен ATM host `zx_main/video_transfer.asm`: запускает self-test, читает result frame и сравнивает status/AX с ожидаемыми значениями.
+- [x] Self-test включён в стартовый путь ATM host сразу после загрузки firmware и до загрузки BIOS.
+- [ ] Проверить сборку sjasmplus и размер resident firmware page 0.
+- [ ] Выполнить self-test на эмуляторе и подтвердить вывод `VIDEO CRC SELFTEST PASS`.
+- [ ] Выполнить self-test на реальном ATM/NeoGS.
+
+| Дата | Изменение/тест | Результат | Комментарий |
+|---|---|---|---|
+| 2026-11-03 | CRC-16 primitive + host self-test | IMPLEMENTED / NOT BUILT | Реализована функция и команда теста; результат на эмуляторе/железе ещё не получен. |
