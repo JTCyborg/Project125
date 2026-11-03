@@ -165,15 +165,15 @@ bootstrap_timeout:
 ; This is separate from the generic payload receiver because the length
 ; handshake must not depend on the accumulator's high I/O address.
 bootstrap_receive_length_byte:
-        ld      bc, #FFFF
+        ld      de, #FFFF
 .length_wait:
         ld      bc, #FF04
         in      a, (c)
         bit     B_DBIT, a
         jr      nz, .length_ready
-        dec     bc
-        ld      a, b
-        or      c
+        dec     de
+        ld      a, d
+        or      e
         jr      nz, .length_wait
         jp      bootstrap_timeout
 .length_ready:
