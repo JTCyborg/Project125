@@ -50,9 +50,9 @@ neogs_bootstrap_start:
         ; Host sends length low byte, then high byte. Use the same bounded
         ; receiver as the firmware payload so all host-to-NeoGS bytes follow
         ; exactly one ZXSTAT/ZXDATRD implementation. A timeout reports #E1.
-        call    bootstrap_receive_data_byte
+        call    bootstrap_receive_length_byte
         ld      e, a
-        call    bootstrap_receive_data_byte
+        call    bootstrap_receive_length_byte
         ld      d, a
 
         ; Reject zero length and any image larger than the low 16-KiB window ($4000).
@@ -129,8 +129,20 @@ bootstrap_timeout:
         jr      nz, .timeout_wait_host
         jp      bootstrap_halt
 
-; Length bytes use the same receiver as firmware payload. This keeps one
-; canonical implementation of the documented ZXSTAT/ZXDATRD handshake.
+; Receive a length byte using the fixed NeoGS local I/O page.
+; IN A,(n) uses A as the high byte of the Z80 I/O address; use IN A,(C)
+; with B=#FF so the status/data ports are addressed consistently.
+; Reading ZXDATRD consumes the host byte and clears DBIT.
+bootstrap_receive_length_byte:
+.length_wait:
+        ld      bc, #FF04              ; ZXSTAT
+        in      a, (c)
+        bit     B_DBIT, a
+        jr      z, .length_wait
+        ld      bc, #FF02              ; ZXDATRD
+        in      a, (c)
+        ret
+
 ; Wait for one byte from Spectrum. Reading ZXDATRD clears DBIT.
 bootstrap_receive_data_byte:
         ld      bc, #FFFF
