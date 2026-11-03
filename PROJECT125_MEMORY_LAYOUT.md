@@ -168,9 +168,9 @@ For the currently selected Project124 Turbo XT BIOS candidate, the 8-KiB image i
 
 ### 10.3 Physical RAM capacity gate
 
-Pages 68-78 require at least 79 unique physical 16-KiB pages in the board's RAM map (pages are numbered from zero). This is 1,294,336 bytes of addressable physical RAM. A 2-MiB NeoGS board with 128 unique pages satisfies the numerical requirement; the actual board must still be probed for aliases/mirroring and write/read integrity before these pages are accepted.
+The complete allocation through page 82 requires at least 83 unique physical 16-KiB pages in the board's RAM map (pages are numbered from zero). This is 1,359,872 bytes of addressable physical RAM. A 2-MiB NeoGS board with 128 unique pages satisfies the numerical requirement; the actual board must still be probed for aliases/mirroring and write/read integrity before these pages are accepted.
 
-If fewer than 79 unique pages are verified, Project125 must report a memory-budget failure and must not silently overlap firmware, BIOS backing, guest RAM, stack or DMA. The 128-KiB firmware and 64-KiB BIOS reservations are architectural requirements; any alternative physical placement requires an explicit revised map and tests.
+If fewer than 83 unique pages are verified, Project125 must report a memory-budget failure and must not silently overlap firmware, BIOS backing, guest RAM, video buffers, stack or DMA. The 128-KiB firmware, 64-KiB BIOS backing and 64-KiB video reservations are architectural requirements; any alternative physical placement requires an explicit revised map and tests.
 
 ### 10.4 Loader and runtime invariants
 
