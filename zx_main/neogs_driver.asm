@@ -364,7 +364,7 @@ upload_firmware::
         ld      hl, 256
         ld      (neo_fw_buffer_remaining), hl
 
-        ; Phase 5: #13 JUMP TO ADDRESS. Exact Project124 V1 sequence.
+        ; Phase 5: #13 JUMP TO ADDRESS.
         ld      a, 5
         ld      (neo_fw_timeout_phase), a
         xor     a
@@ -375,9 +375,34 @@ upload_firmware::
         jp      c, .upload_failed
         ld      a, #40
         call    gs_boot_send_data_byte
-        jp      c, .upload_failed
+        jr      nc, .phase5_jump_tx_done
 
-        ; Phase 6: receive READY ACK exactly as Project124 V1.
+        ; The bootstrap can consume #40 and publish #A1 before the host
+        ; samples the brief DBIT-low interval. DBIT high can mean #A1 pending.
+        ld      a, (neo_fw_tx_wait_state)
+        cp      2
+        jp      nz, .upload_failed
+        ld      a, (neo_fw_last_tx_phase)
+        cp      5
+        jp      nz, .upload_failed
+        in      a, (GSSTAT)
+        ld      (neo_fw_last_status), a
+        bit     B_DBIT, a
+        jp      z, .upload_failed
+        ld      a, 6
+        ld      (neo_fw_timeout_phase), a
+        call    gs_boot_receive_data_byte
+        jp      c, .upload_failed
+        cp      NGS_BOOTSTRAP_READY_ACK
+        jp      nz, .upload_failed
+        ld      hl, (neo_fw_bytes_sent)
+        inc     hl
+        ld      (neo_fw_bytes_sent), hl
+        xor     a
+        ld      (neo_fw_tx_wait_state), a
+        jr      .phase5_jump_ready
+
+.phase5_jump_tx_done:
         ld      a, 6
         ld      (neo_fw_timeout_phase), a
         call    gs_boot_receive_data_byte
@@ -385,6 +410,7 @@ upload_firmware::
         cp      NGS_BOOTSTRAP_READY_ACK
         jp      nz, .upload_failed
 
+.phase5_jump_ready:
         ; Phase 7: exact Project124 V1 length handshake: low, high, one #A3.
         ld      a, 7
         ld      (neo_fw_timeout_phase), a
@@ -1124,4 +1150,4 @@ neo_fw_initial_status:  db 0
 neo_fw_last_status:     db 0
 neo_fw_timeout_phase:   db 0
 neo_fw_last_tx_phase:   db 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A21", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A22", 13, 10, 0
