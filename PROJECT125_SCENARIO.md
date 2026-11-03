@@ -366,3 +366,17 @@
 - [ ] Windows build после изменения.
 - [ ] Runtime: проверить прохождение фазы #53 и получение #A1; PASS не присваивается до фактического лога.
 - Статус: обработчик гонки добавлен; build/runtime не подтверждены.
+
+
+### A1.16 — phase 7 inbound diagnostic (2026-11-03)
+
+- [x] Runtime A13 passed phase #53 and received ACK #A1; the next failure is phase #07, TXBYTE #C5, TXSTATE #02.
+- [x] Added a probe after the failed low length-byte transmission. If DBIT is set, the host reads and stores the pending inbound byte.
+- [x] Added RXVALID and RXBYTE to the host error log. RXVALID=01 means a byte was available; RXVALID=00 means none was available at probe time.
+- [x] Driver marker changed to A14.
+- [ ] Run Windows build and check sjasmplus output.
+- [ ] Run the fresh disk image and provide the full log including RXVALID/RXBYTE.
+- [ ] Use the result to distinguish a bootstrap error reply from an unavailable inbound channel. This is diagnostic instrumentation, not a protocol fix.
+- Status: IMPLEMENTED / NOT BUILT / NOT RUN. No runtime PASS assigned.
+
+| 2026-11-03 | Phase 7 inbound-byte probe | IMPLEMENTED / NOT BUILT | RXVALID/RXBYTE added; the probe runs only after the low-byte TX timeout. |
