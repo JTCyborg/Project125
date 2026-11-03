@@ -1117,3 +1117,16 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.71 trace BIOS buffer contents after every sector read | SOURCE COMMITTED | Five bytes at buffer offset #F0 are emitted after each successful C=#05 read; build and runtime remain pending. |
+
+
+## A1.72 — полный HEX-дамп каждого сектора BIOS.C (2026-11-04)
+
+- [x] Диагностика A1.71 расширена: после каждого успешного C=#05 выводятся все 256 байт буфера #C000.
+- [x] Формат дампа: 16 строк на сектор, 16 байт в строке, префикс [BIOS DATA], смещение строки 00..F0.
+- [x] Существующий вывод [BIOS READ] TT/SS сохранён; порядок — позиция, затем полный дамп считанного сектора.
+- [x] TR-DOS sector cursor, DMA target/length, NeoGS handshake и передача данных не менялись.
+- [ ] Собрать через build.bat; проверить SjASMPlus и размер host image.
+- [ ] Runtime: прислать дампы как минимум первого и последнего секторов; по возможности весь лог. Сверить байты с BIOS.BIN и определить фактическое содержимое каждого сектора.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.72 full 256-byte dump after each BIOS sector read | SOURCE COMMITTED | Every successful TR-DOS read now prints 16 rows of 16 bytes from #C000; build/runtime pending. |
