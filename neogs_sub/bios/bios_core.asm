@@ -1,9 +1,9 @@
 ; =========================================================================
-; PROJECT 124 — BIOS foundation / POST, stage 1
+; PROJECT 125 — BIOS ROM integration and low-memory foundation
 ;
 ; Establishes the guest-visible low-memory data layout for a future 8086
-; real-mode BIOS. This stage does not implement executable BIOS ROM or INT
-; services. IVT is initialized to zero; vectors are installed only after the
+; real-mode BIOS. This module validates the loaded BIOS ROM image and initializes the 8086 reset
+; state; it does not yet implement the BIOS firmware's own services. IVT is initialized to zero; vectors are installed only after the
 ; CPU INT/IRET path and guest stack semantics are implemented.
 ;
 ; Physical memory profile:
