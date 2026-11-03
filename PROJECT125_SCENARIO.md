@@ -877,3 +877,15 @@
 - **Статус:** SOURCE COMMITTED; BUILD NOT RUN HERE; RUNTIME NOT VERIFIED. Это возврат к известному V1, а не заявление о runtime PASS.
 
 A1.50–A1.53 признаны неудачными экспериментами и не являются базой дальнейшей разработки. Контрольная реализация протокола: Project124 commit `54b89e1f22bc6b7b62002dc3a4951590b672205e`.
+
+
+## A1.55 — возврат byte receiver bootstrap к Project124 V1 (2026-11-03)
+
+- [x] По runtime A38 подтверждено: bootstrap дошёл до обоих маркеров приёма длины (1, 2), но host завис на отправке high byte #3D: TXSTATE=#02, TXBYTE=#3D, GSSTAT=#FE.
+- [x] В bootstrap_receive_data_byte восстановлен точный V1 доступ к NeoGS local ports: IN A,(ZXSTAT) для DBIT и IN A,(ZXDATRD) для чтения байта.
+- [x] Удалён экспериментальный receiver с явной адресацией IN A,(C) и отдельным счётчиком DE. Остальные этапы, формат длины, ACK и host driver не менялись.
+- [ ] Сборка build.bat: подтвердить NEOLOAD.C <= 254 байта, успешную сборку host и отсутствие ASSERT/JR ошибок.
+- [ ] Runtime: проверить, что host завершает отправку #3D (TXSTATE возвращается в 0), затем получает #A3, передаёт все 15813 байт NEOFW и получает #A2.
+- **Статус:** SOURCE COMMITTED; BUILD NOT VERIFIED; RUNTIME NOT VERIFIED. Это узкий возврат изменённого receiver к проверенному V1, не заявление об исправлении runtime.
+
+| 2026-11-03 | A1.55 restore V1 bootstrap receiver | SOURCE COMMITTED | Restore original ZXSTAT/ZXDATRD byte receiver after A38 high-length-byte DBIT timeout. |
