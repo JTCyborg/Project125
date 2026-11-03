@@ -681,3 +681,17 @@
 - **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Причина правки подтверждена DMA-документацией; runtime-эффект ещё не подтверждён.
 
 | 2026-11-03 | Explicitly disable ZX DMA at bootstrap entry | IMPLEMENTED / NOT BUILT | Stop any DMA left enabled by GS105a RECEIVE BLOCK before switching to byte-wise GSDAT transfer. |
+
+
+## A1.39 — settling window после записи каждого GSDAT byte (2026-11-03)
+
+- [x] Runtime A38: после изменений A1.38 диагностический TXBYTE изменился с #C5 на #3D; хост завершил передачу младшего байта длины и перешёл к старшему. Ошибка теперь возникает после записи #3D при ожидании DBIT clear (TXSTATE=#02, GSSTAT=#FE).
+- [x] Уточнена точка отказа: межбайтовый #0400 turnaround в фазе длины уже существует между успешной отправкой low и вызовом отправки high. Поэтому добавлена отдельная пауза непосредственно после OUT (GSDAT),A, до начала polling DBIT.
+- [x] Пауза реализована в фактически используемой процедуре gs_boot_send_data_byte файла zx_main/neogs_driver.asm. Изолированный zx_main/neogs_transport_v2.asm не является активным путём этой загрузки и не изменялся.
+- [x] Добавлен цикл BC=#0015 сразу после физической записи каждого байта. После паузы запускается штатное bounded ожидание DBIT clear; тайм-ауты и учёт подтверждённых байтов сохранены.
+- [ ] SjASMPlus build: проверить синтаксис/размеры и все ASSERT.
+- [ ] Runtime: проверить, что #3D подтверждается, приходит ACK #A3, затем проходит полный поток NEOFW и приходит ACK #A2 / [P125] NEOGS FIRMWARE READY.
+- [ ] Regression: BIOS load, x86 boot, DMA window #5000–#7FFF, video CRC.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Изменение является timing experiment; прохождение runtime должно подтвердить его эффективность.
+
+| 2026-11-03 | Add post-OUT GSDAT settling window | IMPLEMENTED / NOT BUILT | Delay DBIT polling for #0015 iterations immediately after each host GSDAT write. |
