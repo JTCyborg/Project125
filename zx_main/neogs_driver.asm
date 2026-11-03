@@ -406,11 +406,9 @@ upload_firmware::
         call    gs_boot_send_data_byte
         jr      nc, .phase7_length_high_tx_done
 
-        ; The bootstrap consumes the high length byte and immediately sends
-        ; #A3. Since DBIT is shared by both directions, the ACK can set DBIT
-        ; before the host observes the brief clear interval. In that case the
-        ; generic TX helper reports a state-2 timeout although the byte was
-        ; consumed. Accept only the expected #A3 as proof of consumption.
+        ; A high-byte echo may set the shared DBIT before the host observes
+        ; the TX clear edge. Accept only an exact echo of H as proof that the
+        ; bootstrap received the high length byte.
         ld      a, (neo_fw_tx_wait_state)
         cp      2
         jp      nz, .upload_failed
@@ -420,10 +418,10 @@ upload_firmware::
         jp      z, .upload_failed
         call    gs_boot_receive_data_byte
         jp      c, .upload_failed
-        cp      NGS_BOOTSTRAP_LENGTH_ACK
+        cp      h
         jp      nz, .upload_failed
 
-        ; The #A3 ACK proves that the pending high length byte was consumed.
+        ; The exact high-byte echo proves consumption despite the TX timeout.
         push    hl
         ld      hl, (neo_fw_bytes_sent)
         inc     hl
@@ -431,9 +429,18 @@ upload_firmware::
         pop     hl
         xor     a
         ld      (neo_fw_tx_wait_state), a
-        jr      .phase7_ack_received
+        jr      .phase7_length_high_echo_ok
 
 .phase7_length_high_tx_done:
+        ; Normal TX completion still requires the exact high-byte echo.
+        call    gs_boot_receive_data_byte
+        jp      c, .upload_failed
+        cp      h
+        jp      nz, .upload_failed
+
+.phase7_length_high_echo_ok:
+        ; Only after both length bytes have been echoed does bootstrap validate
+        ; the length and send the distinct #A3 acceptance acknowledgement.
         call    gs_boot_receive_data_byte
         jp      c, .upload_failed
         cp      NGS_BOOTSTRAP_LENGTH_ACK
