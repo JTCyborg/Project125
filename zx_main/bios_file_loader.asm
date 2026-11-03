@@ -152,6 +152,7 @@ bios_trdos_start_error:
         ld      a, 5
         jr      bios_trdos_fail
 bios_trdos_sender_error:
+        call    neogs_bios_transfer_finish
         ld      a, 7
         jr      bios_trdos_fail
 bios_trdos_finish_error:
