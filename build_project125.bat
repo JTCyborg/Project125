@@ -33,7 +33,7 @@ if not exist "build\neogs_bootstrap.bin" (
     goto :finish
 )
 
-echo [BUILD] Creating separate NEOLOAD.C and NEOF W.C TR-DOS files...
+echo [BUILD] Creating separate NEOLOAD.C and NEOFW.C TR-DOS files...
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "tools\pack_neogs_project125.ps1"
 if errorlevel 1 goto :failed
 
