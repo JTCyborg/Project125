@@ -110,6 +110,10 @@ main_loop:
         jp      z, command_bios_video_test
         cp      CMD_RUN_X86_REAL
         jp      z, command_run_x86_real
+        cp      CMD_LOAD_BIOS
+        jp      z, command_load_bios
+        cp      CMD_BOOT_BIOS
+        jp      z, command_boot_bios
 
         ; Unknown command: release CBIT so the host cannot deadlock.
         xor     a
@@ -415,6 +419,92 @@ command_run_x86_real:
         xor     a
         out     (CLRCBIT), a
         jp      main_loop
+
+; -------------------------------------------------------------------------
+; Project125 BIOS ROM transfer.
+; Host streams exactly 8192 bytes through the existing ZX DMA channel.
+; DMA physical target 12C000h is the start of NeoGS physical page 75.
+; Host ends the transfer by asserting CBIT after the last byte.
+; -------------------------------------------------------------------------
+command_load_bios:
+        ld      a, C_DMA_ZX
+        out     (DMA_MOD), a
+        ld      a, NGS_BIOS_DMA_HAD
+        out     (DMA_HAD), a
+        ld      a, NGS_BIOS_DMA_MAD
+        out     (DMA_MAD), a
+        ld      a, NGS_BIOS_DMA_LAD
+        out     (DMA_LAD), a
+        ld      a, #80
+        out     (DMA_CST), a
+        xor     a
+        out     (CLRCBIT), a
+
+        ld      d, DMA_WAIT_OUTER
+.bios_dma_wait_outer:
+        ld      bc, DMA_WAIT_LIMIT
+.bios_dma_wait_host_end:
+        in      a, (ZXSTAT)
+        bit     B_CBIT, a
+        jr      nz, .bios_dma_host_end
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .bios_dma_wait_host_end
+        dec     d
+        jr      nz, .bios_dma_wait_outer
+
+        xor     a
+        out     (DMA_CST), a
+        out     (CLRCBIT), a
+        ld      hl, #B103
+        ld      (saved_x86_ax), hl
+        ld      a, 3
+        ld      (x86_exit_status), a
+        jp      main_loop
+
+.bios_dma_host_end:
+        xor     a
+        out     (DMA_CST), a
+        out     (CLRCBIT), a
+        call    bios_rom_validate
+        jr      nc, .bios_image_valid
+        ld      hl, #B101
+        ld      (saved_x86_ax), hl
+        ld      a, 13
+        ld      (x86_exit_status), a
+        jp      main_loop
+
+.bios_image_valid:
+        ld      hl, #B105
+        ld      (saved_x86_ax), hl
+        xor     a
+        ld      (x86_exit_status), a
+        jp      main_loop
+
+; Start the real 8086 reset sequence at FFFF:0000 after BIOS transfer/validation.
+command_boot_bios:
+        ld      hl, bios_boot_message
+        call    neo_debug_send_string
+        call    bios_rom_reset_state
+        call    x86_real_execute
+        ld      hl, (x86_reg_ax)
+        ld      (saved_x86_ax), hl
+        call    z80_stack_guard_check
+        jr      nc, .bios_stack_ok
+        ld      hl, #7E00
+        ld      (saved_x86_ax), hl
+        ld      a, 12
+        ld      (x86_exit_status), a
+.bios_stack_ok:
+        ld      a, #03
+        call    neo_set_pg1
+        xor     a
+        out     (CLRCBIT), a
+        jp      main_loop
+
+bios_boot_message:
+        defb    "[BIOS] RESET FFFF:0000", 13, 10, 0
 
 ; Check the lower 128-byte canary in WIN1/page #03.
 ; Carry set means the Z80 stack crossed the #4880 safety boundary.
