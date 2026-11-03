@@ -161,11 +161,17 @@ x86_modrm_set_ss:
 ; Fetch one displacement byte from the bounded instruction stream.
 ; IN/OUT: BC advances, A=byte, carry on end-of-program.
 x86_modrm_fetch_disp8:
+        ; Enforce the loaded-task boundary only for bounded test payloads.
+        ; BIOS execution is unbounded and fetches from the mapped guest ROM/RAM.
+        ld      a, (x86_real_bounds_enable)
+        or      a
+        jr      z, .disp8_unbounded
         ld      hl, (x86_real_task_end)
         or      a
         sbc     hl, bc
         jp      z, x86_modrm_truncated
         jp      c, x86_modrm_truncated
+.disp8_unbounded:
         ld      a, (bc)
         inc     bc
         or      a
@@ -173,17 +179,23 @@ x86_modrm_fetch_disp8:
 
 ; Fetch little-endian disp16. OUT HL=value, BC advances by two.
 x86_modrm_fetch_disp16:
+        ; Match x86_real_fetch8: bounds apply to uploaded test images only.
+        ; The BIOS reset path leaves x86_real_bounds_enable clear.
+        ld      a, (x86_real_bounds_enable)
+        or      a
+        jr      z, .disp16_unbounded
         ld      hl, (x86_real_task_end)
         or      a
         sbc     hl, bc
         jp      c, x86_modrm_truncated
         ld      a, h
         or      a
-        jp      nz, .enough
+        jp      nz, .disp16_read
         ld      a, l
         cp      2
         jp      c, x86_modrm_truncated
-.enough:
+.disp16_unbounded:
+.disp16_read:
         ; Z80 supports (BC) indirect addressing only through A.
         ld      a, (bc)
         ld      l, a
