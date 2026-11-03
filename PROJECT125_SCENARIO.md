@@ -947,3 +947,16 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME NOT VERIFIED. Не считать загрузку подтверждённой до проверки в Unreal Speccy.
 
 | 2026-11-03 | A1.58 stream NEOLOAD.C through sector-sized GS105a #14 blocks | SOURCE COMMITTED | NEOLOAD.C up to 2048 bytes is streamed sector-by-sector into $4000-$47FF; next TR-DOS sector is read only after the previous block completes. |
+## A1.59 — исправление DBIT turnaround на границах направлений (2026-11-03)
+
+- [x] Сравнение с рабочим Project124 V1 выявило существенное отличие: в `gs_boot_receive_data_byte` Project124 после чтения GSDAT выполняет turnaround delay `#0400`, а Project125 возвращался немедленно.
+- [x] Восстановлена эта пауза на Host после каждого принятого байта: NeoGS получает время увидеть DBIT=0 до следующего Host TX.
+- [x] В NeoGS bootstrap добавлена отдельная пауза `#0400` после приёма старшего байта длины и до публикации обратного ACK `#A3`. Это устраняет гонку, когда ACK мог повторно установить общий DBIT раньше, чем Host замечал освобождение TX-слота.
+- [x] Не менялись номера команд GS105a, порядок #13/#14, порядок байтов длины, порты и формат существующего обмена.
+- [x] Driver build ID обновлён до `20261103-A40`.
+- [ ] Сборка `build.bat` и проверка размера NEOLOAD.C.
+- [ ] Runtime: подтвердить прохождение #A1 → length low → length high → #A3 без TXSTATE #02 timeout.
+- [ ] Runtime: подтвердить непрерывную передачу NEOFw.C и финальный #A2.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME NOT VERIFIED.
+
+| 2026-11-03 | A1.59 restore DBIT turnaround and guard high-length-to-A3 transition | SOURCE COMMITTED | Host turnaround delay restored from Project124 V1; NeoGS waits before publishing #A3 after consuming length high byte. |
