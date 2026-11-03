@@ -38,14 +38,11 @@ neogs_bootstrap_start:
         ; the operational stack to WIN1 after PG1 has been restored to page #03.
         ld      sp, #FFFE
 
-        ; Publish #A1 and immediately enter the length receiver.
-        ; Do not wait for DBIT low after host reads #A1: the first length byte
-        ; may already have reasserted DBIT.
+        ; Tell Spectrum that the tiny loader is running and waiting for length.
         ld      a, NGS_BOOTSTRAP_READY_ACK
-        call    bootstrap_send_ack_no_wait
+        call    bootstrap_send_data_byte
 
         ; Host sends length low byte, then high byte.
-        ; Keep the exact bounded receiver used by Project124 V1.
         call    bootstrap_receive_data_byte
         ld      e, a
         call    bootstrap_receive_data_byte
@@ -66,9 +63,8 @@ neogs_bootstrap_start:
 bootstrap_length_ok:
         ; Explicitly acknowledge that the length is accepted before the host
         ; starts streaming the firmware payload.
-        ; Publish #A3 and immediately receive the first firmware byte.
         ld      a, NGS_BOOTSTRAP_LENGTH_ACK
-        call    bootstrap_send_ack_no_wait
+        call    bootstrap_send_data_byte
         ld      hl, 0
 
 bootstrap_copy_loop:
@@ -126,7 +122,7 @@ bootstrap_timeout:
         jr      nz, .timeout_wait_host
         jp      bootstrap_halt
 
-; Wait for one payload byte from Spectrum. Reading ZXDATRD clears DBIT.
+; Wait for one byte from Spectrum. Reading ZXDATRD clears DBIT.
 bootstrap_receive_data_byte:
         ld      bc, #FFFF
 .rx_wait:
@@ -140,25 +136,6 @@ bootstrap_receive_data_byte:
         jp      bootstrap_timeout
 .rx_ready:
         in      a, (ZXDATRD)
-        ret
-
-; Publish an ACK followed by an immediate host-to-NeoGS transfer.
-; Do not wait for DBIT to clear after writing: the next byte may reassert it.
-bootstrap_send_ack_no_wait:
-        ld      (bootstrap_tx_byte), a
-        ld      bc, #FFFF
-.ack_free:
-        in      a, (ZXSTAT)
-        bit     B_DBIT, a
-        jr      z, .ack_slot_free
-        dec     bc
-        ld      a, b
-        or      c
-        jr      nz, .ack_free
-        jp      bootstrap_halt
-.ack_slot_free:
-        ld      a, (bootstrap_tx_byte)
-        out     (ZXDATWR), a
         ret
 
 ; Send one byte to Spectrum. Host reads GSDAT and clears DBIT.
