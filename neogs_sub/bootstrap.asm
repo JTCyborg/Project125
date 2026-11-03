@@ -62,8 +62,12 @@ neogs_bootstrap_start:
         ; Tell Spectrum that the tiny loader is running and waiting for length.
         ld      a, '1'
         out     (#EF), a              ; about to publish READY #A1
+        ; Publish READY directly and enter the receive state immediately.
+        ; Do not wait for DBIT to return low here: the host may consume #A1
+        ; and publish the first length byte before this Z80 observes the
+        ; short DBIT-low interval. The receiver below can consume that byte.
         ld      a, NGS_BOOTSTRAP_READY_ACK
-        call    bootstrap_send_data_byte
+        out     (ZXDATWR), a
 
         ; Host sends length low byte, then high byte. Use the same bounded
         ; receiver as the firmware payload so all host-to-NeoGS bytes follow
