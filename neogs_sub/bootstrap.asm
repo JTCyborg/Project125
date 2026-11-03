@@ -15,6 +15,20 @@
 
 neogs_bootstrap_start:
         di
+
+        ; GS105a RECEIVE BLOCK (#14) may leave the Spectrum DMA module
+        ; enabled. The bootstrap changes to byte-wise GSDAT transfers, so
+        ; explicitly stop ZX DMA before changing the transfer direction.
+        ld      a, C_DMA_ZX
+        out     (DMA_MOD), a
+        xor     a
+        out     (DMA_CST), a
+
+        ; Let the DMA control write settle before using the byte channel.
+        ld      b, 0
+.dma_disable_settle:
+        djnz    .dma_disable_settle
+
         ld      sp, #3FFF
 
         ; Enable writable RAM-over-ROM and independent WIN2/WIN3 paging.
