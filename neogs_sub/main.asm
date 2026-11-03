@@ -130,6 +130,8 @@ command_return_to_gsrom:
         jp      ROM_RETURN_TRAMPOLINE_ADDR
 
 command_reset:
+        xor     a
+        ld      (bios_rom_loaded), a
         ld      a, #03
         call    neo_set_pg1             ; ensure firmware page 1 is visible
         xor     a
@@ -427,6 +429,8 @@ command_run_x86_real:
 ; Host ends the transfer by asserting CBIT after the last byte.
 ; -------------------------------------------------------------------------
 command_load_bios:
+        xor     a
+        ld      (bios_rom_loaded), a
         ld      a, C_DMA_ZX
         out     (DMA_MOD), a
         ld      a, NGS_BIOS_DMA_HAD
@@ -476,6 +480,8 @@ command_load_bios:
         jp      main_loop
 
 .bios_image_valid:
+        ld      a, 1
+        ld      (bios_rom_loaded), a
         ld      hl, #B105
         ld      (saved_x86_ax), hl
         xor     a
@@ -484,6 +490,15 @@ command_load_bios:
 
 ; Start the real 8086 reset sequence at FFFF:0000 after BIOS transfer/validation.
 command_boot_bios:
+        ld      a, (bios_rom_loaded)
+        or      a
+        jr      nz, .bios_ready
+        ld      hl, #B100
+        ld      (saved_x86_ax), hl
+        ld      a, 13
+        ld      (x86_exit_status), a
+        jp      main_loop
+.bios_ready:
         ld      hl, bios_boot_message
         call    neo_debug_send_string
         call    bios_rom_reset_state
