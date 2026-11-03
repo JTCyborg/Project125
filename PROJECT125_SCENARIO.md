@@ -141,9 +141,9 @@
 - [x] Реализован guest ROM overlay FE000h..FFFFFh на page 75; guest writes в ROM блокируются.
 - [x] Изменён guest RAM test: верхняя граница writable RAM — FDFFFh; добавлена проверка отказа записи в FE000h.
 - [x] Реализован детерминированный 8086 reset state CS:IP=FFFF:0000 и команда CMD_BOOT_BIOS.
-- [ ] Реализовать/подключить host-side чтение BIOS-файла с TR-DOS и передачу ровно 8192 bytes; DMA hardware path пока не проверен.
-- [ ] Выполнить первую сборку Project125 с sjasmplus; сохранить полный лог и размеры бинарников.
-- [ ] Исправить все ошибки/предупреждения сборки.
+- [x] Создан ATM host-side DMA stream sender `zx_main/bios_transfer.asm`: 32×256-byte sectors, CBIT handshakes, end marker and result-frame read.
+- [ ] Подключить sender к TR-DOS directory/file reader, чтобы получать BIOS.BIN секторами в #C000.
+- [ ] Включить BIOS transfer/validation/boot sequence в Project125 ATM startup; host transfer пока не выполнен.
 - [ ] Проверить физический DMA destination 12C000h и содержимое page75 на целевой NeoGS.
 - [ ] Провести полный-image CRC/integrity check после загрузки.
 - [ ] Выполнить первый BIOS fetch/trace и сверить его с reset vector и дизассемблированием BIOS.
