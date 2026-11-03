@@ -160,6 +160,27 @@ bootstrap_timeout:
         jr      nz, .timeout_wait_host
         jp      bootstrap_halt
 
+; Receive one byte of the 16-bit firmware length.
+; Use explicit NeoGS local-I/O addresses: ZXSTAT=#FF04, ZXDATRD=#FF02.
+; This is separate from the generic payload receiver because the length
+; handshake must not depend on the accumulator's high I/O address.
+bootstrap_receive_length_byte:
+        ld      bc, #FFFF
+.length_wait:
+        ld      bc, #FF04
+        in      a, (c)
+        bit     B_DBIT, a
+        jr      nz, .length_ready
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .length_wait
+        jp      bootstrap_timeout
+.length_ready:
+        ld      bc, #FF02
+        in      a, (c)
+        ret
+
 ; Wait for one byte from Spectrum. Reading ZXDATRD clears DBIT.
 bootstrap_receive_data_byte:
         ld      bc, #FFFF
