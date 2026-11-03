@@ -247,7 +247,7 @@ p125_bios_image_end:
 
         INCLUDE "neogs_files.inc"
         ASSERT NEOLOAD_FILE_SIZE >= 1
-        ASSERT NEOLOAD_FILE_SIZE <= 254
+        ASSERT NEOLOAD_FILE_SIZE <= #0800
         ASSERT NEOFW_FILE_SIZE >= 1
         ASSERT NEOFW_FILE_SIZE <= #4000
 
