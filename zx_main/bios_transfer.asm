@@ -127,6 +127,72 @@ neogs_bios_transfer_finish:
         or      a
         ret
 
+; Request and validate the four-byte NeoGS application result frame.
+; OUT: carry clear if signature is A5h. Result fields are stored below.
+neogs_bios_transfer_get_result:
+        ld      a, CMD_GET_STATUS
+        out     (GSCOM), a
+
+        ld      hl, bios_host_result_frame
+        ld      b, 4
+.bios_result_read_loop:
+        call    neogs_bios_wait_data_byte
+        ret     c
+        ld      (hl), a
+        inc     hl
+        djnz    .bios_result_read_loop
+
+        ; NeoGS clears CBIT only after the final result byte has been consumed.
+        ld      de, BIOS_HOST_WAIT_LIMIT
+.bios_result_command_wait:
+        in      a, (GSSTAT)
+        bit     B_CBIT, a
+        jr      z, .bios_result_command_done
+        dec     de
+        ld      a, d
+        or      e
+        jr      nz, .bios_result_command_wait
+        ld      a, 5
+        ld      (bios_host_transfer_error), a
+        scf
+        ret
+
+.bios_result_command_done:
+        ld      a, (bios_host_result_signature)
+        cp      NGS_RESULT_SIGNATURE
+        jr      z, .bios_result_signature_ok
+        ld      a, 6
+        ld      (bios_host_transfer_error), a
+        scf
+        ret
+
+.bios_result_signature_ok:
+        or      a
+        ret
+
+; Wait for DBIT=1, read one byte from GSDAT (the read clears DBIT).
+; OUT: A=data, carry set on timeout.
+neogs_bios_wait_data_byte:
+        ld      de, BIOS_HOST_WAIT_LIMIT
+.bios_data_wait:
+        in      a, (GSSTAT)
+        bit     B_DBIT, a
+        jr      nz, .bios_data_ready
+        dec     de
+        ld      a, d
+        or      e
+        jr      nz, .bios_data_wait
+        scf
+        ret
+.bios_data_ready:
+        in      a, (GSDAT)
+        or      a
+        ret
+
 bios_host_sectors_left:   db BIOS_HOST_SECTOR_COUNT
 bios_host_missing_sectors:db 0
 bios_host_transfer_error: db 0
+bios_host_result_signature: db 0
+bios_host_result_status:    db 0
+bios_host_result_ax:        dw 0
+bios_host_result_frame:     equ bios_host_result_signature
