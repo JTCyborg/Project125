@@ -15,6 +15,7 @@
 ; =========================================================================
 
         DEVICE ZXSPECTRUM128
+        INCLUDE "../shared/video_frame.inc"
         EMPTYTRD "disk_A.trd"
 
 HOST_PROGRAM_START EQU 24576
