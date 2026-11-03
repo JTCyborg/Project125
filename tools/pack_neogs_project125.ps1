@@ -1,6 +1,8 @@
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $build = Join-Path $root "build"
+$outputDir = Join-Path $root "zx_main"
+if (-not (Test-Path -LiteralPath $outputDir -PathType Container)) { New-Item -ItemType Directory -Path $outputDir | Out-Null }
 $bootstrapPath = Join-Path $build "neogs_bootstrap.bin"
 $firmwarePath = Join-Path $build "neogs_code.bin"
 
@@ -47,17 +49,17 @@ for ($i = 0; $i -lt $chunkCount; $i++) {
     $length = [Math]::Min($chunkSize, $package.Length - $offset)
     [byte[]]$chunk = New-Object byte[] $length
     [Array]::Copy($package, $offset, $chunk, 0, $length)
-    $chunkPath = Join-Path $build ("neoprog_part{0}.bin" -f $i)
+    $chunkPath = Join-Path $outputDir ("neoprog_part{0}.bin" -f $i)
     [System.IO.File]::WriteAllBytes($chunkPath, $chunk)
     $lines.Add(("NEOGS_PACKAGE_CHUNK{0}_SIZE EQU #{1:X4}" -f $i, $length))
 }
 
-$includePath = Join-Path $build "neoprog_chunks.inc"
+$includePath = Join-Path $outputDir "neoprog_chunks.inc"
 [System.IO.File]::WriteAllLines($includePath, $lines, [System.Text.Encoding]::ASCII)
 
 Write-Host ("NeoGS package: {0} bytes ({1} bootstrap + {2} firmware + 2-byte header)" -f $totalLength, $bootstrap.Length, $firmware.Length)
 Write-Host ("Package chunks: {0} x 16 KiB maximum" -f $chunkCount)
 for ($i = 0; $i -lt $chunkCount; $i++) {
-    $chunkPath = Join-Path $build ("neoprog_part{0}.bin" -f $i)
+    $chunkPath = Join-Path $outputDir ("neoprog_part{0}.bin" -f $i)
     Write-Host ("  part{0}: {1} bytes" -f $i, (Get-Item -LiteralPath $chunkPath).Length)
 }
