@@ -54,7 +54,7 @@ Init_Z80_System:
         call    p125_print_string
         ld      a, (neo_fw_file_error)
         call    p125_print_hex8
-        jr      p125_halt
+        jp      p125_halt
 
 .firmware_file_ok:
         ld      hl, #C000
