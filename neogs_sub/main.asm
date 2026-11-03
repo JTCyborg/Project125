@@ -517,6 +517,10 @@ bios_rom_debug_dump_tail:
         push    af
         push    bc
         push    hl
+        ; Explicitly select physical page 75; DMA does not change MPAGEX.
+        ld      a, 75
+        rrca
+        out     (MPAGEX), a
         ld      hl, bios_rom_tail_prefix
         call    neo_debug_send_string
         ld      hl, #DFF0
