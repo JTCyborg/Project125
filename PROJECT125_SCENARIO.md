@@ -438,3 +438,17 @@
 - [ ] Runtime: прислать строки DISK DUMP для NEOLOAD.C и NEOFW.C.
 - [ ] Сверить первые байты с ожидаемыми бинарными файлами и фактическую длину с TR-DOS дескриптором.
 - Статус: IMPLEMENTED / NOT BUILT / NOT RUN. PASS не присваивается.
+
+
+## A1.21 — возврат к проверенному Project124 V1 length handshake (2026-11-03)
+
+- [x] Сопоставлена последовательность обмена с рабочим Project124 V1 commit `39e8632966db0ce3bff1591c2b550f052ac386d9`.
+- [x] Удалены диагностические echo младшего и старшего байтов длины из bootstrap Project125.
+- [x] Host снова передаёт два байта длины подряд и затем ожидает единственный ACK `#A3`, как в Project124 V1.
+- [x] Сохранены отдельные TR-DOS-файлы `NEOLOAD.C` и `NEOFW.C`, секторное чтение и диагностика дискового буфера.
+- [x] Маркер драйвера изменён на A18.
+- [ ] Windows build: проверить сборку sjasmplus и размер NEOLOAD.C (1..254 байта).
+- [ ] Runtime: проверить получение `#A3`, поток прошивки и ACK `#A2`.
+- Статус: IMPLEMENTED / NOT BUILT / NOT RUN. Runtime PASS не присваивается.
+
+| 2026-11-03 | Project124 V1 length handshake restored | IMPLEMENTED / NOT BUILT | Removed per-byte echoes; restored low/high length followed by one #A3 ACK. |
