@@ -975,3 +975,14 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Status:** SOURCE UPDATED / NOT BUILT / NOT RUNTIME. Instrumentation is diagnostic only; DBIT/CBIT protocol operations and timeout logic are unchanged.
 
 | 2026-11-03 | A1.60 add host/NeoGS port #EF handshake edge trace | SOURCE UPDATED | Compact, bounded trace around the startup handshake; common-log ordering still requires emulator runtime confirmation. |
+
+
+## A1.61 — снять устаревший ASSERT 254 байта для bootstrap (2026-11-04)
+
+- [x] Причина build error: в `neogs_sub/build_firmware.asm` оставался ASSERT `neogs_bootstrap_end - neogs_bootstrap_start <= 254`, унаследованный от старой загрузки одним сектором.
+- [x] Заменён на ASSERT максимального размера `$0800` (2048 байт), соответствующий потоковой загрузке NEOLOAD.C блоками GS105a #14 из A1.58.
+- [x] Добавлен ASSERT конечного адреса `<= $4800`, чтобы bootstrap не заходил в зарезервированную область stage-1 scratch/stack.
+- [ ] Запустить `build.bat`; подтвердить, что bootstrap укладывается в 2048 байт, NEOLOAD.C создаётся и все последующие сборочные этапы проходят.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.61 remove stale 254-byte bootstrap assertion | SOURCE COMMITTED | Build-time limit now matches the 2048-byte streamed bootstrap area $4000-$47FF. |
