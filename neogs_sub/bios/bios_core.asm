@@ -6,13 +6,17 @@
 ; mapped at FE000h-FFFFFh, and exposed read-only by x86_memory.asm.
 ; The actual BIOS services remain guest x86 code and are not yet emulated.
 ;
-; Physical memory profile:
+; Target PC memory profile:
 ;   00000-003FF  IVT (256 entries, 4 bytes each)
 ;   00400-004FF  BIOS Data Area (BDA)
 ;   00500-9FFFF  conventional RAM profile (640 KiB)
-;   A0000-BFFFF  reserved video memory
-;   C0000-FDFFF  reserved option-ROM/device window
+;   A0000-BFFFF  video-memory window (ATM presenter/device decode pending)
+;   C0000-FDFFF  option-ROM/device window (device decode pending)
 ;   FE000-FFFFF  selected 8 KiB BIOS ROM (read-only overlay)
+;
+; Bring-up limitation: x86_memory.asm currently maps 00000h-FDFFFh as writable
+; guest RAM and overlays only FE000h-FFFFFh as ROM. Video/option-ROM subregions
+; are reserved in the architecture but are not yet decoded as devices.
 ;
 ; Entry: bios_post
 ; Success: x86_exit_status=0, saved_x86_ax=#B105
