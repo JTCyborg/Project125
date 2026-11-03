@@ -460,23 +460,25 @@ command_load_bios:
 
         xor     a
         out     (DMA_CST), a
-        out     (CLRCBIT), a
         ld      hl, #B103
         ld      (saved_x86_ax), hl
         ld      a, 3
         ld      (x86_exit_status), a
+        xor     a
+        out     (CLRCBIT), a
         jp      main_loop
 
 .bios_dma_host_end:
         xor     a
         out     (DMA_CST), a
-        out     (CLRCBIT), a
         call    bios_rom_validate
         jr      nc, .bios_image_valid
         ld      hl, #B101
         ld      (saved_x86_ax), hl
         ld      a, 13
         ld      (x86_exit_status), a
+        xor     a
+        out     (CLRCBIT), a
         jp      main_loop
 
 .bios_image_valid:
@@ -486,6 +488,7 @@ command_load_bios:
         ld      (saved_x86_ax), hl
         xor     a
         ld      (x86_exit_status), a
+        out     (CLRCBIT), a
         jp      main_loop
 
 ; Start the real 8086 reset sequence at FFFF:0000 after BIOS transfer/validation.
