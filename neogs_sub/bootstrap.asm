@@ -77,11 +77,11 @@ neogs_bootstrap_start:
         ; Host sends length low byte, then high byte. Use the same bounded
         ; receiver as the firmware payload so all host-to-NeoGS bytes follow
         ; exactly one ZXSTAT/ZXDATRD implementation. A timeout reports #E1.
-        call    bootstrap_receive_length_byte
+        call    bootstrap_receive_data_byte
         ld      e, a
         ld      a, 'l'
         out     (#EF), a
-        call    bootstrap_receive_length_byte
+        call    bootstrap_receive_data_byte
         ld      d, a
         ld      a, 'h'
         out     (#EF), a
@@ -160,41 +160,22 @@ bootstrap_timeout:
         jr      nz, .timeout_wait_host
         jp      bootstrap_halt
 
-; Receive one byte of the 16-bit firmware length.
-; Use explicit NeoGS local-I/O addresses: ZXSTAT=#FF04, ZXDATRD=#FF02.
-; This is separate from the generic payload receiver because the length
-; handshake must not depend on the accumulator's high I/O address.
-bootstrap_receive_length_byte:
+; Wait for one byte from Spectrum. Reading ZXDATRD clears DBIT.
+bootstrap_receive_data_byte:
         ld      de, #FFFF
-.length_wait:
+.rx_wait:
         ld      bc, #FF04
         in      a, (c)
         bit     B_DBIT, a
-        jr      nz, .length_ready
+        jr      nz, .rx_ready
         dec     de
         ld      a, d
         or      e
-        jr      nz, .length_wait
-        jp      bootstrap_timeout
-.length_ready:
-        ld      bc, #FF02
-        in      a, (c)
-        ret
-
-; Wait for one byte from Spectrum. Reading ZXDATRD clears DBIT.
-bootstrap_receive_data_byte:
-        ld      bc, #FFFF
-.rx_wait:
-        in      a, (ZXSTAT)
-        bit     B_DBIT, a
-        jr      nz, .rx_ready
-        dec     bc
-        ld      a, b
-        or      c
         jr      nz, .rx_wait
         jp      bootstrap_timeout
 .rx_ready:
-        in      a, (ZXDATRD)
+        ld      bc, #FF02
+        in      a, (c)
         ret
 
 ; Send one byte to Spectrum. Host reads GSDAT and clears DBIT.
