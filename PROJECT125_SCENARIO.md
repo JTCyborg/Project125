@@ -837,3 +837,15 @@
 - **Статус:** SOURCE FIX APPLIED / NOT BUILT / NOT RUNTIME.
 
 | 2026-11-03 | Wait for host to consume READY before receiving length | SOURCE FIX APPLIED | Prevent bootstrap from reading its own #A1 as the first length byte. |
+
+
+## A1.51 — корректная адресация локального ZXSTAT в READY wait (2026-11-03)
+
+- [x] Runtime A36: host дошёл до отправки length low #C5 (`JK4XL`), но TXSTATE #02; NeoGS trace `BCR` не показал приём байта. Bootstrap остановился в новом READY-consumed wait.
+- [x] Найдена ошибка адресации: `IN A,(ZXSTAT)` — immediate I/O использует A как старший байт адреса Z80 и не гарантирует доступ к NeoGS local port #FF04.
+- [x] Исправлено на `IN A,(C)` с B=#FF, C=#04; timeout counter перенесён в DE. Удалён только промежуточный marker C, чтобы компенсировать размер и сохранить лимит bootstrap.
+- [ ] SjASMPlus build: обязательно проверить NEOLOAD.C <=254 байта и ASSERT.
+- [ ] Runtime: ожидается `BR1` после host `L`, затем `BR12`, ACK #A3 и передача firmware.
+- **Статус:** SOURCE FIX APPLIED / NOT BUILT / NOT RUNTIME.
+
+| 2026-11-03 | Fix explicit local ZXSTAT addressing in READY wait | SOURCE FIX APPLIED | Use BC=#FF04 semantics via B=#FF, C=#04 and IN A,(C); keep bootstrap within 254-byte limit. |
