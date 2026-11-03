@@ -1067,6 +1067,7 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [x] Runtime A1.67: validator прочитал #00 по guest physical FFFF0h вместо ожидаемого #EA (AX #B200).
 - [x] Добавлен Host dump пяти байтов BIOS.C по смещению #1FF0 непосредственно из буфера последнего TR-DOS сектора до передачи DMA: строка `[BIOS SRC FFF0]`.
 - [x] Добавлен NeoGS dump пяти байтов физической страницы 75 по смещению #1FF0 после отключения DMA и до ROM validator: строка `[BIOS DST FFF0]`.
+- [x] NeoGS передаёт эти пять байтов как raw DBIT payload; Host принимает их внутри `neogs_bios_transfer_finish` до ожидания CBIT=0 и печатает `[BIOS DST FFF0]`. Это исключает блокировку обмена из-за невычитанных debug-байтов.
 - [x] Не менялись DMA target, размер и порядок передачи, TR-DOS чтение, memory mapping и handshake.
 - [ ] Сборка `build.bat`: проверить SjASMPlus, локальные метки и размер firmware.
 - [ ] Runtime: сравнить `[BIOS SRC FFF0]` и `[BIOS DST FFF0]`. Если source начинается `EA 5B E0 00 F0`, а destination отличается — проблема в DMA записи/счётчике; если source уже отличается — проблема в выборе/чтении BIOS.C.
