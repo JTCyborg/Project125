@@ -422,89 +422,24 @@ upload_firmware::
         ld      hl, 256
         ld      (neo_fw_buffer_remaining), hl
 
-        ; Phase 7: send firmware length low/high and require ACK #A3.
+        ; Phase 7: Project124 V1 handshake.
+        ; Send length low/high directly, then receive the bootstrap's #A3.
+        ; No per-byte echo: the host and bootstrap use the original GS105a
+        ; data-channel sequence that was proven by the Project124 V1 runtime.
         ld      a, 7
         ld      (neo_fw_timeout_phase), a
         ld      hl, (neo_fw_length)
         ld      a, l
         call    gs_boot_send_data_byte
-        jr      nc, .phase7_length_low_tx_done
-
-        ; A post-write timeout may mean bootstrap consumed the byte and
-        ; immediately published its diagnostic echo. Accept only an exact
-        ; echo of the low length byte, never the stale READY ACK (#A1).
-        ld      a, (neo_fw_tx_wait_state)
-        cp      2
-        jp      nz, .upload_failed
-        in      a, (GSSTAT)
-        ld      (neo_fw_last_status), a
-        bit     B_DBIT, a
-        jp      z, .upload_failed
-        call    gs_boot_receive_data_byte
         jp      c, .upload_failed
-        cp      l
-        jp      nz, .upload_failed
-        push    hl
-        ld      hl, (neo_fw_bytes_sent)
-        inc     hl
-        ld      (neo_fw_bytes_sent), hl
-        pop     hl
-        xor     a
-        ld      (neo_fw_tx_wait_state), a
-        jr      .phase7_length_low_echo_ok
-
-.phase7_length_low_tx_done:
-        call    gs_boot_receive_data_byte
-        jp      c, .upload_failed
-        cp      l
-        jp      nz, .upload_failed
-
-.phase7_length_low_echo_ok:
         ld      a, h
         call    gs_boot_send_data_byte
-        jr      nc, .phase7_length_high_tx_done
-
-        ; A high-byte echo may set the shared DBIT before the host observes
-        ; the TX clear edge. Accept only an exact echo of H as proof that the
-        ; bootstrap received the high length byte.
-        ld      a, (neo_fw_tx_wait_state)
-        cp      2
-        jp      nz, .upload_failed
-        in      a, (GSSTAT)
-        ld      (neo_fw_last_status), a
-        bit     B_DBIT, a
-        jp      z, .upload_failed
-        call    gs_boot_receive_data_byte
         jp      c, .upload_failed
-        cp      h
-        jp      nz, .upload_failed
-
-        ; The exact high-byte echo proves consumption despite the TX timeout.
-        push    hl
-        ld      hl, (neo_fw_bytes_sent)
-        inc     hl
-        ld      (neo_fw_bytes_sent), hl
-        pop     hl
-        xor     a
-        ld      (neo_fw_tx_wait_state), a
-        jr      .phase7_length_high_echo_ok
-
-.phase7_length_high_tx_done:
-        ; Normal TX completion still requires the exact high-byte echo.
-        call    gs_boot_receive_data_byte
-        jp      c, .upload_failed
-        cp      h
-        jp      nz, .upload_failed
-
-.phase7_length_high_echo_ok:
-        ; Only after both length bytes have been echoed does bootstrap validate
-        ; the length and send the distinct #A3 acceptance acknowledgement.
         call    gs_boot_receive_data_byte
         jp      c, .upload_failed
         cp      NGS_BOOTSTRAP_LENGTH_ACK
         jp      nz, .upload_failed
 
-.phase7_ack_received:
 
         ; Phase 8: stream the custom firmware to RAM address $0000.
         ld      a, 8
@@ -1240,4 +1175,4 @@ neo_fw_initial_status:  db 0
 neo_fw_last_status:     db 0
 neo_fw_timeout_phase:   db 0
 neo_fw_last_tx_phase:   db 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A17", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A18", 13, 10, 0
