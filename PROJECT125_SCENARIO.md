@@ -778,3 +778,14 @@
 - **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME.
 
 | 2026-11-03 | A1.45 trace ROM jump / bootstrap READY boundary | IMPLEMENTED / NOT BUILT | Host J/K/4/T/X and NeoGS B/C/R/l/h markers; raw received A is preserved. |
+
+
+## A1.46 — восстановление приёмника длины bootstrap (2026-11-03)
+
+- [x] Исправлена ошибка сборки: два вызова `bootstrap_receive_length_byte` существовали без определения процедуры.
+- [x] Добавлен отдельный bounded receiver для двух байтов длины: опрос NeoGS local ZXSTAT по #FF04, чтение данных по #FF02; при тайм-ауте переход в штатный `bootstrap_timeout`.
+- [x] Общий приёмник firmware payload и handshake/тайминги host не изменялись.
+- [ ] SjASMPlus build: проверить синтаксис, относительные переходы и размер NEOLOAD.C (1..254 байта).
+- [ ] Runtime: снять полную трассу A1.45/A1.46 и подтвердить READY, оба байта длины, ACK и загрузку firmware.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME.
+
