@@ -424,19 +424,50 @@ upload_firmware::
         jr      nz, .phase5_ack_turnaround
 
         ; Phase 7: exact Project124 V1 length handshake: low, high, one #A3.
+        ; A26 trace markers are deliberately outside the transport primitive:
+        ; they do not touch GS ports or alter DBIT timing.
         ld      a, 7
         ld      (neo_fw_timeout_phase), a
+        ld      hl, msg_p7_begin
+        call    p125_print_string
+        ld      hl, (neo_fw_length)
+        ld      a, l
+        call    p125_print_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, h
+        call    p125_print_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+
+        ld      hl, msg_p7_low_tx
+        call    p125_print_string
         ld      hl, (neo_fw_length)
         ld      a, l
         call    gs_boot_send_data_byte
         jp      c, .upload_failed
+        ld      hl, msg_p7_low_ok
+        call    p125_print_string
+
+        ld      hl, msg_p7_high_tx
+        call    p125_print_string
+        ld      hl, (neo_fw_length)
         ld      a, h
         call    gs_boot_send_data_byte
         jp      c, .upload_failed
+        ld      hl, msg_p7_high_ok
+        call    p125_print_string
+
+        ld      hl, msg_p7_wait_a3
+        call    p125_print_string
         call    gs_boot_receive_data_byte
         jp      c, .upload_failed
         cp      NGS_BOOTSTRAP_LENGTH_ACK
         jp      nz, .upload_failed
+        ld      hl, msg_p7_a3_ok
+        call    p125_print_string
 
 
         ; Phase 8: stream the custom firmware to RAM address $0000.
@@ -1162,4 +1193,11 @@ neo_fw_initial_status:  db 0
 neo_fw_last_status:     db 0
 neo_fw_timeout_phase:   db 0
 neo_fw_last_tx_phase:   db 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A25", 13, 10, 0
+msg_p7_begin:          db "[P125] PH7 LENGTH=", 0
+msg_p7_low_tx:         db "[P125] PH7 TX LOW", 13, 10, 0
+msg_p7_low_ok:         db "[P125] PH7 LOW ACK", 13, 10, 0
+msg_p7_high_tx:        db "[P125] PH7 TX HIGH", 13, 10, 0
+msg_p7_high_ok:       db "[P125] PH7 HIGH ACK", 13, 10, 0
+msg_p7_wait_a3:        db "[P125] PH7 WAIT A3", 13, 10, 0
+msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A26", 13, 10, 0
