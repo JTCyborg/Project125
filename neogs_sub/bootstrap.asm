@@ -53,6 +53,8 @@ neogs_bootstrap_start:
         ; Temporary bootstrap stack: WIN3/page #02. The resident entry moves
         ; the operational stack to WIN1 after PG1 has been restored to page #03.
         ld      sp, #FFFE
+        xor     a
+        ld      (bootstrap_trace_rx_count), a
 
         ; Establish a known host-to-NeoGS data-channel baseline before READY.
         ; Reading ZXDATRD consumes any stale incoming byte and clears DBIT.
@@ -182,6 +184,25 @@ bootstrap_receive_data_byte:
         jp      bootstrap_timeout
 .rx_ready:
         in      a, (ZXDATRD)
+        ld      (bootstrap_trace_value), a
+        ; Log only the two length bytes; subsequent firmware bytes are omitted.
+        ld      a, (bootstrap_trace_rx_count)
+        cp      2
+        jr      nc, .rx_trace_done
+        inc     a
+        ld      (bootstrap_trace_rx_count), a
+        ld      a, 'N'
+        out     (#EF), a
+        ld      a, '-'
+        out     (#EF), a
+        ld      a, (bootstrap_trace_value)
+        call    bootstrap_trace_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.rx_trace_done:
+        ld      a, (bootstrap_trace_value)
         ret
 
 ; Byte-stream transmit path (GS105a loader/bootstrap): write ZXDATWR,
@@ -202,6 +223,18 @@ bootstrap_send_data_byte:
 .tx_slot_free:
         ld      a, (bootstrap_tx_byte)
         out     (ZXDATWR), a
+        ; ZXDATWR is the NeoGS DBIT-set edge (READY / length ACK).
+        ld      (bootstrap_trace_value), a
+        ld      a, 'N'
+        out     (#EF), a
+        ld      a, '+'
+        out     (#EF), a
+        ld      a, (bootstrap_trace_value)
+        call    bootstrap_trace_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
         ld      bc, #FFFF
 .tx_wait_read:
         in      a, (ZXSTAT)
@@ -217,5 +250,31 @@ bootstrap_send_data_byte:
 
 bootstrap_tx_byte:
         db      0
+bootstrap_trace_value:
+        db      0
+bootstrap_trace_rx_count:
+        db      0
+
+; IN: A = byte. Emit two hex digits directly on NeoGS port #EF.
+bootstrap_trace_hex8:
+        push    af
+        rrca
+        rrca
+        rrca
+        rrca
+        and     #0F
+        call    bootstrap_trace_hex_nibble
+        pop     af
+        and     #0F
+        jp      bootstrap_trace_hex_nibble
+
+bootstrap_trace_hex_nibble:
+        add     a, '0'
+        cp      '9'+1
+        jr      c, .trace_hex_digit
+        add     a, 7
+.trace_hex_digit:
+        out     (#EF), a
+        ret
 
 neogs_bootstrap_end:
