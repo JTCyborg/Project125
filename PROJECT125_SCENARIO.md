@@ -667,3 +667,17 @@
 - **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Это диагностическая комбинация двух ранее частично проверенных изменений, а не подтверждённое исправление.
 
 | 2026-11-03 | Restore fixed-port length RX and add inter-byte turnaround | IMPLEMENTED / NOT BUILT | Combines the A30 first-byte progress with an explicit gap before the high length byte; runtime verification pending. |
+
+
+## A1.38 — явное выключение ZX DMA при входе в bootstrap (2026-11-03)
+
+- [x] В DMA документации подтверждено: DMA управляется выбранным модулем через DMA_MOD, а бит 7 DMA_CST включает/выключает DMA; чтение и запись нельзя интерливить без выключения DMA.
+- [x] Установлено, что bootstrap Project125 ранее не обращался к DMA_MOD/DMA_CST после входа из GS105a RECEIVE BLOCK (#14) и JUMP (#13).
+- [x] В начале bootstrap добавлено явное выключение модуля C_DMA_ZX: запись 1 в DMA_MOD, затем 0 в DMA_CST.
+- [x] Добавлена короткая пауза после выключения DMA перед переключением на байтовый GSDAT handshake.
+- [ ] Сборка SjASMPlus: проверить include DMA_CST/DMA_MOD, размер NEOLOAD.C и ограничения размещения.
+- [ ] Runtime: подтвердить #A1, #C5, #3D, #A3, весь поток NEOFw и #A2.
+- [ ] Regression: BIOS load, x86 boot, DMA x86 window #5000-#7FFF, video CRC.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Причина правки подтверждена DMA-документацией; runtime-эффект ещё не подтверждён.
+
+| 2026-11-03 | Explicitly disable ZX DMA at bootstrap entry | IMPLEMENTED / NOT BUILT | Stop any DMA left enabled by GS105a RECEIVE BLOCK before switching to byte-wise GSDAT transfer. |
