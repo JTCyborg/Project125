@@ -789,3 +789,14 @@
 - [ ] Runtime: снять полную трассу A1.45/A1.46 и подтвердить READY, оба байта длины, ACK и загрузку firmware.
 - **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME.
 
+
+
+## A1.47 — объединение приёмника длины и firmware payload (2026-11-03)
+
+- [x] Устранено дублирование: оба байта длины принимаются тем же bounded receiver, что и firmware payload.
+- [x] Общий receiver использует явные NeoGS local-I/O адреса #FF04/#FF02 и независимый timeout counter DE; обращения `IN A,(n)` для этих портов исключены.
+- [x] Сохранены диагностические маркеры A1.45, порядок передачи и host driver.
+- [ ] SjASMPlus build: подтвердить `neogs_bootstrap_end - neogs_bootstrap_start <= 254`, NEOLOAD.C 1..254 байта и отсутствие ошибок.
+- [ ] Runtime: проверить полный trace READY/length/ACK/firmware.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME.
+
