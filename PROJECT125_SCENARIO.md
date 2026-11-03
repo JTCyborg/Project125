@@ -710,3 +710,18 @@
 - **Статус:** SOURCE AUDIT COMPLETE / NO DRIVER CHANGE / RUNTIME PENDING. Вывод относится к проверенной реализации Unreal Speccy; соответствие локального исполняемого файла этой версии ещё нужно подтвердить.
 
 | 2026-11-03 | Audit emulator-side GS Z80 synchronization | SOURCE AUDIT COMPLETE | Confirmed flush_gs_z80 before host GSDAT writes and GSSTAT reads; active host driver already waits for DBIT clear after every byte. |
+
+
+
+## A1.41 — NeoGS bootstrap trace через локальный debug port #EF (2026-11-03)
+
+- [x] Подтверждён host debug output через порт #EF в `zx_main/main.asm`; для NeoGS добавлен вывод напрямую из Z80 bootstrap в аналогичный локальный порт #EF.
+- [x] Добавлены компактные маркеры без использования GSDAT/GSSTAT: `B` — bootstrap вошёл; `1` — перед публикацией READY #A1; `L` — вход в приём одного байта длины; `S` — ZXSTAT показал DBIT=1; `R` — чтение ZXDATRD завершилось.
+- [x] Маркеры `L/S/R` выводятся отдельно для каждого байта длины. Ожидаемая последовательность при нормальном ходе: `B1LSRLSR`, затем отправка #A3.
+- [x] Отладочные байты идут напрямую через `OUT (#EF),A`; транспортный канал GSDAT/GSSTAT не используется и не изменяется.
+- [ ] SjASMPlus build: проверить размер бинарного NEOLOAD.C (обязательный предел 1..254 байта), адреса и относительные переходы.
+- [ ] Runtime: снять лог NeoGS-порта #EF и сопоставить маркеры с host TXBYTE/GSSTAT. Если последовательность обрывается на `B1L`, NeoGS не видит DBIT=1; если есть `S`, но нет `R`, зависание локализуется на чтении ZXDATRD/его I/O mapping.
+- [ ] После диагностического запуска удалить или отключить трассировку, если она влияет на тайминги.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Адрес #EF принят по аналогии с ATM host debug port; локальная реализация и фактический вывод должны быть подтверждены запуском.
+
+| 2026-11-03 | Add NeoGS-local bootstrap trace on port #EF | IMPLEMENTED / NOT BUILT | Emits B/1/L/S/R markers around bootstrap entry, READY and both length-byte receive steps. |
