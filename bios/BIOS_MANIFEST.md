@@ -29,11 +29,11 @@
 | 8086 reset CS:IP | FFFF:0000 |
 | Reset far-jump target | F000:E05B |
 | Resolved target physical address | FE05Bh |
-| Backing reservation | NeoGS page 75, first 8 KiB (provisional loader mapping) |
+| Backing reservation | NeoGS page 75, first 8 KiB (DMA loader target implemented; hardware validation pending) |
 | Access | guest read/execute; guest writes rejected |
 
 The 8086 architectural reset state is CS:IP=FFFF:0000, which generates physical FFFF0h. The ROM reset-vector instruction then performs JMP F000:E05B. The guest ROM base and entry calculation are derived from this image's size and reset-vector bytes. They are not universal constants for other BIOS images.
 
 ## Important status
 
-The file has been copied byte-for-byte into Project125 and the image structure/reset vector have been inspected. This does not yet mean that NeoGS loads the image into page 75, that the guest memory decoder exposes it read-only, or that the BIOS executes. Those are implementation and runtime test items tracked in PROJECT125_SCENARIO.md.
+The file has been copied byte-for-byte into Project125 and the image structure/reset vector have been inspected. NeoGS DMA receive, page-75 ROM overlay, write protection and the 8086 reset command are implemented in source. They have not yet passed an assembler build or emulator/real-hardware runtime test. Full-image CRC validation remains pending. See PROJECT125_SCENARIO.md.
