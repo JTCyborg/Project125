@@ -45,6 +45,10 @@ neogs_bootstrap_start:
         ; Host sends length low byte, then high byte.
         call    bootstrap_receive_data_byte
         ld      e, a
+        ; Diagnostic handshake: echo the received low length byte. This
+        ; proves that the host's first length byte reached bootstrap RX.
+        ld      a, e
+        call    bootstrap_send_data_byte
         call    bootstrap_receive_data_byte
         ld      d, a
 
