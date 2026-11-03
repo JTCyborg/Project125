@@ -901,6 +901,8 @@ gs_boot_send_command_long:
         or      a
         ret
 
+; GS105a command channel: GSCOM publishes a command and CBIT reports
+; command-handler completion. Do not use DBIT as the command-complete flag.
 gs_boot_send_command:
         ld      (neo_fw_command_byte), a
         ld      a, (neo_fw_command_byte)
@@ -921,8 +923,10 @@ gs_boot_send_command:
         or      a
         ret
 
-; Preload the first argument byte of GS105a commands #13/#14. Those
-; handlers read this byte before clearing CBIT; later arguments use DBIT.
+; GS105a command arguments are a two-part transaction: preload the first
+; byte in GSDAT, then dispatch via GSCOM; the ROM handler consumes it while
+; processing the command. Later block bytes travel on the DBIT byte stream.
+; This is distinct from the article's generic ZXCMD port-command protocol.
 gs_boot_write_command_argument:
         ld      (neo_fw_tx_byte), a
         ld      bc, FW_BYTE_TIMEOUT
@@ -943,6 +947,8 @@ gs_boot_write_command_argument:
         or      a
         ret
 
+; Bulk byte channel: GSDAT + DBIT handshake. CBIT is reserved for GSCOM
+; command completion and must not replace this per-byte acknowledgement.
 gs_boot_send_data_byte:
         ld      (neo_fw_tx_byte), a
         ld      (neo_fw_last_tx_byte), a
@@ -990,6 +996,8 @@ gs_boot_send_data_byte:
         or      a
         ret
 
+; Bulk byte channel in the reverse direction: DBIT announces a byte,
+; reading GSDAT consumes it. Command reads use CBIT/ZXCMD instead.
 gs_boot_receive_data_byte:
         ld      bc, FW_BYTE_TIMEOUT
 .receive_wait:
