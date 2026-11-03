@@ -85,6 +85,14 @@ Init_Z80_System:
         call    p125_print_string
         ld      a, (neo_fw_last_tx_byte)
         call    p125_print_hex8
+        ld      hl, msg_fw_rxvalid
+        call    p125_print_string
+        ld      a, (neo_fw_rx_probe_valid)
+        call    p125_print_hex8
+        ld      hl, msg_fw_rxbyte
+        call    p125_print_string
+        ld      a, (neo_fw_last_rx_byte)
+        call    p125_print_hex8
         jr      p125_halt
 
 .firmware_ready:
@@ -191,6 +199,8 @@ msg_fw_status:        defb " GSSTAT #", 0
 msg_fw_txstate:       defb " TXSTATE #", 0
 msg_fw_txphase:       defb " TXPHASE #", 0
 msg_fw_txbyte:        defb " TXBYTE #", 0
+msg_fw_rxvalid:       defb " RXVALID #", 0
+msg_fw_rxbyte:        defb " RXBYTE #", 0
 msg_fw_ready:         defb "[P125] NEOGS FIRMWARE READY", 13, 10, 0
 msg_bios_load:        defb "[P125] LOAD BIOS.C TO PAGE 75", 13, 10, 0
 msg_bios_load_error:  defb "[P125] ERROR: BIOS FILE/DMA #", 0
