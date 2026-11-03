@@ -961,6 +961,14 @@ gs_boot_send_data_byte:
         ld      a, b
         or      c
         jr      nz, .data_wait_free
+        ; Distinguish a timeout before the byte is written from a timeout
+        ; while waiting for the receiver to consume the written byte.
+        ld      a, (neo_fw_timeout_phase)
+        cp      #53
+        jr      nz, .data_free_timeout
+        ld      a, #531
+        ld      (neo_fw_timeout_phase), a
+.data_free_timeout:
         scf
         ret
 .data_slot_free:
@@ -978,6 +986,13 @@ gs_boot_send_data_byte:
         ld      a, b
         or      c
         jr      nz, .data_wait_consumed
+        ; Phase #532 means #40 was written but DBIT never returned low.
+        ld      a, (neo_fw_timeout_phase)
+        cp      #53
+        jr      nz, .data_consumed_timeout
+        ld      a, #532
+        ld      (neo_fw_timeout_phase), a
+.data_consumed_timeout:
         scf
         ret
 .data_consumed:
