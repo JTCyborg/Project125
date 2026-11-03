@@ -93,7 +93,7 @@ Init_Z80_System:
         call    p125_print_string
         ld      a, (neo_fw_last_rx_byte)
         call    p125_print_hex8
-        jr      p125_halt
+        jp      p125_halt
 
 .firmware_ready:
         ld      hl, msg_fw_ready
@@ -106,7 +106,7 @@ Init_Z80_System:
         call    p125_print_string
         ld      a, (bios_host_transfer_error)
         call    p125_print_hex8
-        jr      p125_halt
+        jp      p125_halt
 .video_crc_ok:
         ld      hl, msg_video_crc_ok
         call    p125_print_string
@@ -137,7 +137,7 @@ Init_Z80_System:
         out     (#EF), a
         ld      a, 10
         out     (#EF), a
-        jr      p125_halt
+        jp      p125_halt
 
 .bios_loaded:
         ld      hl, msg_bios_valid
@@ -152,7 +152,7 @@ Init_Z80_System:
         call    p125_print_string
         ld      a, (bios_host_transfer_error)
         call    p125_print_hex8
-        jr      p125_halt
+        jp      p125_halt
 
 .bios_returned:
         ld      hl, msg_bios_result
