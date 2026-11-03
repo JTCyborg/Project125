@@ -695,6 +695,7 @@ rom_return_trampoline_end:
         INCLUDE "x86_io.asm"
         INCLUDE "x86_strings.asm"
         INCLUDE "bios/bios_video.asm"
+        INCLUDE "../shared/video_crc16.asm"
 
 ; WIN1 layout: trampoline $4000-$400F, guard $4800-$487F, stack grows
 ; down from $4FFE, and the DMA frame starts at $5000.
