@@ -43,11 +43,13 @@ neogs_bootstrap_start:
         call    bootstrap_send_data_byte
 
         ; Host sends length low byte, then high byte.
-        ; Keep the original Project124 V1 sequence: receive both bytes
-        ; without intermediate echo replies, then send one #A3 acceptance ACK.
-        call    bootstrap_receive_data_byte
+        ; Do not use the bounded payload receiver here: after #A1 the ATM
+        ; performs the first host-side data-slot turnaround. A fixed #FFFF
+        ; Z80 poll budget can expire while the ATM is still completing that
+        ; hand-off. Wait for each length byte until DBIT is actually asserted.
+        call    bootstrap_receive_length_byte
         ld      e, a
-        call    bootstrap_receive_data_byte
+        call    bootstrap_receive_length_byte
         ld      d, a
 
         ; Reject zero length and any image larger than the low 16-KiB window ($4000).
@@ -124,7 +126,18 @@ bootstrap_timeout:
         jr      nz, .timeout_wait_host
         jp      bootstrap_halt
 
-; Wait for one byte from Spectrum. Reading ZXDATRD clears DBIT.
+; Length phase: wait without a local poll timeout for the host's first
+; two bytes. The host has just consumed #A1 and may still be completing its
+; data-channel turnaround. DBIT is the authoritative readiness indication.
+bootstrap_receive_length_byte:
+.length_wait:
+        in      a, (ZXSTAT)
+        bit     B_DBIT, a
+        jr      z, .length_wait
+        in      a, (ZXDATRD)
+        ret
+
+; Wait for one payload byte from Spectrum. Reading ZXDATRD clears DBIT.
 bootstrap_receive_data_byte:
         ld      bc, #FFFF
 .rx_wait:
