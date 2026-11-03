@@ -52,9 +52,9 @@ neogs_bootstrap_start:
         ; payload receiver here. The host may need more than #FFFF NeoGS polls
         ; to enter its next OUT, so wait until each length byte is actually
         ; published instead of timing out and deadlocking on the host DBIT.
-        call    bootstrap_receive_length_byte
+        call    bootstrap_receive_data_byte
         ld      e, a
-        call    bootstrap_receive_length_byte
+        call    bootstrap_receive_data_byte
         ld      d, a
 
         ; Reject zero length and any image larger than the low 16-KiB window ($4000).
@@ -131,25 +131,8 @@ bootstrap_timeout:
         jr      nz, .timeout_wait_host
         jp      bootstrap_halt
 
-; Receive the two-byte firmware length without a local timeout.
-; The host has just consumed #A1 and may be entering its first OUT instruction.
-; Waiting indefinitely avoids a false timeout that would leave host DBIT set.
-bootstrap_receive_length_byte:
-.length_wait:
-        ; Use IN A,(C) with an explicit high address byte. IN A,(n) forms
-        ; the I/O address from A:n, so its upper byte is not guaranteed to
-        ; select the NeoGS local-port page while polling the host DBIT.
-        ld      bc, #FF04              ; ZXSTAT, full local I/O address
-        in      a, (c)
-        bit     B_DBIT, a
-        jr      z, .length_wait
-
-        ; Reading ZXDATRD is the documented acknowledge operation: it
-        ; consumes the host byte and clears DBIT.
-        ld      bc, #FF02              ; ZXDATRD, full local I/O address
-        in      a, (c)
-        ret
-
+; Length bytes use the same receiver as firmware payload. This keeps one
+; canonical implementation of the documented ZXSTAT/ZXDATRD handshake.
 ; Wait for one byte from Spectrum. Reading ZXDATRD clears DBIT.
 bootstrap_receive_data_byte:
         ld      bc, #FFFF
