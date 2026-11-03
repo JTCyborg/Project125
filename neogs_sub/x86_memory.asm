@@ -1,8 +1,10 @@
 ; =========================================================================
 ; PROJECT 124 — 8086 physical memory backend for NeoGS GS105a
 ;
-; x86 physical $00000-$FFFFF maps to NeoGS RAM pages 4..67
-; (NeoGS physical base $010000, page size $4000 / 16 KiB).
+; Guest RAM below FE000h maps to NeoGS pages 4..67. The 8 KiB BIOS ROM
+; overlay at FE000h-FFFFFh is read from NeoGS page 75 (offset 0000-1FFF).
+; Guest writes to the BIOS range are rejected. Page 67 therefore exposes
+; only FC000h-FDFFFh as writable RAM; its upper half is shadowed by page 75.
 ; Window C000-FFFF is switched through MPAGEX. Resident firmware remains in
 ; WIN0/page 0; WIN2 is reserved for banked firmware overlays. The Z80 stack
 ; is in WIN1/page 3 at #4FFE, below the DMA frame at #5000. MPAGEX never
@@ -18,7 +20,9 @@
 ;   x86_mem_test: destructive test of the reserved 1 MiB x86 RAM region.
 ;                 status=0, AX=0001 on pass; status=5, AX=phase:page on fail.
 ;
-; The test leaves NOROM+EXPAG enabled. Only WIN3 is switched by MPAGEX;
+; The test leaves NOROM+EXPAG enabled. It tests the writable guest RAM span,
+; including the lower 8 KiB of guest page 63; the BIOS overlay is not RAM.
+; Only WIN3 is switched by MPAGEX;
 ; callers must keep SP in WIN1 and below #5000 for the entire test
 ; (Project124 uses #4FFE, with the stack guard at #4800).
 ; =========================================================================
@@ -39,8 +43,32 @@ x86_mem_map_addr:
         cp      #10
         jr      nc, .bad_address
 
+        ; The selected 8 KiB BIOS image overlays guest physical FE000h-FFFFFh.
+        ; It is stored at page 75, offset 0000h-1FFFh. The guest address's
+        ; low five middle-byte bits are the 8 KiB image offset high byte.
+        ld      a, (x86_mem_addr+2)
+        cp      #0F
+        jr      nz, .guest_ram
+        ld      a, (x86_mem_addr+1)
+        cp      #E0
+        jr      c, .guest_ram
+
+        ld      a, 75
+        rrca
+        out     (MPAGEX), a
+        ld      a, (x86_mem_addr+1)
+        and     #1F
+        or      #C0
+        ld      h, a
+        ld      a, (x86_mem_addr)
+        ld      l, a
+        or      a
+        ret
+
+.guest_ram:
         ; page = (physical >> 14) + 4
         ; page index = (high_nibble << 2) | (middle_byte >> 6)
+        ld      a, (x86_mem_addr+2)
         add     a, a
         add     a, a
         ld      b, a
@@ -79,11 +107,22 @@ x86_mem_read8:
 
 ; Write one byte. IN x86_mem_addr[0..2], x86_mem_value.
 x86_mem_write8:
+        ; FE000h-FFFFFh is the selected BIOS ROM and is never writable.
+        ld      a, (x86_mem_addr+2)
+        cp      #0F
+        jr      nz, .write_allowed
+        ld      a, (x86_mem_addr+1)
+        cp      #E0
+        jr      nc, .write_protected
+.write_allowed:
         call    x86_mem_map_addr
         ret     c
         ld      a, (x86_mem_value)
         ld      (hl), a
         or      a
+        ret
+.write_protected:
+        scf
         ret
 
 ; -------------------------------------------------------------------------
@@ -390,6 +429,16 @@ x86_mem_build_page_start:
 x86_mem_build_page_end:
         ld      a, #FF
         ld      (x86_mem_addr), a
+        ld      a, (x86_mem_page)
+        cp      X86_MEM_PAGE_COUNT - 1
+        jr      nz, .full_page_end
+        ; Guest page 63 ends at FDFFFh because FE000h-FFFFFh is BIOS ROM.
+        ld      a, #DF
+        ld      (x86_mem_addr+1), a
+        ld      a, #0F
+        ld      (x86_mem_addr+2), a
+        ret
+.full_page_end:
         ld      a, (x86_mem_page)
         ld      b, a
         and     #03
