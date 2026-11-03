@@ -129,12 +129,13 @@
 - [ ] Complete cold-boot/warm-reset scenario with logs.
 
 ## P0.1 — первый импорт и проверка BIOS (2026-11-03)
-- [x] Создана первичная структура `neogs_sub/` и импортирован набор модулей executor/BIOS services из Project124.
+- [x] Создана первичная структура `neogs_sub/` и импортирован набор 8086 real-mode executor/BIOS service modules из Project124.
+- [x] Legacy flat-mode `x86_interpreter.asm` исключён из активной сборки Project125; linked path использует 8086 real-mode executor.
 - [x] Импортирован `shared/neogs_io.inc` и bootstrap, необходимые для исходной сборочной цепочки.
 - [x] BIOS.BIN добавлен в `bios/BIOS.BIN` как бинарный blob без текстовой перекодировки.
 - [x] Добавлен `bios/BIOS_MANIFEST.md` с размером, reset vector и исходной картой ROM.
 - [x] Добавлен PowerShell pre-build verifier: размер, header signature, reset vector, SHA-256 в build log.
-- [x] Добавлен `build_project125.bat` и отдельная точка сборки NeoGS baseline.
+- [x] Добавлен `build_project125.bat`: единая точка сборки NeoGS firmware, ATM host и TR-DOS disk image.
 - [ ] Выполнить первую сборку Project125 с sjasmplus; сохранить полный лог и размеры бинарников, проверить firmware page-0 limit 16 KiB и host image ASSERT.
 - [ ] Исправить все ошибки/предупреждения сборки.
 - [x] Реализован NeoGS command CMD_LOAD_BIOS: DMA target 12C000h (page 75), после transfer проверяются header byte и пять reset-vector bytes.
@@ -148,7 +149,6 @@
 - [x] Создан минимальный `zx_main/main.asm`: запуск NeoGS bootstrap/firmware, загрузка BIOS.C, команда BIOS boot и вывод статуса/AX.
 - [x] Добавлен `tools/pack_neogs_project125.ps1` для формирования package bootstrap+firmware и разбиения по 16 KiB TR-DOS chunks.
 - [x] `build_project125.bat` теперь собирает NeoGS firmware, package chunks и ATM host disk_A.trd.
-- [ ] Выполнить сборку и проверить ограничения resident firmware/host image по ASSERT.
 - [x] Проверено статически: reset opcode EA (far JMP) присутствует в dispatch x86_real_execute; первый reset-vector переход входит в реализованный opcode subset.
 - [ ] Проверить содержимое disk_A.trd: boot.B, proj125.C, neoprog.C и BIOS.C.
 - [ ] Выполнить host transfer/BIOS validation/BIOS boot на эмуляторе и реальном ATM/NeoGS.
