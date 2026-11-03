@@ -135,7 +135,7 @@
 - [x] Добавлен `bios/BIOS_MANIFEST.md` с размером, reset vector и исходной картой ROM.
 - [x] Добавлен PowerShell pre-build verifier: размер, header signature, reset vector, SHA-256 в build log.
 - [x] Добавлен `build_project125.bat` и отдельная точка сборки NeoGS baseline.
-- [ ] Выполнить первую сборку Project125 с sjasmplus; сохранить полный лог и размеры бинарников.
+- [ ] Выполнить первую сборку Project125 с sjasmplus; сохранить полный лог и размеры бинарников, проверить firmware page-0 limit 16 KiB и host image ASSERT.
 - [ ] Исправить все ошибки/предупреждения сборки.
 - [x] Реализован NeoGS command CMD_LOAD_BIOS: DMA target 12C000h (page 75), после transfer проверяются header byte и пять reset-vector bytes.
 - [x] Реализован guest ROM overlay FE000h..FFFFFh на page 75; guest writes в ROM блокируются.
