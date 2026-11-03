@@ -61,8 +61,7 @@ neogs_bootstrap_start:
         ; Select the NeoGS local page explicitly so this really reads #FF02.
         ld      bc, #FF02
         in      a, (c)
-        ld      a, 'C'
-        out     (#EF), a
+        ; BC still has B=#FF from the explicit local port selection.
 
         ; Tell Spectrum that the tiny loader is running and waiting for length.
         ; Publish READY directly and enter the receive state immediately.
@@ -77,14 +76,15 @@ neogs_bootstrap_start:
         ; READY is an outgoing byte. Do not let the receiver mistake its
         ; still-set DBIT for an incoming length byte. Host consumes #A1,
         ; clears DBIT, then waits its turnaround before sending length low.
-        ld      bc, #FFFF
+        ld      de, #FFFF
+        ld      c, #04
 .ready_wait_consumed:
-        in      a, (ZXSTAT)
+        in      a, (c)
         bit     B_DBIT, a
         jr      z, .ready_consumed
-        dec     bc
-        ld      a, b
-        or      c
+        dec     de
+        ld      a, d
+        or      e
         jr      nz, .ready_wait_consumed
         jp      bootstrap_timeout
 .ready_consumed:
