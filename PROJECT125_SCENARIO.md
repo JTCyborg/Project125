@@ -529,3 +529,16 @@
 - Статус: IMPLEMENTED / NOT BUILT / NOT RUN. Исправление не считается подтверждённым до нового runtime-лога.
 
 | 2026-11-03 | Restore V1 bootstrap ACK turnaround | IMPLEMENTED / NOT BUILT | Reverted the no-wait ACK receiver race; preserved host A22 pending-ACK handling under marker A23. |
+
+
+## A1.28 — окно DBIT после READY ACK #A1 (2026-11-03)
+
+- [x] Runtime A23: #40/#A1 пройдены; сбой возникает при отправке длины, фаза #07, первый байт #C5, TXSTATE=2, GSSTAT=#FE.
+- [x] Диагностика: host читает #A1 и сразу повторно устанавливает DBIT байтом #C5. Bootstrap должен успеть увидеть DBIT=0 в своём `bootstrap_send_data_byte` после публикации #A1; короткое окно может быть пропущено.
+- [x] В host добавлено отдельное ограниченное окно DBIT-low (#0400 итераций) непосредственно после приёма и проверки #A1, до отправки первого байта длины.
+- [x] Маркер драйвера обновлён до A24. Bootstrap оставлен неизменным, побайтно совпадает с Project124 V1.
+- [ ] Windows build: проверить сборку и размер NEOLOAD.C.
+- [ ] Runtime: подтвердить отправку #C5 и #3D, получение #A3, передачу NEOFW.C и ACK #A2.
+- Статус: IMPLEMENTED / NOT BUILT / NOT RUN.
+
+| 2026-11-03 | Add DBIT-low turnaround after #A1 | IMPLEMENTED / NOT BUILT | Hold DBIT low after reading READY ACK so NeoGS can observe ACK consumption before host sends length. |
