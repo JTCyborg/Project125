@@ -316,3 +316,10 @@ The guest video adapter produces a logical frame; the ATM presenter converts it 
 The two slots consume 64 KiB and raise the complete physical page-map gate to 83 unique 16-KiB pages (pages 0-82, 1,359,872 bytes). Physical pages 79-82 are reserved and cannot be used for guest RAM, firmware, BIOS or unrelated DMA. Direct DMA/zero-copy access is not assumed until hardware tests prove addressability and completion semantics; bounded copy/stream transport remains the baseline.
 
 See [PROJECT125_MEMORY_LAYOUT.md](PROJECT125_MEMORY_LAYOUT.md) for the complete allocation, frame ownership and mapping rules. This is an architectural reservation, not a claim that frame transport or hardware DMA has been implemented.
+
+
+## 21. Initial video frame wire ABI
+
+The first byte-defined video descriptor is specified in [PROJECT125_VIDEO_ABI.md](PROJECT125_VIDEO_ABI.md), with shared assembler constants in `shared/video_frame.inc`. ABI v1 defines a 24-byte little-endian descriptor, two 32-KiB physical frame slots (pages 79-80 and 81-82), a 16-bit frame sequence and CRC-16/CCITT-FALSE over the complete payload.
+
+This is a descriptor and ownership contract only. Control command IDs, fragment headers, ACK/abort wire encoding, retry/timeouts, pixel-format IDs, canonical stride/palette and the exact ATM 640×200 representation remain pending. Do not treat the ABI constants as a working transport or presenter. The exact 640×200 payload size remains unverified.
