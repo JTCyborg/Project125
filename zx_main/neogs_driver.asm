@@ -409,8 +409,7 @@ upload_firmware::
         xor     a
         ld      (neo_fw_tx_wait_state), a
         jr      .phase5_jump_ready
-
- .phase5_jump_tx_done:
+.phase5_jump_tx_done:
         ld      a, 'T'
         out     (#EF), a              ; #40 sender completed
         ld      a, 6
