@@ -505,7 +505,6 @@ command_boot_bios:
         call    x86_real_execute
         ld      hl, (x86_reg_ax)
         ld      (saved_x86_ax), hl
-        call    neo_debug_bios_stop_state
         call    z80_stack_guard_check
         jr      nc, .bios_stack_ok
         ld      hl, #7E00
@@ -607,48 +606,6 @@ neo_debug_send_string:
         ret     z
         call    neo_send_data_byte
         jr      neo_debug_send_string
-
-; Emit the guest BIOS stop point after HLT, unsupported opcode or step budget.
-; Host mirrors this DBIT stream to the ATM debug port #EF.
-neo_debug_bios_stop_state:
-        push    hl
-        ld      hl, bios_stop_prefix
-        call    neo_debug_send_string
-        ld      hl, (x86_reg_cs)
-        call    neo_debug_hex16
-        ld      a, ':'
-        call    neo_send_data_byte
-        ld      hl, (x86_reg_ip)
-        call    neo_debug_hex16
-        ld      hl, bios_stop_ax_prefix
-        call    neo_debug_send_string
-        ld      hl, (x86_reg_ax)
-        call    neo_debug_hex16
-        ld      hl, bios_stop_status_prefix
-        call    neo_debug_send_string
-        ld      a, (x86_exit_status)
-        call    neo_debug_hex8
-        ld      a, 13
-        call    neo_send_data_byte
-        ld      a, 10
-        call    neo_send_data_byte
-        pop     hl
-        ret
-
-neo_debug_hex16:
-        push    hl
-        ld      a, h
-        call    neo_debug_hex8
-        pop     hl
-        ld      a, l
-        jp      neo_debug_hex8
-
-bios_stop_prefix:
-        defb    "[BIOS] STOP CS:IP=", 0
-bios_stop_ax_prefix:
-        defb    " AX=", 0
-bios_stop_status_prefix:
-        defb    " STATUS=", 0
 
 ; IN: A = byte. Sends two uppercase hexadecimal digits.
 neo_debug_hex8:
