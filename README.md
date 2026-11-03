@@ -47,3 +47,7 @@ BIOS-кандидат: `bios/BIOS.BIN` — Generic Turbo XT BIOS 1987, 8192 ба
 Первый запуск пока является диагностическим: ожидаем выполнить reset-vector far JMP `EA F000:E05B`, затем остановиться на первой неподдерживаемой инструкции BIOS. NeoGS выдаёт остановочный `CS:IP` через DBIT, ATM host зеркалирует его на порт `#EF`; это не заявка на полный BIOS POST.
 
 Project125 активирует только 8086 real-mode executor; legacy flat-mode interpreter Project124 не включается в resident firmware, чтобы оставить место для BIOS ROM integration.
+
+## Video implementation status
+
+Добавлены начальный [Video Frame ABI v1](PROJECT125_VIDEO_ABI.md), общие descriptor constants (`shared/video_frame.inc`), CRC-16/CCITT-FALSE (`shared/video_crc16.asm`) и диагностическая команда `CMD_VIDEO_CRC_TEST` (`0Eh`), которую ATM host запускает после загрузки NeoGS firmware. Сборка sjasmplus и выполнение self-test пока не подтверждены.
