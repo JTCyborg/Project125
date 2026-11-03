@@ -999,3 +999,16 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME FIX NOT YET VERIFIED.
 
 | 2026-11-04 | A1.62 count each #14 streamed-block header | SOURCE COMMITTED | Correct expected DBIT byte count for multi-block NEOLOAD.C transfers. |
+
+
+## A1.63 — диагностика результата проверки BIOS ROM (2026-11-04)
+
+- [x] Runtime: NeoGS firmware ready и VIDEO CRC selftest PASS; BIOS transfer доходит до команды завершения DMA.
+- [x] По коду `bios_trdos_file_error = 10` установлено: это `bios_trdos_rom_validation_error`, а не ошибка чтения сектора или DMA timeout.
+- [x] BIOS validator проверяет байт `#20` по FE000 и reset vector `EA 5B E0 00 F0` по FFFF0..FFFF4.
+- [x] Host теперь при ошибке BIOS дополнительно печатает возвращённые NeoGS `bios_host_result_status` и `bios_host_result_ax`, чтобы отличить timeout DMA (#B103), несовпадение ROM (#B101) и другие причины.
+- [ ] Собрать `build.bat`.
+- [ ] Runtime: прислать строку `BIOS STATUS` и `AX`; по ней локализовать следующий дефект, не меняя DMA без доказательств.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.63 expose BIOS validation status and AX | SOURCE COMMITTED | Host prints NeoGS result frame when BIOS file/validation stage reports error #0A. |
