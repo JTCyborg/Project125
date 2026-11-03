@@ -416,7 +416,7 @@ upload_firmware::
         ; from bootstrap_send_data_byte before the first length byte is sent.
         ; Without this turnaround window the host can reassert DBIT with #C5
         ; before the NeoGS Z80 samples the low state.
-        ld      bc, #0400
+        ld      bc, #FFFF
 .phase5_ack_turnaround:
         dec     bc
         ld      a, b
@@ -1162,4 +1162,4 @@ neo_fw_initial_status:  db 0
 neo_fw_last_status:     db 0
 neo_fw_timeout_phase:   db 0
 neo_fw_last_tx_phase:   db 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A24", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A25", 13, 10, 0
