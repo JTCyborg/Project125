@@ -71,7 +71,7 @@ The second slot may be rendered while the first is in flight. Sequence compariso
 
 The descriptor is sent before payload. Payload transfer is fragmented; no single IPC transaction is required to carry 32 KiB. Each fragment will identify frame sequence, byte offset, fragment length and integrity value. Receiver must reject gaps, overlaps, duplicate fragments with differing content, out-of-range offsets and wrong sequence. Final CRC is checked over the reassembled complete payload.
 
-The exact control command IDs, fragment header bytes, ACK wire encoding, retry limits and timeout constants are intentionally left for the first transport implementation step; they must be added here and to shared/video_frame.inc together.
+The first diagnostic command is CMD_VIDEO_CRC_TEST (0Eh); it is not a frame-transfer command. The exact frame control command IDs, fragment header bytes, ACK wire encoding, retry limits and timeout constants are intentionally left for the transport implementation step; they must be added here and to shared/video_frame.inc together.
 
 ## 7. Implementation gates
 
@@ -83,3 +83,8 @@ The exact control command IDs, fragment header bytes, ACK wire encoding, retry l
 - Implement chunk transport, sequence/ownership/ACK/abort/retry.
 - Implement ATM presenter conversion and VSync commit.
 - Validate build, emulator integration, then real ATM/NeoGS hardware separately.
+
+
+## 8. CRC implementation status
+
+The shared Z80 routine is in `shared/video_crc16.asm`; its input is A=data byte and HL=current CRC, output HL=updated CRC. The standard `123456789` -> `29B1h` vector is exposed to NeoGS command `CMD_VIDEO_CRC_TEST` (0Eh). ATM host startup invokes the test and checks the returned status/AX. The code has not yet been assembled or run; this is an implementation hook, not a PASS result.
