@@ -542,3 +542,15 @@
 - Статус: IMPLEMENTED / NOT BUILT / NOT RUN.
 
 | 2026-11-03 | Add DBIT-low turnaround after #A1 | IMPLEMENTED / NOT BUILT | Hold DBIT low after reading READY ACK so NeoGS can observe ACK consumption before host sends length. |
+
+
+## A1.29 — расширенное окно DBIT после #A1 (A25, 2026-11-03)
+
+- [x] Runtime A24 повторил фазу #07: #C5 записан, но DBIT не был снят; GSSTAT=#FE, TXSTATE=#02.
+- [x] Окно удержания DBIT-low после чтения #A1 увеличено с #0400 до #FFFF итераций. Остальная последовательность V1 и bootstrap не менялись.
+- [x] Маркер драйвера обновлён до A25.
+- [ ] Windows build: проверить сборку и размер NEOLOAD.C.
+- [ ] Runtime: проверить переход с #A1 на #C5/#3D, ACK #A3 и дальнейшую передачу.
+- Статус: IMPLEMENTED / NOT BUILT / NOT RUN.
+
+| 2026-11-03 | Extend post-#A1 DBIT-low interval | IMPLEMENTED / NOT BUILT | A24's #0400 interval did not prevent the phase #07 timeout; extend the interval to #FFFF iterations for a decisive timing test. |
