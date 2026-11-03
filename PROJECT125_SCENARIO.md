@@ -933,3 +933,17 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE ANALYSIS RECORDED / NO TRANSFER LOGIC CHANGED / BUILD AND RUNTIME NOT VERIFIED.
 
 | 2026-11-03 | A1.57 document GS105a protocol from AD13/SE01/ZF6 and analyze A3 boundary race | ANALYSIS RECORDED | Added command ordering, DBIT semantics and a testable explanation for the A38 high-length-byte stall. |
+## A1.58 — потоковая загрузка NEOLOAD.C блоками GS105a #14 (2026-11-03)
+
+- [x] Убрано ограничение загрузчика одним сектором и 254 байтами: допустимый размер NEOLOAD.C увеличен до 2048 байт.
+- [x] Host передаёт каждый сектор (или остаток последнего сектора) отдельной командой GS105a #14 непосредственно в последовательную область NeoGS RAM `$4000-$47FF`.
+- [x] Следующий сектор TR-DOS читается в буфер `$C000` только после завершения передачи предыдущего блока; весь NEOLOAD.C в host RAM не собирается.
+- [x] Для каждого блока заново формируется отрицательная 16-битная длина #14 и адрес назначения; длина последнего блока равна фактическому остатку файла.
+- [x] Область загрузчика ограничена `$4000-$47FF`, не пересекая временную область stage-1 `$4800-$4FFF`.
+- [x] Обновлены packer, ASM ASSERT и driver build ID `20261103-A39`.
+- [ ] Собрать `build.bat`: проверить SjASMPlus, ASSERT, размер NEOLOAD.C и отсутствие ошибок диапазона переходов.
+- [ ] Runtime: проверить файл размером больше 256 байт (минимум 508 байт), подтвердить все блоки #14, запуск bootstrap с `$4000` и дальнейшую загрузку NEOFW.C.
+- [ ] Runtime stress: проверить максимальный NEOLOAD.C размером 2048 байт.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME NOT VERIFIED. Не считать загрузку подтверждённой до проверки в Unreal Speccy.
+
+| 2026-11-03 | A1.58 stream NEOLOAD.C through sector-sized GS105a #14 blocks | SOURCE COMMITTED | NEOLOAD.C up to 2048 bytes is streamed sector-by-sector into $4000-$47FF; next TR-DOS sector is read only after the previous block completes. |
