@@ -100,6 +100,12 @@ neogs_bios_load_from_trdos:
         call    bios_trdos_read_next_sector
         jr      c, .bios_stream_disk_error
 
+        ; The final sector contains BIOS offsets 1F00..1FFF. Print the
+        ; expected reset-vector bytes from its buffer before DMA consumes it.
+        ld      a, (bios_trdos_sectors_left)
+        or      a
+        call    z, bios_trdos_debug_dump_tail
+
         ld      hl, BIOS_TRDOS_BUFFER
         call    neogs_bios_transfer_sector
         jr      c, .bios_stream_sender_error
@@ -217,6 +223,66 @@ bios_trdos_read_next_sector:
 .bios_sector_io_error:
         scf
         ret
+
+; Emit BIOS file bytes at offsets 1FF0..1FF4 from the final sector.
+; Output is hexadecimal on host debug port #EF.
+bios_trdos_debug_dump_tail:
+        push    bc
+        push    de
+        push    hl
+        ld      hl, bios_trdos_debug_prefix
+.bios_debug_prefix_loop:
+        ld      a, (hl)
+        inc     hl
+        or      a
+        jr      z, .bios_debug_prefix_done
+        ld      bc, #00EF
+        out     (c), a
+        jr      .bios_debug_prefix_loop
+.bios_debug_prefix_done:
+        ld      hl, BIOS_TRDOS_BUFFER + #00F0
+        ld      b, 5
+.bios_debug_tail_loop:
+        ld      a, (hl)
+        call    bios_trdos_debug_hex8
+        ld      a, ' '
+        ld      bc, #00EF
+        out     (c), a
+        inc     hl
+        djnz    .bios_debug_tail_loop
+        ld      a, 13
+        ld      bc, #00EF
+        out     (c), a
+        ld      a, 10
+        out     (c), a
+        pop     hl
+        pop     de
+        pop     bc
+        ret
+
+; IN A=byte. Print two uppercase hexadecimal digits to port #EF.
+bios_trdos_debug_hex8:
+        push    af
+        rrca
+        rrca
+        rrca
+        rrca
+        and     #0F
+        call    bios_trdos_debug_hex_nibble
+        pop     af
+        and     #0F
+bios_trdos_debug_hex_nibble:
+        add     a, '0'
+        cp      '9' + 1
+        jr      c, .bios_hex_digit
+        add     a, 7
+.bios_hex_digit:
+        ld      bc, #00EF
+        out     (c), a
+        ret
+
+bios_trdos_debug_prefix:
+        defb    "[BIOS SRC FFF0] ", 0
 
 bios_trdos_filename:
         defb    "BIOS    "
