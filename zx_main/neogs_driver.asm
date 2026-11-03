@@ -1207,4 +1207,4 @@ neo_fw_initial_status:  db 0
 neo_fw_last_status:     db 0
 neo_fw_timeout_phase:   db 0
 neo_fw_last_tx_phase:   db 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A12", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A13", 13, 10, 0
