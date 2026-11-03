@@ -861,3 +861,19 @@
 - **Статус:** SOURCE UPDATED / NOT BUILT / NOT RUNTIME. Исправление основано на реальном scheduler hook в исходнике эмулятора, но запуск ещё не подтверждён.
 
 | 2026-11-03 | A1.52 force NeoGS scheduler progress after READY | SOURCE UPDATED | Replace passive delay with 512 GSSTAT reads, each flushing the emulated NeoGS Z80 before length-low is sent. |
+
+
+## A1.54 — возврат к проверенному загрузочному протоколу Project124 V1 (2026-11-03)
+
+- [x] Удалён приватный handshake #A6/CBIT из host и bootstrap. Его не было в рабочей реализации Project124; он блокировал bootstrap перед приёмом длины.
+- [x] Восстановлена последовательность V1: GS105a #13 → передача #40 → приём #A1 → длина low/high → приём #A3 → поток firmware → приём #A2.
+- [x] READY #A1 отправляется штатной процедурой `bootstrap_send_data_byte`, которая ожидает чтения байта хостом и снятия DBIT.
+- [x] Host `gs_boot_send_data_byte` возвращён к алгоритму V1: GSDAT write → ожидание снятия DBIT, без искусственной задержки #0015.
+- [x] Удалены дополнительные host delay/handshake между байтами длины. Формат и порядок байтов восстановлены по Project124.
+- [x] NeoGS firmware `neo_send_data_byte` / `neo_receive_data_byte` сверены с Project124 V1: транспортный алгоритм совпадает; не переписывался.
+- [x] Driver build ID: `20261103-A38`.
+- [ ] Локальная сборка `build.bat`: проверить SjASMPlus, ASSERT и фактический размер `NEOLOAD.C <= 254` байта.
+- [ ] Runtime Unreal Speccy: подтвердить #A1, #A3, полный firmware stream, #A2 и двусторонний IPC.
+- **Статус:** SOURCE COMMITTED; BUILD NOT RUN HERE; RUNTIME NOT VERIFIED. Это возврат к известному V1, а не заявление о runtime PASS.
+
+A1.50–A1.53 признаны неудачными экспериментами и не являются базой дальнейшей разработки. Контрольная реализация протокола: Project124 commit `54b89e1f22bc6b7b62002dc3a4951590b672205e`.
