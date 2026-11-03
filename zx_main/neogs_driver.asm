@@ -287,6 +287,7 @@ upload_firmware::
         ld      (neo_fw_tx_wait_state), a
         ld      (neo_fw_last_tx_byte), a
         ld      (neo_fw_last_tx_phase), a
+        ld      (neo_fw_rx_probe_valid), a
         in      a, (GSSTAT)
         ld      (neo_fw_initial_status), a
         ld      (neo_fw_last_status), a
@@ -444,7 +445,23 @@ upload_firmware::
         ld      hl, (neo_fw_length)
         ld      a, l
         call    gs_boot_send_data_byte
-        jp      c, .upload_failed
+        jr      nc, .phase7_length_low_tx_done
+        xor     a
+        ld      (neo_fw_rx_probe_valid), a
+        ld      a, (neo_fw_tx_wait_state)
+        cp      2
+        jr      nz, .phase7_length_low_probe_done
+        in      a, (GSSTAT)
+        ld      (neo_fw_last_status), a
+        bit     B_DBIT, a
+        jr      z, .phase7_length_low_probe_done
+        in      a, (GSDAT)
+        ld      (neo_fw_last_rx_byte), a
+        ld      a, 1
+        ld      (neo_fw_rx_probe_valid), a
+.phase7_length_low_probe_done:
+        jp      .upload_failed
+.phase7_length_low_tx_done:
         ld      a, h
         call    gs_boot_send_data_byte
         jr      nc, .phase7_length_high_tx_done
@@ -1202,9 +1219,10 @@ neo_fw_last_tx_byte:    db 0
 ; 0=idle/acknowledged, 1=waiting for a free host data slot, 2=waiting for NeoGS ACK.
 neo_fw_tx_wait_state:   db 0
 neo_fw_last_rx_byte:    db 0
+neo_fw_rx_probe_valid:  db 0
 neo_fw_bytes_sent:      dw 0
 neo_fw_initial_status:  db 0
 neo_fw_last_status:     db 0
 neo_fw_timeout_phase:   db 0
 neo_fw_last_tx_phase:   db 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A13", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A14", 13, 10, 0
