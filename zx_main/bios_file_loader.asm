@@ -185,6 +185,10 @@ bios_trdos_read_next_sector:
         scf
         ret
 .bios_sector_available:
+        ; Record and print the exact internal TR-DOS cursor before each read.
+        ; This confirms the catalogue start and every 0..15 track rollover.
+        call    bios_trdos_debug_dump_position
+
         ld      a, (bios_trdos_track)
         ld      d, a
         ld      a, (bios_trdos_sector)
@@ -223,6 +227,41 @@ bios_trdos_read_next_sector:
         ret
 .bios_sector_io_error:
         scf
+        ret
+
+; Print the exact TR-DOS internal track/sector requested by C=#05.
+; Project124/TR-DOS 5.04T uses internal sector IDs 0..15.
+bios_trdos_debug_dump_position:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, bios_trdos_position_prefix
+.bios_pos_prefix_loop:
+        ld      a, (hl)
+        inc     hl
+        or      a
+        jr      z, .bios_pos_prefix_done
+        ld      bc, #00EF
+        out     (c), a
+        jr      .bios_pos_prefix_loop
+.bios_pos_prefix_done:
+        ld      a, (bios_trdos_track)
+        call    bios_trdos_debug_hex8
+        ld      a, '/'
+        ld      bc, #00EF
+        out     (c), a
+        ld      a, (bios_trdos_sector)
+        call    bios_trdos_debug_hex8
+        ld      a, 13
+        ld      bc, #00EF
+        out     (c), a
+        ld      a, 10
+        out     (c), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
         ret
 
 ; Emit BIOS file bytes at offsets 1FF0..1FF4 from the final sector.
@@ -283,6 +322,8 @@ bios_trdos_debug_hex_nibble:
         out     (c), a
         ret
 
+bios_trdos_position_prefix:
+        defb    "[BIOS READ] ", 0
 bios_trdos_debug_prefix:
         defb    "[BIOS SRC FFF0] ", 0
 
