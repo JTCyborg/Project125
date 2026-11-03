@@ -364,7 +364,8 @@ upload_firmware::
         ld      hl, 256
         ld      (neo_fw_buffer_remaining), hl
 
-        ; Phase 5: #13 JUMP TO ADDRESS.
+        ; Phase 5: #13 JUMP TO ADDRESS. Exact Project124 V1 sequence:
+        ; send address low as command argument, issue #13, then send #40.
         ld      a, 5
         ld      (neo_fw_timeout_phase), a
         xor     a
@@ -375,34 +376,9 @@ upload_firmware::
         jp      c, .upload_failed
         ld      a, #40
         call    gs_boot_send_data_byte
-        jr      nc, .phase5_jump_tx_done
-
-        ; The bootstrap can consume #40 and publish #A1 before the host
-        ; samples the brief DBIT-low interval. DBIT high can mean #A1 pending.
-        ld      a, (neo_fw_tx_wait_state)
-        cp      2
-        jp      nz, .upload_failed
-        ld      a, (neo_fw_last_tx_phase)
-        cp      5
-        jp      nz, .upload_failed
-        in      a, (GSSTAT)
-        ld      (neo_fw_last_status), a
-        bit     B_DBIT, a
-        jp      z, .upload_failed
-        ld      a, 6
-        ld      (neo_fw_timeout_phase), a
-        call    gs_boot_receive_data_byte
         jp      c, .upload_failed
-        cp      NGS_BOOTSTRAP_READY_ACK
-        jp      nz, .upload_failed
-        ld      hl, (neo_fw_bytes_sent)
-        inc     hl
-        ld      (neo_fw_bytes_sent), hl
-        xor     a
-        ld      (neo_fw_tx_wait_state), a
-        jr      .phase5_jump_ready
 
-.phase5_jump_tx_done:
+        ; Phase 6: wait for bootstrap READY #A1.
         ld      a, 6
         ld      (neo_fw_timeout_phase), a
         call    gs_boot_receive_data_byte
@@ -410,29 +386,13 @@ upload_firmware::
         cp      NGS_BOOTSTRAP_READY_ACK
         jp      nz, .upload_failed
 
-.phase5_jump_ready:
-        ; The DBIT flag is shared by both data directions. After the host
-        ; consumes #A1, keep the slot idle long enough for NeoGS to observe
-        ; DBIT=0 before publishing the first length byte. Project124 V1 uses
-        ; the same #0400-iteration turnaround in gs_boot_receive_data_byte.
-        ; The A28+ bootstrap now waits for length without a local timeout.
-        push    bc
-        ld      bc, #0400
-.phase5_ready_turnaround:
-        dec     bc
-        ld      a, b
-        or      c
-        jr      nz, .phase5_ready_turnaround
-        pop     bc
-
-        ; Phase 7: send length low/high and receive the #A3 acceptance ACK.
+        ; Phase 7: exact Project124 V1 length exchange: low, high, ACK #A3.
         ld      a, 7
         ld      (neo_fw_timeout_phase), a
         ld      hl, (neo_fw_length)
         ld      a, l
         call    gs_boot_send_data_byte
         jp      c, .upload_failed
-        ld      hl, (neo_fw_length)
         ld      a, h
         call    gs_boot_send_data_byte
         jp      c, .upload_failed
@@ -440,7 +400,6 @@ upload_firmware::
         jp      c, .upload_failed
         cp      NGS_BOOTSTRAP_LENGTH_ACK
         jp      nz, .upload_failed
-
 
         ; Phase 8: stream the custom firmware to RAM address $0000.
         ld      a, 8
@@ -989,7 +948,6 @@ gs_boot_send_data_byte:
         ld      (neo_fw_last_tx_byte), a
         ld      a, (neo_fw_timeout_phase)
         ld      (neo_fw_last_tx_phase), a
-        ld      a, (neo_fw_tx_byte)
         ld      a, 1
         ld      (neo_fw_tx_wait_state), a
         ld      bc, FW_BYTE_TIMEOUT
@@ -1002,10 +960,6 @@ gs_boot_send_data_byte:
         ld      a, b
         or      c
         jr      nz, .data_wait_free
-        ; Keep neo_fw_timeout_phase unchanged. The independent TXSTATE
-        ; distinguishes pre-write (1) from post-write (2) timeout.
-        ; Do not store pseudo-phases #531/#532 in this one-byte field:
-        ; they truncate and can masquerade as unrelated phases (#31/#32).
         scf
         ret
 .data_slot_free:
@@ -1023,8 +977,6 @@ gs_boot_send_data_byte:
         ld      a, b
         or      c
         jr      nz, .data_wait_consumed
-        ; TXSTATE=2 means the byte was written but DBIT did not clear.
-        ; Preserve the original phase for an unambiguous error report.
         scf
         ret
 .data_consumed:
@@ -1172,4 +1124,4 @@ msg_p7_high_tx:        db "[P125] PH7 TX HIGH", 13, 10, 0
 msg_p7_high_ok:       db "[P125] PH7 HIGH ACK", 13, 10, 0
 msg_p7_wait_a3:        db "[P125] PH7 WAIT A3", 13, 10, 0
 msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A30", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A38", 13, 10, 0

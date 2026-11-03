@@ -640,3 +640,252 @@
 - [ ] Windows build: проверить сборку, размер `NEOLOAD.C` (1..254 байта), отсутствие ошибок/переполнения относительных переходов.
 - [ ] Runtime: проверить, что после паузы #0400 DBIT сбрасывается, принимаются #C5/#3D, возвращается #A3, затем передаётся весь NEOFW.C и приходит #A2.
 - Статус: IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Это восстановление turnaround из Project124 V1 с учётом неограниченного ожидания длины в A28.
+
+
+## A1.36 — единый приёмник для длины и payload (2026-11-03)
+
+- [x] По runtime A30 установлено: байт длины #C5 был принят (host перешёл к следующему байту #3D), но второй байт остался с DBIT=1. Специальный приёмник длины с `IN A,(C)` не дал улучшения относительно предыдущих вариантов.
+- [x] Удалён отдельный `bootstrap_receive_length_byte`, использовавший `BC=#FF04/#FF02`. Оба байта длины теперь принимаются тем же `bootstrap_receive_data_byte`, что и весь firmware payload: `IN A,(ZXSTAT)` → `IN A,(ZXDATRD)`.
+- [x] Устранено расхождение двух реализаций одного и того же DBIT handshake.
+- [x] Host build marker обновлён до `DRIVER 20261103-A31`, чтобы runtime-лог отличал новую сборку от A30. На NeoGS осталась одна реализация приёма входящего байта с ограниченным ожиданием и диагностическим ACK `#E1` при timeout.
+- [ ] SjASMPlus build: проверить размер `NEOLOAD.C` (1..254 байта), адреса, относительные переходы и упаковку TR-DOS.
+- [ ] Runtime: проверить, что принимаются оба байта длины (`#C5/#3D` для текущего файла), приходит `#A3`, затем проходит весь firmware stream и приходит `#A2`.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Это устранение дублирующей реализации handshake, а не подтверждённый runtime-fix.
+
+
+## A1.37 — раздельный приём длины и межбайтовый DBIT turnaround (2026-11-03)
+
+- [x] Зафиксировано сравнение Project124 V1 и Project125 A31: Project124 выдерживает turnaround после каждого принятого байта NeoGS; Project125 A31 оставил задержку только после READY #A1.
+- [x] Runtime A30: первый байт длины #C5 был принят, но второй #3D не получил подтверждения DBIT.
+- [x] Runtime A31: первый байт #C5 снова не получил подтверждения DBIT после возврата к общему приёмнику.
+- [x] В bootstrap возвращён отдельный приём двух байтов длины через явную адресацию local ports #FF04/#FF02; payload остаётся на общем приёмнике.
+- [x] В host добавлен #0400 turnaround между подтверждённым младшим и отправкой старшего байта длины.
+- [x] Маркер драйвера обновлён до A32.
+- [ ] SjASMPlus build: проверить размер NEOLOAD.C (1..254 байта), host ASSERT ProgramEnd <= #A800 и отсутствие ошибок.
+- [ ] Runtime: проверить #A1, приём #C5, приём #3D, ACK #A3, полный NEOFW stream и ACK #A2.
+- [ ] Regression: повторить BIOS.C load, video CRC self-test и BIOS boot pipeline.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Это диагностическая комбинация двух ранее частично проверенных изменений, а не подтверждённое исправление.
+
+| 2026-11-03 | Restore fixed-port length RX and add inter-byte turnaround | IMPLEMENTED / NOT BUILT | Combines the A30 first-byte progress with an explicit gap before the high length byte; runtime verification pending. |
+
+
+## A1.38 — явное выключение ZX DMA при входе в bootstrap (2026-11-03)
+
+- [x] В DMA документации подтверждено: DMA управляется выбранным модулем через DMA_MOD, а бит 7 DMA_CST включает/выключает DMA; чтение и запись нельзя интерливить без выключения DMA.
+- [x] Установлено, что bootstrap Project125 ранее не обращался к DMA_MOD/DMA_CST после входа из GS105a RECEIVE BLOCK (#14) и JUMP (#13).
+- [x] В начале bootstrap добавлено явное выключение модуля C_DMA_ZX: запись 1 в DMA_MOD, затем 0 в DMA_CST.
+- [x] Добавлена короткая пауза после выключения DMA перед переключением на байтовый GSDAT handshake.
+- [ ] Сборка SjASMPlus: проверить include DMA_CST/DMA_MOD, размер NEOLOAD.C и ограничения размещения.
+- [ ] Runtime: подтвердить #A1, #C5, #3D, #A3, весь поток NEOFw и #A2.
+- [ ] Regression: BIOS load, x86 boot, DMA x86 window #5000-#7FFF, video CRC.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Причина правки подтверждена DMA-документацией; runtime-эффект ещё не подтверждён.
+
+| 2026-11-03 | Explicitly disable ZX DMA at bootstrap entry | IMPLEMENTED / NOT BUILT | Stop any DMA left enabled by GS105a RECEIVE BLOCK before switching to byte-wise GSDAT transfer. |
+
+
+## A1.39 — settling window после записи каждого GSDAT byte (2026-11-03)
+
+- [x] Runtime A38: после изменений A1.38 диагностический TXBYTE изменился с #C5 на #3D; хост завершил передачу младшего байта длины и перешёл к старшему. Ошибка теперь возникает после записи #3D при ожидании DBIT clear (TXSTATE=#02, GSSTAT=#FE).
+- [x] Уточнена точка отказа: межбайтовый #0400 turnaround в фазе длины уже существует между успешной отправкой low и вызовом отправки high. Поэтому добавлена отдельная пауза непосредственно после OUT (GSDAT),A, до начала polling DBIT.
+- [x] Пауза реализована в фактически используемой процедуре gs_boot_send_data_byte файла zx_main/neogs_driver.asm. Изолированный zx_main/neogs_transport_v2.asm не является активным путём этой загрузки и не изменялся.
+- [x] Добавлен цикл BC=#0015 сразу после физической записи каждого байта. После паузы запускается штатное bounded ожидание DBIT clear; тайм-ауты и учёт подтверждённых байтов сохранены.
+- [ ] SjASMPlus build: проверить синтаксис/размеры и все ASSERT.
+- [ ] Runtime: проверить, что #3D подтверждается, приходит ACK #A3, затем проходит полный поток NEOFW и приходит ACK #A2 / [P125] NEOGS FIRMWARE READY.
+- [ ] Regression: BIOS load, x86 boot, DMA window #5000–#7FFF, video CRC.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Изменение является timing experiment; прохождение runtime должно подтвердить его эффективность.
+
+| 2026-11-03 | Add post-OUT GSDAT settling window | IMPLEMENTED / NOT BUILT | Delay DBIT polling for #0015 iterations immediately after each host GSDAT write. |
+
+
+## A1.40 — аудит синхронизации Unreal Speccy и DBIT handshake (2026-11-03)
+
+- [x] Проверен исходный код Unreal Speccy `gsz80.cpp`: `out_gs()` вызывает `flush_gs_z80()` до изменения `gsdata_out` при записи в GSDAT.
+- [x] Проверен `in_gs()`: перед чтением GSDAT/GSSTAT также вызывается `flush_gs_z80()`.
+- [x] Проверен `gsz80.inl`: `z80loop()` исполняет NeoGS Z80 до временной отметки, вычисленной из `cpu.t`, `GSCPUFQI`, `conf.frame` и `gscpu_t_at_frame_start`. Поэтому гипотеза о безусловном выполнении хостом целого кадра без синхронизации NeoGS не подтверждается для этой версии исходников.
+- [x] Подтверждено, что `in()` на NeoGS порту #03 имеет побочный эффект DBIT=1, но штатный bootstrap читает ZXDATRD=#02. Ошибочное чтение #03 было бы отдельной ошибкой адресации, не установленной в текущем коде.
+- [x] Повторно проверен активный `gs_boot_send_data_byte` в `zx_main/neogs_driver.asm`: после `OUT (GSDAT),A` он ожидает DBIT=0 в `.data_wait_consumed` с ограниченным тайм-аутом. Между вызовами отправки уже обеспечено подтверждение потребления предыдущего байта.
+- [x] Дополнительный `call ngt_wait_dbit_clear` в неактивном `neogs_transport_v2.asm` не добавлен: текущая загрузка использует `gs_boot_send_data_byte`, а дублирование уже имеющегося ожидания не исправляет доказанную проблему.
+- [ ] Runtime: проверить следующий запуск на текущей сборке; записать статус и `TXBYTE` для фазы #07.
+- [ ] Если отказ повторится, снять трассу порядка host OUT GSDAT → NeoGS IN ZXDATRD → host IN GSSTAT с временными отметками; отдельно проверить точную версию/сборку Unreal Speccy, используемую пользователем.
+- **Статус:** SOURCE AUDIT COMPLETE / NO DRIVER CHANGE / RUNTIME PENDING. Вывод относится к проверенной реализации Unreal Speccy; соответствие локального исполняемого файла этой версии ещё нужно подтвердить.
+
+| 2026-11-03 | Audit emulator-side GS Z80 synchronization | SOURCE AUDIT COMPLETE | Confirmed flush_gs_z80 before host GSDAT writes and GSSTAT reads; active host driver already waits for DBIT clear after every byte. |
+
+
+
+## A1.41 — NeoGS bootstrap trace через локальный debug port #EF (2026-11-03)
+
+- [x] Подтверждён host debug output через порт #EF в `zx_main/main.asm`; для NeoGS добавлен вывод напрямую из Z80 bootstrap в аналогичный локальный порт #EF.
+- [x] Добавлены компактные маркеры без использования GSDAT/GSSTAT: `B` — bootstrap вошёл; `1` — перед публикацией READY #A1; `L` — вход в приём одного байта длины; `S` — ZXSTAT показал DBIT=1; `R` — чтение ZXDATRD завершилось.
+- [x] Маркеры `L/S/R` выводятся отдельно для каждого байта длины. Ожидаемая последовательность при нормальном ходе: `B1LSRLSR`, затем отправка #A3.
+- [x] Отладочные байты идут напрямую через `OUT (#EF),A`; транспортный канал GSDAT/GSSTAT не используется и не изменяется.
+- [ ] SjASMPlus build: проверить размер бинарного NEOLOAD.C (обязательный предел 1..254 байта), адреса и относительные переходы.
+- [ ] Runtime: снять лог NeoGS-порта #EF и сопоставить маркеры с host TXBYTE/GSSTAT. Если последовательность обрывается на `B1L`, NeoGS не видит DBIT=1; если есть `S`, но нет `R`, зависание локализуется на чтении ZXDATRD/его I/O mapping.
+- [ ] После диагностического запуска удалить или отключить трассировку, если она влияет на тайминги.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Адрес #EF принят по аналогии с ATM host debug port; локальная реализация и фактический вывод должны быть подтверждены запуском.
+
+| 2026-11-03 | Add NeoGS-local bootstrap trace on port #EF | IMPLEMENTED / NOT BUILT | Emits B/1/L/S/R markers around bootstrap entry, READY and both length-byte receive steps. |
+
+
+## A1.42 — устранение гонки DBIT между READY #A1 и длиной (2026-11-03)
+
+- [x] По runtime-логу NeoGS установлено: выводится последовательность только `B1`; bootstrap входит и доходит до публикации READY, но не доходит до маркера `L`.
+- [x] По исходному коду локализовано зависание: `bootstrap_send_data_byte` после публикации `#A1` ждёт DBIT=0. Хост после чтения `#A1` выдерживает фиксированный интервал и публикует `#C5`; если NeoGS не успевает увидеть промежуточный DBIT=0, новый DBIT=1 неотличим от неподтверждённого `#A1`.
+- [x] Для READY введена отдельная публикация: прямой `OUT (ZXDATWR),A` с `#A1`, затем немедленный переход к приёму длины. Обычный TX handshake для остальных ответов не менялся.
+- [x] Хост по-прежнему сначала ожидает и читает `#A1`, поэтому отправка первого байта длины остаётся упорядоченной протоколом; приёмник NeoGS теперь сам потребляет `#C5`, не требуя поймать короткий DBIT-low промежуток.
+- [ ] SjASMPlus build: проверить синтаксис, размер NEOLOAD.C (1..254 байта), адреса и относительные переходы.
+- [ ] Runtime: ожидаемая трасса начинается `B1L`, затем `S/R` для каждого байта длины; подтвердить `#C5/#3D`, ACK `#A3`, полный поток NEOFw и ACK `#A2`.
+- [ ] Regression: BIOS load, x86 boot, DMA window и video CRC.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Исправление следует из наблюдаемой последовательности и анализа handshake; runtime-подтверждение обязательно.
+
+| 2026-11-03 | Bypass READY post-send DBIT-clear wait | IMPLEMENTED / NOT BUILT | NeoGS now publishes #A1 and immediately enters length RX, avoiding a missed DBIT-low interval if host sends #C5 quickly. |
+
+
+## A1.43 — диагностика фактических байтов длины NeoGS (2026-11-03)
+
+- [x] Предыдущий runtime A32 дал NeoGS trace `B1LSRL`: первый байт был прочитан, второй приёмник не увидел. При этом host error snapshot сохранил TXBYTE=`#40`, TXPHASE=`#05`, TXSTATE=`#00`, поэтому он не доказывал, что в фазе длины был отправлен `#C5`.
+- [x] Диагностические маркеры bootstrap `B/1/L/S/R` заменены выводом двух ASCII hex-цифр фактически прочитанного байта через локальный порт `#EF`. Полученные значения сохраняются в A и используются штатным кодом длины.
+- [x] Host marker `l` выводится непосредственно перед отправкой младшего байта длины, marker `h` — непосредственно перед отправкой старшего. Маркер сборки драйвера обновлён до A33.
+- [x] Протокол GSDAT/ZXDAT, порядок передачи, тайминги, ACK и firmware payload не менялись; это диагностическое изменение.
+- [ ] SjASMPlus build: проверить размер NEOLOAD.C (1..254 байта), корректность helper и отсутствие переполнения.
+- [ ] Runtime: проверить совмещённые логи host/NeoGS. После host marker `l` NeoGS должен вывести `C5`, после marker `h` — `3D`; затем ожидается ACK `#A3`, полный NEOFW stream и ACK `#A2`.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Изменение только добавляет наблюдаемость; оно не заявляется как исправление DBIT handshake.
+
+| 2026-11-03 | Trace actual NeoGS length bytes and host send boundaries | IMPLEMENTED / NOT BUILT | NeoGS prints each consumed length byte as two hex digits; host prints l/h immediately before the corresponding send. |
+
+
+## A1.44 — корректный адрес чтения stale byte перед READY (2026-11-03)
+
+- [x] Runtime A33: NeoGS hex trace показал принятый bootstrap байт `#40` (логовые ASCII bytes `34 30`). Это совпадает с high byte адреса `#4000`, передаваемым host после GS105a `#13 JUMP ADDRESS`; host остановился в фазе #06 до начала передачи длины.
+- [x] Повторная проверка Z80 I/O выявила конкретную ошибку: ранняя очистка latch использовала `IN A,(ZXDATRD)`. Для этой формы Z80 формирует старший байт I/O-адреса из прежнего значения A, а не из страницы `#FF`. Поэтому инструкция не гарантировала чтение NeoGS `#FF02`.
+- [x] Исправлено на явную адресацию `LD BC,#FF02 / IN A,(C)`. Это та же фиксированная local-I/O адресация, которая уже используется в приёмнике байтов длины.
+- [x] Host marker обновлён до A34. Остальная передача, READY и timing не менялись; hex trace A1.43 оставлен для проверки фактического байта после очистки.
+- [ ] SjASMPlus build: проверить размер NEOLOAD.C (1..254 байта), адреса и ASSERT.
+- [ ] Runtime: подтвердить, что bootstrap больше не принимает `#40` как длину; host должен перейти через READY `#A1`, markers `l/h`, принятые байты `#C5/#3D`, ACK `#A3`, firmware stream и ACK `#A2`.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Причина ошибки подтверждается семантикой Z80 `IN A,(n)`; исправление ожидает сборку и runtime-проверку.
+
+| 2026-11-03 | Fix NeoGS stale-latch read address before READY | IMPLEMENTED / NOT BUILT | Use BC=#FF02 with IN A,(C), not IN A,(n), to read the actual NeoGS local data port. |
+
+
+## A1.45 — trace границы GS105a #13 → bootstrap READY (2026-11-03)
+
+- [x] Удалён hex helper A1.43: он портил A после чтения байта и не мог использоваться для диагностики длины. Теперь `bootstrap_receive_length_byte` возвращает исходный байт без изменения.
+- [x] Добавлены локальные NeoGS markers: `B` — вход bootstrap; `C` — после очистки stale latch чтением #FF02; `R` — непосредственно перед публикацией READY #A1; `l`/`h` — после приёма первого/второго байта длины.
+- [x] Добавлены host markers: `J` — перед GS105a #13; `K` — после завершения CBIT команды; `4` — перед отправкой high address byte #40; `T` — sender #40 завершился успешно; `X` — sender #40 вернул carry.
+- [x] Driver marker обновлён до A35. Протокол, значения команд, задержки и таймауты не изменялись.
+- [ ] Build: проверить размер NEOLOAD.C (допустимый диапазон 1..254), все ASSERT и отсутствие переполнения первого сектора.
+- [ ] Runtime: прислать полную трассу #EF и host error diagnostics. Последовательность markers определит, дошёл ли host до #13, вошёл ли bootstrap, очистился ли latch, был ли опубликован READY и кто первым изменил DBIT.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME.
+
+| 2026-11-03 | A1.45 trace ROM jump / bootstrap READY boundary | IMPLEMENTED / NOT BUILT | Host J/K/4/T/X and NeoGS B/C/R/l/h markers; raw received A is preserved. |
+
+
+## A1.46 — восстановление приёмника длины bootstrap (2026-11-03)
+
+- [x] Исправлена ошибка сборки: два вызова `bootstrap_receive_length_byte` существовали без определения процедуры.
+- [x] Добавлен отдельный bounded receiver для двух байтов длины: опрос NeoGS local ZXSTAT по #FF04, чтение данных по #FF02; независимый счётчик DE не перезаписывается адресом порта BC; при тайм-ауте переход в штатный `bootstrap_timeout`.
+- [x] Общий приёмник firmware payload и handshake/тайминги host не изменялись.
+- [ ] SjASMPlus build: проверить синтаксис, относительные переходы и размер NEOLOAD.C (1..254 байта).
+- [ ] Runtime: снять полную трассу A1.45/A1.46 и подтвердить READY, оба байта длины, ACK и загрузку firmware.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME.
+
+
+
+## A1.47 — объединение приёмника длины и firmware payload (2026-11-03)
+
+- [x] Устранено дублирование: оба байта длины принимаются тем же bounded receiver, что и firmware payload.
+- [x] Общий receiver использует явные NeoGS local-I/O адреса #FF04/#FF02 и независимый timeout counter DE; обращения `IN A,(n)` для этих портов исключены.
+- [x] Сохранены диагностические маркеры A1.45, порядок передачи и host driver.
+- [ ] SjASMPlus build: подтвердить `neogs_bootstrap_end - neogs_bootstrap_start <= 254`, NEOLOAD.C 1..254 байта и отсутствие ошибок.
+- [ ] Runtime: проверить полный trace READY/length/ACK/firmware.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME.
+
+
+
+## A1.48 — исправление объявления локальной метки host driver (2026-11-03)
+
+- [x] По логу локальной сборки подтверждено: NeoGS firmware и bootstrap собираются без ошибок; NEOLOAD.C = 237 байт, NEOFW.C = 15813 байт.
+- [x] Исправлено объявление `.phase5_jump_tx_done` в `zx_main/neogs_driver.asm`: удалён лишний отступ перед локальной меткой, из-за которого SjASMPlus воспринимал её как неизвестную инструкцию; переход `JR` оставался неразрешённым.
+- [x] Логика передачи #40, обработка раннего #A1, тайминги и протокол не менялись.
+- [ ] Повторная сборка ATM host: проверить отсутствие ошибок метки и JR range.
+- [ ] Runtime: проверить полный запуск NeoGS и последующие BIOS/x86 тесты.
+- **Статус:** SOURCE FIX APPLIED / NOT BUILT / NOT RUNTIME.
+
+| 2026-11-03 | A1.48 fix local label declaration | SOURCE FIX APPLIED | Corrected `.phase5_jump_tx_done` declaration; previous local build confirms bootstrap size limit passed, host assembly still pending. |
+
+
+## A1.49 — разделение host/NeoGS trace markers (2026-11-03)
+
+- [x] Runtime A35 host trace JK4T и NeoGS trace BCRl подтвердили вход в bootstrap и достижение READY; маркер l неоднозначен, поскольку его использовали обе стороны.
+- [x] NeoGS bootstrap markers: B — вход, C — после чтения latch, R — публикация READY, 1 — принят первый байт длины, 2 — принят второй байт.
+- [x] Host markers длины изменены на L и H; J/K/4/T/X сохранены. Driver build ID обновлён до A36.
+- [x] Протокол, порядок байтов, тайминги, ожидания DBIT и ACK не менялись. Только диагностическое разделение потоков.
+- [ ] Собрать через build.bat; проверить NEOLOAD.C <=254 байта и отсутствие ошибок ATM host.
+- [ ] Прислать полный host trace и отдельный NeoGS trace после A36. BCR1 означает, что NeoGS принял первый байт длины; JK4TL показывает, что host прошёл READY и начал передачу длины.
+- **Статус:** SOURCE UPDATED / NOT BUILT / NOT RUNTIME.
+
+| 2026-11-03 | A1.49 distinguish host and NeoGS trace markers | SOURCE UPDATED | NeoGS uses B/C/R/1/2; host uses J/K/4/T/X/L/H. No transport logic changed. |
+
+
+## A1.50 — NeoGS ожидает потребления READY перед приёмом длины (2026-11-03)
+
+- [x] Runtime A36: NeoGS trace `BCR1` при host error phase #06 показал, что bootstrap входил в приём длины при DBIT, всё ещё установленном собственной отправкой READY #A1.
+- [x] Добавлено bounded ожидание DBIT=0 после публикации #A1 и перед первым вызовом приёмника длины. Тайм-аут ведёт в существующий bootstrap_timeout.
+- [x] Host turnaround #0400, формат длины, ACK, payload и остальные тайминги не менялись.
+- [ ] build.bat: проверить размер NEOLOAD.C (не более 254 байт), ASSERT и сборку host.
+- [ ] Runtime: ожидаем NeoGS trace `BCR` без `1` до host marker `L`; затем `BCR1` и `BCR12`, host `JK4TLH`, ACK #A3 и передача NEOFW.
+- **Статус:** SOURCE FIX APPLIED / NOT BUILT / NOT RUNTIME.
+
+| 2026-11-03 | Wait for host to consume READY before receiving length | SOURCE FIX APPLIED | Prevent bootstrap from reading its own #A1 as the first length byte. |
+
+
+## A1.51 — корректная адресация локального ZXSTAT в READY wait (2026-11-03)
+
+- [x] Runtime A36: host дошёл до отправки length low #C5 (`JK4XL`), но TXSTATE #02; NeoGS trace `BCR` не показал приём байта. Bootstrap остановился в новом READY-consumed wait.
+- [x] Найдена ошибка адресации: `IN A,(ZXSTAT)` — immediate I/O использует A как старший байт адреса Z80 и не гарантирует доступ к NeoGS local port #FF04.
+- [x] Исправлено на `IN A,(C)` с B=#FF, C=#04; timeout counter перенесён в DE. Удалён только промежуточный marker C, чтобы компенсировать размер и сохранить лимит bootstrap.
+- [ ] SjASMPlus build: обязательно проверить NEOLOAD.C <=254 байта и ASSERT.
+- [ ] Runtime: ожидается `BR1` после host `L`, затем `BR12`, ACK #A3 и передача firmware.
+- **Статус:** SOURCE FIX APPLIED / NOT BUILT / NOT RUNTIME.
+
+| 2026-11-03 | Fix explicit local ZXSTAT addressing in READY wait | SOURCE FIX APPLIED | Use BC=#FF04 semantics via B=#FF, C=#04 and IN A,(C); keep bootstrap within 254-byte limit. |
+
+
+## A1.52 — принудительное продвижение NeoGS CPU после READY (2026-11-03)
+
+- [x] По исходнику Unreal Speccy `NeoGS/gsz80.cpp` подтверждено: каждый вызов host-side `in_gs()` выполняет `flush_gs_z80()` до чтения GSDAT/GSCOM.
+- [x] Простая задержка `#0400` на host не гарантирует, что планировщик эмулятора запустит NeoGS Z80 между снятием DBIT у READY `#A1` и публикацией length low.
+- [x] После приёма `#A1` host теперь выполняет 512 чтений GSSTAT (#BB). Каждое чтение проходит через `in_gs()` и продвигает NeoGS CPU, чтобы bootstrap успел увидеть DBIT=0 и выйти из READY wait до отправки `#C5`.
+- [ ] Собрать через `build.bat`; проверить отсутствие ошибок SjASMPlus и размер `NEOLOAD.C <= 254` байт.
+- [ ] Runtime в Unreal Speccy: NeoGS trace должен перейти с `BCR` на `BCR1` после host marker `L`, затем `BCR12`; host должен принять ACK `#A3`, передать весь NEOFW и получить `#A2`.
+- **Статус:** SOURCE UPDATED / NOT BUILT / NOT RUNTIME. Исправление основано на реальном scheduler hook в исходнике эмулятора, но запуск ещё не подтверждён.
+
+| 2026-11-03 | A1.52 force NeoGS scheduler progress after READY | SOURCE UPDATED | Replace passive delay with 512 GSSTAT reads, each flushing the emulated NeoGS Z80 before length-low is sent. |
+
+
+## A1.54 — возврат к проверенному загрузочному протоколу Project124 V1 (2026-11-03)
+
+- [x] Удалён приватный handshake #A6/CBIT из host и bootstrap. Его не было в рабочей реализации Project124; он блокировал bootstrap перед приёмом длины.
+- [x] Восстановлена последовательность V1: GS105a #13 → передача #40 → приём #A1 → длина low/high → приём #A3 → поток firmware → приём #A2.
+- [x] READY #A1 отправляется штатной процедурой `bootstrap_send_data_byte`, которая ожидает чтения байта хостом и снятия DBIT.
+- [x] Host `gs_boot_send_data_byte` возвращён к алгоритму V1: GSDAT write → ожидание снятия DBIT, без искусственной задержки #0015.
+- [x] Удалены дополнительные host delay/handshake между байтами длины. Формат и порядок байтов восстановлены по Project124.
+- [x] NeoGS firmware `neo_send_data_byte` / `neo_receive_data_byte` сверены с Project124 V1: транспортный алгоритм совпадает; не переписывался.
+- [x] Driver build ID: `20261103-A38`.
+- [ ] Локальная сборка `build.bat`: проверить SjASMPlus, ASSERT и фактический размер `NEOLOAD.C <= 254` байта.
+- [ ] Runtime Unreal Speccy: подтвердить #A1, #A3, полный firmware stream, #A2 и двусторонний IPC.
+- **Статус:** SOURCE COMMITTED; BUILD NOT RUN HERE; RUNTIME NOT VERIFIED. Это возврат к известному V1, а не заявление о runtime PASS.
+
+A1.50–A1.53 признаны неудачными экспериментами и не являются базой дальнейшей разработки. Контрольная реализация протокола: Project124 commit `54b89e1f22bc6b7b62002dc3a4951590b672205e`.
+
+
+## A1.55 — возврат byte receiver bootstrap к Project124 V1 (2026-11-03)
+
+- [x] По runtime A38 подтверждено: bootstrap дошёл до обоих маркеров приёма длины (1, 2), но host завис на отправке high byte #3D: TXSTATE=#02, TXBYTE=#3D, GSSTAT=#FE.
+- [x] В bootstrap_receive_data_byte восстановлен точный V1 доступ к NeoGS local ports: IN A,(ZXSTAT) для DBIT и IN A,(ZXDATRD) для чтения байта.
+- [x] Удалён экспериментальный receiver с явной адресацией IN A,(C) и отдельным счётчиком DE. Остальные этапы, формат длины, ACK и host driver не менялись.
+- [ ] Сборка build.bat: подтвердить NEOLOAD.C <= 254 байта, успешную сборку host и отсутствие ASSERT/JR ошибок.
+- [ ] Runtime: проверить, что host завершает отправку #3D (TXSTATE возвращается в 0), затем получает #A3, передаёт все 15813 байт NEOFW и получает #A2.
+- **Статус:** SOURCE COMMITTED; BUILD NOT VERIFIED; RUNTIME NOT VERIFIED. Это узкий возврат изменённого receiver к проверенному V1, не заявление об исправлении runtime.
+
+| 2026-11-03 | A1.55 restore V1 bootstrap receiver | SOURCE COMMITTED | Restore original ZXSTAT/ZXDATRD byte receiver after A38 high-length-byte DBIT timeout. |

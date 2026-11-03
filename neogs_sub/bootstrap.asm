@@ -15,6 +15,22 @@
 
 neogs_bootstrap_start:
         di
+        ld      a, 'B'
+        out     (#EF), a
+
+        ; GS105a RECEIVE BLOCK (#14) may leave the Spectrum DMA module
+        ; enabled. The bootstrap changes to byte-wise GSDAT transfers, so
+        ; explicitly stop ZX DMA before changing the transfer direction.
+        ld      a, C_DMA_ZX
+        out     (DMA_MOD), a
+        xor     a
+        out     (DMA_CST), a
+
+        ; Let the DMA control write settle before using the byte channel.
+        ld      b, 0
+.dma_disable_settle:
+        djnz    .dma_disable_settle
+
         ld      sp, #3FFF
 
         ; Enable writable RAM-over-ROM and independent WIN2/WIN3 paging.
@@ -41,21 +57,28 @@ neogs_bootstrap_start:
         ; Establish a known host-to-NeoGS data-channel baseline before READY.
         ; Reading ZXDATRD consumes any stale incoming byte and clears DBIT.
         ; This is required before the host starts the length stream after #A1.
-        in      a, (ZXDATRD)
+        ; Z80 IN A,(n) would use the current A as the high I/O address.
+        ; Select the NeoGS local page explicitly so this really reads #FF02.
+        ld      bc, #FF02
+        in      a, (c)
+        ; BC still has B=#FF from the explicit local port selection.
 
-        ; Tell Spectrum that the tiny loader is running and waiting for length.
+        ; Project124 V1: publish READY with the normal DBIT-aware sender.
+        ; The sender waits until the host consumes #A1 before returning.
+        ld      a, 'R'
+        out     (#EF), a
         ld      a, NGS_BOOTSTRAP_READY_ACK
         call    bootstrap_send_data_byte
 
-        ; Host sends length low byte, then high byte. The READY ACK has
-        ; already completed its DBIT turnaround; do not use the short bounded
-        ; payload receiver here. The host may need more than #FFFF NeoGS polls
-        ; to enter its next OUT, so wait until each length byte is actually
-        ; published instead of timing out and deadlocking on the host DBIT.
-        call    bootstrap_receive_length_byte
+        ; Exact V1 order: receive length low, then length high.
+        call    bootstrap_receive_data_byte
         ld      e, a
-        call    bootstrap_receive_length_byte
+        ld      a, '1'
+        out     (#EF), a
+        call    bootstrap_receive_data_byte
         ld      d, a
+        ld      a, '2'
+        out     (#EF), a
 
         ; Reject zero length and any image larger than the low 16-KiB window ($4000).
         ld      a, d
@@ -131,26 +154,8 @@ bootstrap_timeout:
         jr      nz, .timeout_wait_host
         jp      bootstrap_halt
 
-; Receive the two-byte firmware length without a local timeout.
-; The host has just consumed #A1 and may be entering its first OUT instruction.
-; Waiting indefinitely avoids a false timeout that would leave host DBIT set.
-bootstrap_receive_length_byte:
-.length_wait:
-        ; Use IN A,(C) with an explicit high address byte. IN A,(n) forms
-        ; the I/O address from A:n, so its upper byte is not guaranteed to
-        ; select the NeoGS local-port page while polling the host DBIT.
-        ld      bc, #FF04              ; ZXSTAT, full local I/O address
-        in      a, (c)
-        bit     B_DBIT, a
-        jr      z, .length_wait
-
-        ; Reading ZXDATRD is the documented acknowledge operation: it
-        ; consumes the host byte and clears DBIT.
-        ld      bc, #FF02              ; ZXDATRD, full local I/O address
-        in      a, (c)
-        ret
-
-; Wait for one byte from Spectrum. Reading ZXDATRD clears DBIT.
+; Wait for one byte from Spectrum. Keep the proven Project124 V1
+; local-port access sequence: DBIT polling followed by ZXDATRD read.
 bootstrap_receive_data_byte:
         ld      bc, #FFFF
 .rx_wait:
