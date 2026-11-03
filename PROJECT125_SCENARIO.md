@@ -137,10 +137,16 @@
 - [x] Добавлен `build_project125.bat` и отдельная точка сборки NeoGS baseline.
 - [ ] Выполнить первую сборку Project125 с sjasmplus; сохранить полный лог и размеры бинарников.
 - [ ] Исправить все ошибки/предупреждения сборки; не считать исходный Project124 код адаптированным до этого этапа.
-- [ ] Перенести BIOS из host в NeoGS backing pages 75-78 с проверкой целостности.
-- [ ] Реализовать ROM overlay `FE000h..FFFFFh` поверх гостевой RAM и запрет записи в BIOS.
-- [ ] Установить CPU reset state `CS:IP=F000:FFF0` и выполнить первый fetch/trace из BIOS.
-- [ ] Сверить первый trace с reset vector и дизассемблированием BIOS.
+- [x] Реализован NeoGS command CMD_LOAD_BIOS: DMA target 12C000h (page 75), после transfer проверяются header byte и пять reset-vector bytes.
+- [x] Реализован guest ROM overlay FE000h..FFFFFh на page 75; guest writes в ROM блокируются.
+- [x] Изменён guest RAM test: верхняя граница writable RAM — FDFFFh; добавлена проверка отказа записи в FE000h.
+- [x] Реализован детерминированный 8086 reset state CS:IP=FFFF:0000 и команда CMD_BOOT_BIOS.
+- [ ] Реализовать/подключить host-side чтение BIOS-файла с TR-DOS и передачу ровно 8192 bytes; DMA hardware path пока не проверен.
+- [ ] Выполнить первую сборку Project125 с sjasmplus; сохранить полный лог и размеры бинарников.
+- [ ] Исправить все ошибки/предупреждения сборки.
+- [ ] Проверить физический DMA destination 12C000h и содержимое page75 на целевой NeoGS.
+- [ ] Провести полный-image CRC/integrity check после загрузки.
+- [ ] Выполнить первый BIOS fetch/trace и сверить его с reset vector и дизассемблированием BIOS.
 
 ## Журнал архитектурных изменений и запусков
 
@@ -152,3 +158,5 @@
 | 2026-11-03 | Fixed physical reservations | DOCUMENTED | 128 KiB firmware (page 0 + pages 68-74) and separate 64 KiB BIOS backing (pages 75-78); requires 79 unique physical pages; no hardware validation yet |
 
 | 2026-11-03 | Первый импорт runtime и BIOS | IMPLEMENTATION STARTED | Импортированы исходные x86 modules и BIOS 8 KiB; проверен reset vector. Сборка/загрузка/исполнение Project125 ещё не проверены. |
+
+| 2026-11-03 | BIOS ROM overlay / reset / NeoGS load commands | IMPLEMENTED, NOT BUILT | Added fixed 8 KiB page-75 DMA receive command, ROM read-only decoder, write-protect regression and 8086 reset state FFFF:0000. Host transfer, build and runtime remain pending. |
