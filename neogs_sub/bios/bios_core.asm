@@ -71,29 +71,47 @@ bios_rom_reset_state:
 ; This is a structural check; full-image CRC is a separate transport task.
 bios_rom_validate:
         call    x86_mem_init
+
+        ; Identify the exact byte that fails validation. The low byte of
+        ; saved_x86_ax becomes B110..B115 on failure:
+        ; B110=header, B111..B115=reset-vector bytes FFF0..FFF4.
+        ld      a, 0
+        ld      (bios_rom_check_id), a
         ld      hl, #E000
         ld      a, #20
         call    bios_rom_expect_byte
-        ret     c
+        ret     nc
+        ld      a, 1
+        ld      (bios_rom_check_id), a
         ld      hl, #FFF0
         ld      a, #EA
         call    bios_rom_expect_byte
-        ret     c
+        ret     nc
+        ld      a, 2
+        ld      (bios_rom_check_id), a
         ld      hl, #FFF1
         ld      a, #5B
         call    bios_rom_expect_byte
-        ret     c
+        ret     nc
+        ld      a, 3
+        ld      (bios_rom_check_id), a
         ld      hl, #FFF2
         ld      a, #E0
         call    bios_rom_expect_byte
-        ret     c
+        ret     nc
+        ld      a, 4
+        ld      (bios_rom_check_id), a
         ld      hl, #FFF3
         xor     a
         call    bios_rom_expect_byte
-        ret     c
+        ret     nc
+        ld      a, 5
+        ld      (bios_rom_check_id), a
         ld      hl, #FFF4
         ld      a, #F0
         jp      bios_rom_expect_byte
+
+bios_rom_check_id: db 0
 
 ; IN: HL=low 16 address bits, A=expected byte. BIOS ROM is at high nibble 0F.
 bios_rom_expect_byte:
