@@ -1012,3 +1012,13 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.63 expose BIOS validation status and AX | SOURCE COMMITTED | Host prints NeoGS result frame when BIOS file/validation stage reports error #0A. |
+
+
+## A1.64 — исправление дальних переходов Host main.asm (2026-11-04)
+
+- [x] Причина ошибок SjASMPlus на строках 96 и 109: относительный `JR p125_halt` выходит за допустимый диапазон смещения Z80 (-128..+127); фактические смещения +159 и +134.
+- [x] Заменены дальние переходы к общей метке остановки на абсолютные `JP p125_halt`. Логика ветвления и обработка ошибок не менялись.
+- [ ] Повторно запустить `build.bat`; проверить отсутствие ошибок диапазона переходов и пройти следующие ошибки сборки, если появятся.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED.
+
+| 2026-11-04 | A1.64 fix out-of-range JR to p125_halt | SOURCE COMMITTED | Long-range error exits now use absolute JP; build still requires local verification. |
