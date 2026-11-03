@@ -503,6 +503,25 @@ command_boot_bios:
         call    neo_debug_send_string
         call    bios_rom_reset_state
         call    x86_real_execute
+        ; Compact stop trace: the host drains DBIT and mirrors it to port EF.
+        ld      hl, bios_stop_prefix
+        call    neo_debug_send_string
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, ':'
+        call    neo_send_data_byte
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, 13
+        call    neo_send_data_byte
+        ld      a, 10
+        call    neo_send_data_byte
         ld      hl, (x86_reg_ax)
         ld      (saved_x86_ax), hl
         call    z80_stack_guard_check
@@ -520,6 +539,8 @@ command_boot_bios:
 
 bios_boot_message:
         defb    "[BIOS] RESET FFFF:0000", 13, 10, 0
+bios_stop_prefix:
+        defb    "[BIOS] STOP CS:IP=", 0
 
 ; Check the lower 128-byte canary in WIN1/page #03.
 ; Carry set means the Z80 stack crossed the #4880 safety boundary.
