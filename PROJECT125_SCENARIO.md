@@ -2,7 +2,7 @@
 
 Дата начала: 2026-11-03
 Ветка: main
-Статус: архитектурное расширение зафиксировано; исходники runtime ещё не перенесены.
+Статус: начат перенос runtime; BIOS-кандидат и исходные модули x86 импортированы. Сборка и исполнение в Project125 ещё не подтверждены.
 
 ## Правила ведения
 - Пункты [x] отмечаются только после проверки.
@@ -73,15 +73,16 @@
 - [x] Найден BIOS-кандидат в Project124: bios/BIOS.BIN, заявленный размер 8192 байта.
 - [x] Найдены BIOS source/listing: bios/bios.asm и bios/bios.txt.
 - [x] Найден активный x86 real-mode executor в Project124/neogs_sub.
-- [ ] Подтвердить, что BIOS.BIN из Project124 — именно тот бинарник, который запускаем в Project125.
-- [ ] Получить SHA-256 BIOS.BIN и сохранить его в манифесте.
-- [ ] Проверить reset vector по физическому адресу FFFF0h.
-- [ ] Сверить бинарник с исходником/listing и установить точную модель BIOS.
+- [x] BIOS.BIN из Project124 скопирован в Project125 без преобразования; совпадает Git blob SHA-1 `31f690cc497a4ce6bc31798abfc2402e0efb988c`.
+- [ ] Снять SHA-256 BIOS.BIN на локальной сборочной машине и зафиксировать значение из `tools/verify_bios.ps1`.
+- [x] Проверены байты reset vector в образе: offset `1FF0h` = `EA 5B E0 00 F0`; при ROM map `FE000h..FFFFFh` это vector `FFFF0h` и target `FE05Bh`.
+- [ ] Сверить бинарник с BIOS source/listing и установить точную модель/ревизию BIOS.
 - [ ] Выделить BIOS I/O/memory/interrupt dependencies из trace/disassembly.
 
 ## P1 — x86 runtime foundation в NeoGS
-- [ ] Перенести активные модули x86 executor из Project124 после dependency audit.
-- [ ] Составить граф include/call/data dependencies каждого ASM-модуля.
+- [x] Импортирован базовый набор активных x86 executor и BIOS service modules из Project124 в `neogs_sub/` (исходная версия, без адаптации memory map).
+- [x] Проверены прямые include зависимости `neogs_sub/main.asm`: shared I/O constants, x86 memory/ModR/M/interpreter/interrupt/real-mode/ALU/MOV/I/O/strings и BIOS services.
+- [ ] Завершить аудит транзитивных call/data dependencies и ownership всех временных переменных.
 - [ ] Зафиксировать CPU reset state и opcode coverage matrix.
 - [ ] Реализовать/проверить guest memory region map.
 - [ ] Проверить 20-bit physical addressing, wrap-around и A20 policy.
@@ -127,6 +128,20 @@
 - [ ] Long-duration and large-transfer stress tests.
 - [ ] Complete cold-boot/warm-reset scenario with logs.
 
+## P0.1 — первый импорт и проверка BIOS (2026-11-03)
+- [x] Создана первичная структура `neogs_sub/` и импортирован набор модулей executor/BIOS services из Project124.
+- [x] Импортирован `shared/neogs_io.inc` и bootstrap, необходимые для исходной сборочной цепочки.
+- [x] BIOS.BIN добавлен в `bios/BIOS.BIN` как бинарный blob без текстовой перекодировки.
+- [x] Добавлен `bios/BIOS_MANIFEST.md` с размером, reset vector и исходной картой ROM.
+- [x] Добавлен PowerShell pre-build verifier: размер, header signature, reset vector, SHA-256 в build log.
+- [x] Добавлен `build_project125.bat` и отдельная точка сборки NeoGS baseline.
+- [ ] Выполнить первую сборку Project125 с sjasmplus; сохранить полный лог и размеры бинарников.
+- [ ] Исправить все ошибки/предупреждения сборки; не считать исходный Project124 код адаптированным до этого этапа.
+- [ ] Перенести BIOS из host в NeoGS backing pages 75-78 с проверкой целостности.
+- [ ] Реализовать ROM overlay `FE000h..FFFFFh` поверх гостевой RAM и запрет записи в BIOS.
+- [ ] Установить CPU reset state `CS:IP=F000:FFF0` и выполнить первый fetch/trace из BIOS.
+- [ ] Сверить первый trace с reset vector и дизассемблированием BIOS.
+
 ## Журнал архитектурных изменений и запусков
 
 | Дата | Изменение/тест | Результат | Комментарий |
@@ -135,3 +150,5 @@
 | 2026-11-03 | Architecture v2.0 | DOCUMENTED | Expanded modular architecture; implementation and hardware constraints still require validation |
 
 | 2026-11-03 | Fixed physical reservations | DOCUMENTED | 128 KiB firmware (page 0 + pages 68-74) and separate 64 KiB BIOS backing (pages 75-78); requires 79 unique physical pages; no hardware validation yet |
+
+| 2026-11-03 | Первый импорт runtime и BIOS | IMPLEMENTATION STARTED | Импортированы исходные x86 modules и BIOS 8 KiB; проверен reset vector. Сборка/загрузка/исполнение Project125 ещё не проверены. |
