@@ -452,3 +452,15 @@
 - Статус: IMPLEMENTED / NOT BUILT / NOT RUN. Runtime PASS не присваивается.
 
 | 2026-11-03 | Project124 V1 length handshake restored | IMPLEMENTED / NOT BUILT | Removed per-byte echoes; restored low/high length followed by one #A3 ACK. |
+
+
+## A1.22 — восстановление точного receive primitive Project124 V1 (2026-11-03)
+
+- [x] Сравнена реализация `gs_boot_receive_data_byte` с Project124 V1 commit `39e8632966db0ce3bff1591c2b550f052ac386d9`.
+- [x] Удалена дополнительная задержка `#0400` после чтения GSDAT; возврат теперь происходит сразу после чтения и сохранения байта, как в проверенном V1.
+- [x] Сохранены диагностические поля TXSTATE/TXBYTE/TXPHASE и контроль числа переданных байтов.
+- [ ] Windows build: проверить успешную сборку и новый маркер A19.
+- [ ] Runtime: проверить, изменилось ли поведение передачи длины после #A1.
+- Статус: IMPLEMENTED / NOT BUILT / NOT RUN. Runtime PASS не присваивается.
+
+| 2026-11-03 | Project124 V1 receive primitive restored | IMPLEMENTED / NOT BUILT | Removed Project125-only #0400 turnaround delay after GSDAT read. |
