@@ -1074,3 +1074,18 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** DIAGNOSTIC SOURCE COMMITTED / NOT BUILT / NOT RUNTIME.
 
 | 2026-11-04 | A1.68 compare BIOS reset-vector bytes before and after DMA | SOURCE COMMITTED | Host and NeoGS each print the five reset-vector bytes at BIOS image offset #1FF0. |
+
+
+## A1.69 — исправление нумерации TR-DOS секторов BIOS.C (2026-11-04)
+
+- [x] Runtime A1.68: источник последнего сектора дал `0B B0 FF E6 01`, тогда как проверенный `bios/BIOS.BIN` содержит `EA 5B E0 00 F0` по смещению `#1FF0`.
+- [x] Сверка загрузчика выявила ошибочную zero-based модель секторов: код принимал номера 0..15 и переходил после 15 на сектор 0 следующей дорожки.
+- [x] Исправлена проверка начального сектора из каталога: допустимы только TR-DOS sector IDs 1..16.
+- [x] Исправлен cursor rollover: после сектора 16 следующий сектор — 1 следующей дорожки; сектор 0 больше не запрашивается.
+- [x] DMA target, размер передачи, handshake и NeoGS mapping не изменялись.
+- [ ] Сборка `build.bat`.
+- [ ] Runtime: проверить `[BIOS SRC FFF0] EA 5B E0 00 F0`.
+- [ ] После подтверждения корректного SRC отдельно локализовать `[BIOS DST FFF0]`; пока его нулевое значение не объяснено и DMA/page mapping не объявляются исправными.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.69 fix TR-DOS sector IDs and track rollover | SOURCE COMMITTED | BIOS.C sequential reader now follows sector IDs 1..16 and rolls 16 to 1 on the next track. |
