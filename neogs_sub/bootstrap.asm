@@ -51,6 +51,10 @@ neogs_bootstrap_start:
         call    bootstrap_send_data_byte
         call    bootstrap_receive_data_byte
         ld      d, a
+        ; Echo the high length byte as a separate receive confirmation. The
+        ; host validates this exact value before waiting for the #A3 accept ACK.
+        ld      a, d
+        call    bootstrap_send_data_byte
 
         ; Reject zero length and any image larger than the low 16-KiB window ($4000).
         ld      a, d
