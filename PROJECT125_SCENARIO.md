@@ -849,3 +849,15 @@
 - **Статус:** SOURCE FIX APPLIED / NOT BUILT / NOT RUNTIME.
 
 | 2026-11-03 | Fix explicit local ZXSTAT addressing in READY wait | SOURCE FIX APPLIED | Use BC=#FF04 semantics via B=#FF, C=#04 and IN A,(C); keep bootstrap within 254-byte limit. |
+
+
+## A1.52 — принудительное продвижение NeoGS CPU после READY (2026-11-03)
+
+- [x] По исходнику Unreal Speccy `NeoGS/gsz80.cpp` подтверждено: каждый вызов host-side `in_gs()` выполняет `flush_gs_z80()` до чтения GSDAT/GSCOM.
+- [x] Простая задержка `#0400` на host не гарантирует, что планировщик эмулятора запустит NeoGS Z80 между снятием DBIT у READY `#A1` и публикацией length low.
+- [x] После приёма `#A1` host теперь выполняет 512 чтений GSSTAT (#BB). Каждое чтение проходит через `in_gs()` и продвигает NeoGS CPU, чтобы bootstrap успел увидеть DBIT=0 и выйти из READY wait до отправки `#C5`.
+- [ ] Собрать через `build.bat`; проверить отсутствие ошибок SjASMPlus и размер `NEOLOAD.C <= 254` байт.
+- [ ] Runtime в Unreal Speccy: NeoGS trace должен перейти с `BCR` на `BCR1` после host marker `L`, затем `BCR12`; host должен принять ACK `#A3`, передать весь NEOFW и получить `#A2`.
+- **Статус:** SOURCE UPDATED / NOT BUILT / NOT RUNTIME. Исправление основано на реальном scheduler hook в исходнике эмулятора, но запуск ещё не подтверждён.
+
+| 2026-11-03 | A1.52 force NeoGS scheduler progress after READY | SOURCE UPDATED | Replace passive delay with 512 GSSTAT reads, each flushing the emulated NeoGS Z80 before length-low is sent. |
