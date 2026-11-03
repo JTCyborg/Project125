@@ -9,14 +9,82 @@ IPC_BYTE_TIMEOUT EQU #FFFF
 IPC_CMD_TIMEOUT EQU #FFFF
 
 ; -------------------------------------------------------------------------
-; Open the single NeoGS package on TR-DOS and read its first sector to #C000.
+; Open either standalone NeoGS file on TR-DOS and read its first sector to #C000.
 ; The same 256-byte buffer is reused for every following sector while the
 ; firmware is streamed to NeoGS. The complete file is NEVER staged in host RAM.
 ; OUT: Carry clear, first sector at #C000, file length and next-sector cursor set.
 ; -------------------------------------------------------------------------
+load_neogs_bootstrap_file::
+        ld      hl, neo_fw_loader_filename
+        ld      de, msg_dump_neoload
+        call    neo_fw_open_file
+        ret     c
+        jp      neo_fw_dump_first_sector
+
 load_neogs_firmware_file::
-        ; Search the exact 8.3 catalogue name neoprog.C.
-        ld      hl, neo_fw_filename
+        ld      hl, neo_fw_firmware_filename
+        ld      de, msg_dump_neofw
+        call    neo_fw_open_file
+        ret     c
+        jp      neo_fw_dump_first_sector
+
+; Print the actual TR-DOS file metadata and first 32 bytes read into #C000.
+; This is deliberately done immediately after the disk read, before upload.
+; IN: DE = zero-terminated diagnostic label.
+neo_fw_dump_first_sector:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, (neo_fw_file_length)
+        ld      (neo_fw_dump_length), hl
+        ld      hl, neo_fw_dump_prefix
+        call    p125_print_string
+        ld      hl, (neo_fw_dump_label)
+        call    p125_print_string
+        ld      hl, (neo_fw_dump_length)
+        ld      a, h
+        call    p125_print_hex8
+        ld      a, l
+        call    p125_print_hex8
+        ld      hl, neo_fw_dump_track_text
+        call    p125_print_string
+        ld      a, (neo_fw_load_track)
+        call    p125_print_hex8
+        ld      hl, neo_fw_dump_sector_text
+        call    p125_print_string
+        ld      a, (neo_fw_load_sector)
+        dec     a                       ; cursor already advanced after sector read
+        and     #0F
+        call    p125_print_hex8
+        ld      hl, neo_fw_dump_data_text
+        call    p125_print_string
+        ld      hl, #C000
+        ld      b, 32
+.dump_byte:
+        ld      a, (hl)
+        call    p125_print_hex8
+        ld      a, ' '
+        out     (#EF), a
+        inc     hl
+        djnz    .dump_byte
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        or      a
+        ret
+
+; HL points to an eight-character TR-DOS filename (extension is always C).
+neo_fw_open_file:
+        ld      (neo_fw_requested_name_ptr), hl
+        ld      (neo_fw_dump_label), de
+        ld      hl, (neo_fw_requested_name_ptr)
+        ; Search the requested exact 8.3 catalogue name.
         ld      de, #5CDD
         ld      bc, 8
         ldir
@@ -44,19 +112,12 @@ load_neogs_firmware_file::
         or      b
         jp      nz, .bad_descriptor
 
-        ; Store the actual package length; its header separates the two code sections.
+        ; Store the exact standalone file length.
         ld      hl, (#5CE8)
         ld      (neo_fw_file_length), hl
         ld      a, h
         or      l
         jp      z, .bad_length
-        ld      a, h
-        or      a
-        jr      nz, .package_minimum_ok
-        ld      a, l
-        cp      3
-        jp      c, .bad_length
-.package_minimum_ok:
         ; Verify sector count = ceil(file_length / 256).
         ld      hl, (neo_fw_file_length)
         ld      de, 255
@@ -78,7 +139,7 @@ load_neogs_firmware_file::
         ld      (neo_fw_load_buffer), hl
 
         ; Read only the first sector now. Later sectors are fetched on demand
-        ; by upload_firmware after the preceding buffer bytes have been sent.
+        ; by the active transfer after the preceding buffer bytes have been sent.
         call    neo_fw_read_next_sector
         jp      c, .sector_read_failed
         xor     a
@@ -166,120 +227,19 @@ neo_fw_read_next_sector:
 ;   send custom firmware bytes to RAM $0000, receive #A2 firmware ready
 ; -------------------------------------------------------------------------
 upload_firmware::
-        ; Only the first sector is resident at #C000. Remaining sectors are
-        ; read into this same buffer as the firmware stream consumes them.
-        ; Layout: WORD bootstrap_length, bootstrap bytes, then firmware bytes.
-        ld      (neo_fw_package_source), hl
-        ld      (neo_fw_package_length), de
-
-        ; Decode and validate the bootstrap length from the package header.
+        ; Input file is NEOLOAD.C, already read into #C000.
+        ; Loader and resident firmware are independent TR-DOS files.
+        ld      (neo_fw_bootstrap_source), hl
+        ld      (neo_fw_bootstrap_length), de
         ld      a, d
         or      a
-        jr      nz, .package_header_present
-        ld      a, e
-        cp      3
-        jp      c, .upload_failed
-.package_header_present:
-        ld      a, (hl)
-        ld      (neo_fw_bootstrap_length), a
-        inc     hl
-        ld      a, (hl)
-        ld      (neo_fw_bootstrap_length+1), a
-        ld      hl, (neo_fw_bootstrap_length)
-        ld      a, h
-        or      l
-        jp      z, .upload_failed
-        ; Bootstrap must fit entirely in the first 256-byte sector because it
-        ; is needed before the receiver can be started. The package itself may
-        ; be much larger; only this first sector is buffered at a time.
-        ld      a, h
-        or      a
         jp      nz, .upload_failed
-        ld      a, l
-        cp      255                   ; maximum length 254 bytes
+        ld      a, e
+        or      a
+        jp      z, .upload_failed
+        cp      255
         jp      nc, .upload_failed
 
-        ; V2 has an explicit V2S1 marker after its stage-0 image. Check only
-        ; when the marker and stage-1 length word are guaranteed to be in
-        ; sector 0 (stage0 <= 248). A non-match follows the untouched v1 path.
-        ld      hl, (neo_fw_bootstrap_length)
-        ld      a, h
-        or      a
-        jr      nz, .v1_package_format
-        ld      a, l
-        cp      249
-        jr      nc, .v1_package_format
-        ld      hl, (neo_fw_package_source)
-        inc     hl
-        inc     hl
-        ld      de, (neo_fw_bootstrap_length)
-        add     hl, de
-        ld      a, (hl)
-        cp      'V'
-        jr      nz, .v1_package_format
-        inc     hl
-        ld      a, (hl)
-        cp      '2'
-        jr      nz, .v1_package_format
-        inc     hl
-        ld      a, (hl)
-        cp      'S'
-        jr      nz, .v1_package_format
-        inc     hl
-        ld      a, (hl)
-        cp      '1'
-        jp      z, upload_firmware_v2
-.v1_package_format:
-
-        ; Firmware length = package length - header - bootstrap length.
-        ld      hl, (neo_fw_package_length)
-        ld      de, 2
-        or      a
-        sbc     hl, de
-        jp      c, .upload_failed
-        ld      de, (neo_fw_bootstrap_length)
-        or      a
-        sbc     hl, de
-        jp      c, .upload_failed
-        ld      (neo_fw_length), hl
-
-        ; Bootstrap and the beginning of firmware follow the two-byte header
-        ; in the first sector. The firmware pointer is advanced as bytes go.
-        ld      hl, (neo_fw_package_source)
-        inc     hl
-        inc     hl
-        ld      (neo_fw_bootstrap_source), hl
-        ld      de, (neo_fw_bootstrap_length)
-        add     hl, de
-        ld      (neo_fw_source), hl
-
-        ; Number of firmware bytes remaining in the first sector:
-        ; 256 - (2-byte header + bootstrap length) = 254 - bootstrap length.
-        ld      hl, 254
-        or      a
-        sbc     hl, de
-        ld      (neo_fw_buffer_remaining), hl
-
-        ; V1 resident firmware is still limited to WIN0. During transfer the bootstrap
-        ; stack remains at #FFFE in WIN3; the resident entry later moves its stack
-        ; to WIN1/#4FFE, leaving WIN2 available for the future banked-image format.
-        ld      hl, (neo_fw_length)
-        ld      a, h
-        or      a
-        jp      nz, .firmware_high_nonzero
-        ld      a, l
-        or      a
-        jp      z, .upload_failed
-        jr      .firmware_length_valid
-.firmware_high_nonzero:
-        ld      a, h
-        cp      #40
-        jr      c, .firmware_length_valid
-        jp      nz, .upload_failed
-        ld      a, l
-        or      a
-        jp      nz, .upload_failed
-.firmware_length_valid:
         xor     a
         ld      (neo_fw_bytes_sent), a
         ld      (neo_fw_bytes_sent+1), a
@@ -287,6 +247,7 @@ upload_firmware::
         ld      (neo_fw_tx_wait_state), a
         ld      (neo_fw_last_tx_byte), a
         ld      (neo_fw_last_tx_phase), a
+        ld      (neo_fw_rx_probe_valid), a
         in      a, (GSSTAT)
         ld      (neo_fw_initial_status), a
         ld      (neo_fw_last_status), a
@@ -378,27 +339,70 @@ upload_firmware::
         jr      .bootstrap_block_loop
 .bootstrap_block_done:
 
-        ; Phase 5: #13 JUMP TO ADDRESS. The low byte is the command's
-        ; first argument and must be written before issuing the command.
-        ; Split phase 5 into sub-phases so a real GS105a handshake failure
-        ; identifies whether the low argument, command, or high argument stalled.
-        ld      a, #51                  ; 5.1: preload entry address low byte
+        ; Prepare NEOFW.C while the bootstrap is loaded but NOT running.
+        ; The bootstrap receive timeout is finite (#FFFF polls), so no TR-DOS
+        ; directory lookup, sector read or diagnostic dump may occur after #A1.
+        ; Once #13 starts it, the host can send the length immediately.
+        call    load_neogs_firmware_file
+        jp      c, .upload_failed
+        ld      hl, (neo_fw_file_length)
+        ld      a, h
+        or      l
+        jp      z, .upload_failed
+        ld      a, h
+        cp      #40
+        jr      c, .firmware_file_length_ok
+        jp      nz, .upload_failed
+        ld      a, l
+        or      a
+        jp      nz, .upload_failed
+.firmware_file_length_ok:
+        ld      hl, (neo_fw_file_length)
+        ld      (neo_fw_length), hl
+        ld      hl, #C000
+        ld      (neo_fw_source), hl
+        ld      hl, 256
+        ld      (neo_fw_buffer_remaining), hl
+
+        ; Phase 5: #13 JUMP TO ADDRESS.
+        ld      a, 5
         ld      (neo_fw_timeout_phase), a
-        xor     a                       ; entry address low = $00
+        xor     a
         call    gs_boot_write_command_argument
         jp      c, .upload_failed
-        ld      a, #52                  ; 5.2: issue #13 and wait for CBIT clear
-        ld      (neo_fw_timeout_phase), a
         ld      a, GS_CMD_JUMP_ADDRESS
         call    gs_boot_send_command
         jp      c, .upload_failed
-        ld      a, #53                  ; 5.3: send entry address high byte
-        ld      (neo_fw_timeout_phase), a
-        ld      a, #40                  ; entry address high = $40
+        ld      a, #40
         call    gs_boot_send_data_byte
-        jp      c, .upload_failed
+        jr      nc, .phase5_jump_tx_done
 
-        ; Phase 6: bootstrap has enabled RAM-over-ROM and is waiting at $0000.
+        ; The bootstrap can consume #40 and publish #A1 before the host
+        ; samples the brief DBIT-low interval. DBIT high can mean #A1 pending.
+        ld      a, (neo_fw_tx_wait_state)
+        cp      2
+        jp      nz, .upload_failed
+        ld      a, (neo_fw_last_tx_phase)
+        cp      5
+        jp      nz, .upload_failed
+        in      a, (GSSTAT)
+        ld      (neo_fw_last_status), a
+        bit     B_DBIT, a
+        jp      z, .upload_failed
+        ld      a, 6
+        ld      (neo_fw_timeout_phase), a
+        call    gs_boot_receive_data_byte
+        jp      c, .upload_failed
+        cp      NGS_BOOTSTRAP_READY_ACK
+        jp      nz, .upload_failed
+        ld      hl, (neo_fw_bytes_sent)
+        inc     hl
+        ld      (neo_fw_bytes_sent), hl
+        xor     a
+        ld      (neo_fw_tx_wait_state), a
+        jr      .phase5_jump_ready
+
+.phase5_jump_tx_done:
         ld      a, 6
         ld      (neo_fw_timeout_phase), a
         call    gs_boot_receive_data_byte
@@ -406,51 +410,25 @@ upload_firmware::
         cp      NGS_BOOTSTRAP_READY_ACK
         jp      nz, .upload_failed
 
-        ; Phase 7: send firmware length low/high and require ACK #A3.
+.phase5_jump_ready:
+        ; Phase 7: immediately send length after consuming #A1.
+        ; Bootstrap waits for the first length byte only #FFFF polls; no
+        ; host delay or #EF diagnostics may be inserted in this interval.
         ld      a, 7
         ld      (neo_fw_timeout_phase), a
         ld      hl, (neo_fw_length)
         ld      a, l
         call    gs_boot_send_data_byte
         jp      c, .upload_failed
+        ld      hl, (neo_fw_length)
         ld      a, h
         call    gs_boot_send_data_byte
-        jr      nc, .phase7_length_high_tx_done
-
-        ; The bootstrap consumes the high length byte and immediately sends
-        ; #A3. Since DBIT is shared by both directions, the ACK can set DBIT
-        ; before the host observes the brief clear interval. In that case the
-        ; generic TX helper reports a state-2 timeout although the byte was
-        ; consumed. Accept only the expected #A3 as proof of consumption.
-        ld      a, (neo_fw_tx_wait_state)
-        cp      2
-        jp      nz, .upload_failed
-        in      a, (GSSTAT)
-        ld      (neo_fw_last_status), a
-        bit     B_DBIT, a
-        jp      z, .upload_failed
+        jp      c, .upload_failed
         call    gs_boot_receive_data_byte
         jp      c, .upload_failed
         cp      NGS_BOOTSTRAP_LENGTH_ACK
         jp      nz, .upload_failed
 
-        ; The #A3 ACK proves that the pending high length byte was consumed.
-        push    hl
-        ld      hl, (neo_fw_bytes_sent)
-        inc     hl
-        ld      (neo_fw_bytes_sent), hl
-        pop     hl
-        xor     a
-        ld      (neo_fw_tx_wait_state), a
-        jr      .phase7_ack_received
-
-.phase7_length_high_tx_done:
-        call    gs_boot_receive_data_byte
-        jp      c, .upload_failed
-        cp      NGS_BOOTSTRAP_LENGTH_ACK
-        jp      nz, .upload_failed
-
-.phase7_ack_received:
 
         ; Phase 8: stream the custom firmware to RAM address $0000.
         ld      a, 8
@@ -1012,14 +990,10 @@ gs_boot_send_data_byte:
         ld      a, b
         or      c
         jr      nz, .data_wait_free
-        ; Distinguish a timeout before the byte is written from a timeout
-        ; while waiting for the receiver to consume the written byte.
-        ld      a, (neo_fw_timeout_phase)
-        cp      #53
-        jr      nz, .data_free_timeout
-        ld      a, #531
-        ld      (neo_fw_timeout_phase), a
-.data_free_timeout:
+        ; Keep neo_fw_timeout_phase unchanged. The independent TXSTATE
+        ; distinguishes pre-write (1) from post-write (2) timeout.
+        ; Do not store pseudo-phases #531/#532 in this one-byte field:
+        ; they truncate and can masquerade as unrelated phases (#31/#32).
         scf
         ret
 .data_slot_free:
@@ -1037,13 +1011,8 @@ gs_boot_send_data_byte:
         ld      a, b
         or      c
         jr      nz, .data_wait_consumed
-        ; Phase #532 means #40 was written but DBIT never returned low.
-        ld      a, (neo_fw_timeout_phase)
-        cp      #53
-        jr      nz, .data_consumed_timeout
-        ld      a, #532
-        ld      (neo_fw_timeout_phase), a
-.data_consumed_timeout:
+        ; TXSTATE=2 means the byte was written but DBIT did not clear.
+        ; Preserve the original phase for an unambiguous error report.
         scf
         ret
 .data_consumed:
@@ -1073,19 +1042,8 @@ gs_boot_receive_data_byte:
 .receive_ready:
         in      a, (GSDAT)
         ld      (neo_fw_last_rx_byte), a
-        ; DBIT is shared by both directions. After reading a NeoGS byte,
-        ; let the sender observe the cleared slot before the host writes
-        ; the next byte; otherwise a fast turnaround can hide the clear edge.
-        push    af
-        push    bc
-        ld      bc, #0400
-.receive_turnaround_delay:
-        dec     bc
-        ld      a, b
-        or      c
-        jr      nz, .receive_turnaround_delay
-        pop     bc
-        pop     af
+        ; Match the proven Project124 V1 transport exactly: reading GSDAT
+        ; clears DBIT and returns immediately. No host-side turnaround delay.
         or      a
         ret
 
@@ -1149,7 +1107,9 @@ neogs_wait_data_byte::
         ret
 
 ; TR-DOS NeoGS package loader state and fixed 8-character filename.
-neo_fw_filename:        db "neoprog "
+neo_fw_loader_filename:  db "NEOLOAD "
+neo_fw_firmware_filename: db "NEOFW   "
+neo_fw_requested_name_ptr: dw 0
 neo_fw_load_buffer:     dw 0
 neo_fw_load_remaining:  db 0
 neo_fw_buffer_remaining: dw 0
@@ -1157,6 +1117,14 @@ neo_fw_load_track:      db 0
 neo_fw_load_sector:     db 0
 neo_fw_file_error:      db 0
 neo_fw_file_length:     dw 0
+neo_fw_dump_label:      dw 0
+neo_fw_dump_length:     dw 0
+neo_fw_dump_prefix:     db "[P125] DISK DUMP ", 0
+neo_fw_dump_track_text: db " TRACK=", 0
+neo_fw_dump_sector_text: db " SECTOR=", 0
+neo_fw_dump_data_text:  db " DATA=", 0
+msg_dump_neoload:       db "NEOLOAD.C", 13, 10, 0
+msg_dump_neofw:         db "NEOFW.C", 13, 10, 0
 
 ; Stage 2 package parser and transfer state.
 neo_fw_package_source:  dw 0
@@ -1179,9 +1147,17 @@ neo_fw_last_tx_byte:    db 0
 ; 0=idle/acknowledged, 1=waiting for a free host data slot, 2=waiting for NeoGS ACK.
 neo_fw_tx_wait_state:   db 0
 neo_fw_last_rx_byte:    db 0
+neo_fw_rx_probe_valid:  db 0
 neo_fw_bytes_sent:      dw 0
 neo_fw_initial_status:  db 0
 neo_fw_last_status:     db 0
 neo_fw_timeout_phase:   db 0
 neo_fw_last_tx_phase:   db 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A12", 13, 10, 0
+msg_p7_begin:          db "[P125] PH7 LENGTH=", 0
+msg_p7_low_tx:         db "[P125] PH7 TX LOW", 13, 10, 0
+msg_p7_low_ok:         db "[P125] PH7 LOW ACK", 13, 10, 0
+msg_p7_high_tx:        db "[P125] PH7 TX HIGH", 13, 10, 0
+msg_p7_high_ok:       db "[P125] PH7 HIGH ACK", 13, 10, 0
+msg_p7_wait_a3:        db "[P125] PH7 WAIT A3", 13, 10, 0
+msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A27", 13, 10, 0
