@@ -46,6 +46,8 @@ Init_Z80_System:
         call    p125_print_string
         ld      hl, msg_p125_build_id
         call    p125_print_string
+        ld      hl, neo_fw_driver_build_id
+        call    p125_print_string
 
         ; Stage 1: load the separate NeoGS bootstrap + firmware package.
         ld      hl, msg_fw_load
