@@ -1089,3 +1089,17 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.69 fix TR-DOS sector IDs and track rollover | SOURCE COMMITTED | BIOS.C sequential reader now follows sector IDs 1..16 and rolls 16 to 1 on the next track. |
+
+
+## A1.70 — трассировка всех чтений BIOS.C (2026-11-04)
+
+- [x] Сверка с рабочим Project124 `main/zx_main/x86_loader.asm` и `zx_main/file_utils.asm` подтвердила, что TR-DOS 5.04T использует внутренние номера секторов 0..15. Предыдущее предположение о диапазоне 1..16 было ошибочным.
+- [x] Изменение A1.69, переводившее BIOS loader на 1..16, отменено отдельным commit; исходная проверенная модель 0..15 восстановлена.
+- [x] В `bios_trdos_read_next_sector` добавлен вывод точной пары track/sector перед каждым вызовом TR-DOS C=#05: `[BIOS READ] TT/SS`.
+- [x] Сверка образа `bios/BIOS.BIN` подтвердила размер 8192 байта и ожидаемые байты `EA 5B E0 00 F0` по смещению #1FF0. Последовательность из runtime `0B B0 FF E6 01` находится в образе по смещению #00F0 — это содержимое первого сектора, а не reset vector.
+- [ ] Сборка `build.bat`.
+- [ ] Runtime: проверить 32 строки `[BIOS READ]`, особенно начало и переходы дорожек, затем `[BIOS SRC FFF0]`.
+- [ ] Не менять DMA target/mapping до подтверждения правильной последовательности чтения и правильного SRC.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.70 trace BIOS.C track/sector reads | SOURCE COMMITTED | Host prints the internal TR-DOS track/sector cursor before every sector read. |
