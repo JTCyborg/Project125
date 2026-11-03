@@ -27,7 +27,20 @@ if not exist "build\neogs_bootstrap.bin" (
     echo ERROR: build\neogs_bootstrap.bin was not produced.
     exit /b 1
 )
+echo [BUILD] Assembling ATM host and exporting TR-DOS disk...
+%SJASMPLUS% --msg=all zx_main\main.asm
+if errorlevel 1 (
+    echo ERROR: ATM host assembly / TR-DOS export failed.
+    exit /b 1
+)
+if not exist "disk_A.trd" (
+    echo ERROR: disk_A.trd was not produced.
+    exit /b 1
+)
+copy /Y "disk_A.trd" "build\disk_A.trd" >nul
+if errorlevel 1 exit /b 1
+
 echo.
 echo BUILD COMPLETED.
-dir "build\neogs_code.bin" "build\neogs_bootstrap.bin" "bios\BIOS.BIN"
+dir "build\neogs_code.bin" "build\neogs_bootstrap.bin" "build\disk_A.trd" "bios\BIOS.BIN"
 exit /b 0
