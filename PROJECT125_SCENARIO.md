@@ -960,3 +960,17 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME NOT VERIFIED.
 
 | 2026-11-03 | A1.59 restore DBIT turnaround and guard high-length-to-A3 transition | SOURCE COMMITTED | Host turnaround delay restored from Project124 V1; NeoGS waits before publishing #A3 after consuming length high byte. |
+
+## A1.60 — DBIT/CBIT edge trace on Host and NeoGS port #EF (2026-11-03)
+
+- [x] Added Host-side trace for the startup handshake only: H+XX means Host wrote GSDAT (DBIT set); H-XX means Host read GSDAT (DBIT cleared); HCXX means Host issued GSCOM (CBIT request); Hc- means Host observed CBIT clear.
+- [x] Added NeoGS bootstrap trace: N+XX means NeoGS wrote ZXDATWR (DBIT set); N-XX means NeoGS read ZXDATRD (DBIT cleared).
+- [x] NeoGS logs only the first two received bytes (firmware length low/high), so the 15,813-byte firmware stream does not flood the log.
+- [x] Host logs only phase #06/#07 receive events and phase #07 transmit events; firmware payload logging is disabled.
+- [x] Trace events are emitted after the corresponding data-port operation; no polling-loop instrumentation was added.
+- [ ] Build build.bat; verify the host and NEOLOAD.C assemble and that the bootstrap remains within $4000-$47FF.
+- [ ] Runtime: capture the combined #EF log and check event order around #A1, length low/high (#C5/#3D in the current test), and #A3.
+- [ ] Verify that NeoGS #EF events and Host #EF events are present in the same output file/log stream in Unreal Speccy. Existing B/R/1/2 markers indicate NeoGS port output is captured, but common-file ordering must be confirmed.
+- **Status:** SOURCE UPDATED / NOT BUILT / NOT RUNTIME. Instrumentation is diagnostic only; DBIT/CBIT protocol operations and timeout logic are unchanged.
+
+| 2026-11-03 | A1.60 add host/NeoGS port #EF handshake edge trace | SOURCE UPDATED | Compact, bounded trace around the startup handshake; common-log ordering still requires emulator runtime confirmation. |
