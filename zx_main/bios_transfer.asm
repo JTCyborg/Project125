@@ -133,13 +133,53 @@ neogs_bios_transfer_finish:
         or      a
         ret
 
+; Run BIOS and drain the NeoGS debug stream while CBIT remains asserted.
+; Every received byte is mirrored to the ATM/emulator debug port #EF.
+; OUT: carry clear when the NeoGS command completes; call get_result next.
+neogs_bios_boot_and_wait:
+        ld      a, CMD_BOOT_BIOS
+        out     (GSCOM), a
+        ld      d, 16
+.bios_boot_outer:
+        ld      bc, BIOS_HOST_WAIT_LIMIT
+.bios_boot_inner:
+        in      a, (GSSTAT)
+        bit     B_DBIT, a
+        jr      z, .bios_boot_no_data
+        in      a, (GSDAT)
+        push    bc
+        ld      bc, #00EF
+        out     (c), a
+        pop     bc
+        jr      .bios_boot_inner
+.bios_boot_no_data:
+        bit     B_CBIT, a
+        jr      z, .bios_boot_done
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .bios_boot_inner
+        dec     d
+        jr      nz, .bios_boot_outer
+        scf
+        ret
+.bios_boot_done:
+        or      a
+        ret
+
+; Convenience wrapper: execute BIOS, drain debug, then read status/AX frame.
+neogs_bios_boot_and_get_result:
+        call    neogs_bios_boot_and_wait
+        ret     c
+        jp      neogs_bios_transfer_get_result
+
 ; Request and validate the four-byte NeoGS application result frame.
 ; OUT: carry clear if signature is A5h. Result fields are stored below.
 neogs_bios_transfer_get_result:
         ld      a, CMD_GET_STATUS
         out     (GSCOM), a
 
-        ld      hl, bios_host_result_frame
+        ld      hl, bios_host_result_signature
         ld      b, 4
 .bios_result_read_loop:
         call    neogs_bios_wait_data_byte
@@ -201,4 +241,3 @@ bios_host_transfer_error: db 0
 bios_host_result_signature: db 0
 bios_host_result_status:    db 0
 bios_host_result_ax:        dw 0
-bios_host_result_frame:     equ bios_host_result_signature
