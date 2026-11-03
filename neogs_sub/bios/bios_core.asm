@@ -76,6 +76,7 @@ bios_rom_reset_state:
 ; Validate the ROM header and the five bytes at the reset vector after DMA.
 ; This is a structural check; full-image CRC is a separate transport task.
 bios_rom_validate:
+        call    x86_mem_init
         ld      hl, #E000
         ld      a, #20
         call    bios_rom_expect_byte
