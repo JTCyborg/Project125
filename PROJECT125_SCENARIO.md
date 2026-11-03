@@ -1047,3 +1047,16 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.66 propagate BIOS validator check index | SOURCE COMMITTED | Host-visible AX now reports the exact failing validation byte. |
+
+
+## A1.67 — передача фактического байта ROM mismatch (2026-11-04)
+
+- [x] Runtime A1.66: BIOS validator локализовал отказ на reset-vector offset #1FF0 / physical FFFF0h (AX #B111).
+- [x] Добавлено сохранение фактического значения, прочитанного x86_mem_read8, в bios_rom_actual.
+- [x] При mismatch NeoGS теперь возвращает AX=#B2xx, где xx — фактически прочитанный байт. Адрес проверки по-прежнему определяется последним bios_rom_check_id (для текущей трассы #01 = FFF0).
+- [x] Не изменялись DMA target, DMA length, host sector stream, page mapping и handshake.
+- [ ] Сборка build.bat: проверить SjASMPlus и создание NEOFW.C.
+- [ ] Runtime: при повторной загрузке BIOS прислать строку AX #B2xx; сравнить xx с ожидаемым #EA.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.67 report actual byte on BIOS ROM validation mismatch | SOURCE COMMITTED | AX now carries the byte actually read at the failing ROM address as #B2xx. |
