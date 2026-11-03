@@ -478,3 +478,13 @@
 - Статус: IMPLEMENTED / NOT BUILT / NOT RUN. Причина является подтверждаемой гипотезой по временной последовательности; runtime-проверка обязательна.
 
 | 2026-11-03 | Prepare firmware before bootstrap launch | IMPLEMENTED / NOT BUILT | Moved NEOFW TR-DOS access before #13/#A1 to avoid exhausting bootstrap's finite receive wait. |
+
+
+## A1.24 — отдельный приём длины без локального тайм-аута (2026-11-03)
+
+- [x] Добавлен отдельный `bootstrap_receive_length_byte` для двух байтов длины.
+- [x] Приём длины теперь ожидает фактический DBIT без ограничения `#FFFF` итераций; приём payload оставлен с прежним ограниченным тайм-аутом.
+- [x] Причина изменения: A19 подтверждает, что хост после #A1 записывает #C5, но DBIT остаётся установленным; исключаем преждевременное завершение ожидания на стороне bootstrap во время первого turnaround.
+- [ ] Windows build: проверить сборку и маркер A20.
+- [ ] Runtime: проверить снятие DBIT на #C5, приём второго байта #3D и ACK #A3.
+- Статус: IMPLEMENTED / NOT BUILT / NOT RUN. Это диагностическое изменение, не доказанное исправление причины.
