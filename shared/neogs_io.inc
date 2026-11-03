@@ -77,10 +77,10 @@ GS_CMD_COLD_RESTART EQU #F4
 GS_CMD_JUMP_ADDRESS EQU #13
 GS_CMD_RECEIVE_BLOCK EQU #14
 
-; Project 124 private commands carried by GSCOM after custom firmware starts.
+; Project125 private commands carried by GSCOM after custom firmware starts.
 CMD_RESET       EQU #01
 CMD_LOAD_X86    EQU #02
-CMD_RUN_X86     EQU #03
+CMD_RUN_X86     EQU #03             ; legacy flat-mode command, not linked in Project125
 CMD_GET_STATUS  EQU #04
 CMD_MEM_TEST    EQU #05
 CMD_BIOS_POST   EQU #07
@@ -91,7 +91,7 @@ CMD_RUN_X86_REAL EQU #0B
 CMD_LOAD_BIOS   EQU #0C
 CMD_BOOT_BIOS   EQU #0D
 
-; Project 124 startup handshake bytes.
+; Project125 bootstrap handshake bytes.
 NGS_BOOTSTRAP_READY_ACK EQU #A1
 NGS_BOOTSTRAP_LENGTH_ACK EQU #A3
 NGS_FIRMWARE_READY_ACK  EQU #A2
