@@ -349,6 +349,9 @@ x86_mem_word_test:
 
         ld      hl, #FFFF
         ld      (x86_mem_segment), hl
+        ; FFFF:0010 wraps the 20-bit physical address to 00000h.
+        ; Keep the second byte out of the read-only BIOS overlay.
+        ld      hl, #0010
         ld      (x86_mem_offset), hl
         ld      hl, #C33C
         ld      (x86_mem_word_value), hl
