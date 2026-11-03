@@ -52,6 +52,23 @@
 - [ ] Проверить BIOS guest mapping, reset vector, read-only behavior и отсутствие alias с x86 RAM.
 - [ ] Провести стресс-тест одновременной работы resident firmware, overlay bank switching, x86 guest RAM, BIOS fetch и DMA.
 
+
+
+### A1.2 — ATM video frame-buffer reservation and transfer contract
+- [x] Зафиксированы проверенные ATM Turbo 2+ графические режимы как цели presenter: 640×200 и 320×200×16.
+- [x] Рассчитан бюджет 32 KiB на один полный графический кадр; для 320×200×16 packed 4-bpp — 32,000 bytes.
+- [x] Зарезервированы две физические frame slots: pages 79-80 (A) и 81-82 (B), всего 64 KiB.
+- [x] Зафиксирована схема double buffering: NeoGS формирует один кадр, ATM принимает другой; in-flight slot неизменяем до ACK.
+- [x] Зафиксировано разделение logical guest frame и ATM-native video memory layout; конвертация выполняется в ATM presenter.
+- [x] Обновлён общий physical RAM capacity gate до 83 уникальных страниц (pages 0-82, 1,359,872 bytes).
+- [ ] По исходникам ATM/Project112 подтвердить точную раскладку 640×200 bitmap/attributes и что полный payload помещается в 32 KiB.
+- [ ] Определить точный canonical pixel format, stride, palette и frame descriptor ABI.
+- [ ] Реализовать frame sequence/ownership/ACK, fragmentation, CRC и retry.
+- [ ] Реализовать ATM presenter для 640×200 и 320×200×16 с записью в проверенную native layout.
+- [ ] Проверить frame-boundary/VSync commit и политику пропуска кадров.
+- [ ] Проверить физическую доступность pages 79-82 и DMA visibility; zero-copy разрешать только после hardware proof.
+- [ ] Провести стресс-тест двойной буферизации, переключения режимов, потерянных ACK и медленного ATM consumer.
+
 ## P0 — исходные данные и BIOS
 - [x] Найден BIOS-кандидат в Project124: bios/BIOS.BIN, заявленный размер 8192 байта.
 - [x] Найдены BIOS source/listing: bios/bios.asm и bios/bios.txt.
