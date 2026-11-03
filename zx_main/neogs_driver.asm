@@ -363,14 +363,20 @@ upload_firmware::
 
         ; Phase 5: #13 JUMP TO ADDRESS. The low byte is the command's
         ; first argument and must be written before issuing the command.
-        ld      a, 5
+        ; Split phase 5 into sub-phases so a real GS105a handshake failure
+        ; identifies whether the low argument, command, or high argument stalled.
+        ld      a, #51                  ; 5.1: preload entry address low byte
         ld      (neo_fw_timeout_phase), a
         xor     a                       ; entry address low = $00
         call    gs_boot_write_command_argument
         jp      c, .upload_failed
+        ld      a, #52                  ; 5.2: issue #13 and wait for CBIT clear
+        ld      (neo_fw_timeout_phase), a
         ld      a, GS_CMD_JUMP_ADDRESS
         call    gs_boot_send_command
         jp      c, .upload_failed
+        ld      a, #53                  ; 5.3: send entry address high byte
+        ld      (neo_fw_timeout_phase), a
         ld      a, #40                  ; entry address high = $40
         call    gs_boot_send_data_byte
         jp      c, .upload_failed
@@ -392,11 +398,42 @@ upload_firmware::
         jp      c, .upload_failed
         ld      a, h
         call    gs_boot_send_data_byte
-        jp      c, .upload_failed
+        jr      nc, .phase7_length_high_tx_done
+
+        ; The bootstrap consumes the high length byte and immediately sends
+        ; #A3. Since DBIT is shared by both directions, the ACK can set DBIT
+        ; before the host observes the brief clear interval. In that case the
+        ; generic TX helper reports a state-2 timeout although the byte was
+        ; consumed. Accept only the expected #A3 as proof of consumption.
+        ld      a, (neo_fw_tx_wait_state)
+        cp      2
+        jp      nz, .upload_failed
+        in      a, (GSSTAT)
+        ld      (neo_fw_last_status), a
+        bit     B_DBIT, a
+        jp      z, .upload_failed
         call    gs_boot_receive_data_byte
         jp      c, .upload_failed
         cp      NGS_BOOTSTRAP_LENGTH_ACK
         jp      nz, .upload_failed
+
+        ; The #A3 ACK proves that the pending high length byte was consumed.
+        push    hl
+        ld      hl, (neo_fw_bytes_sent)
+        inc     hl
+        ld      (neo_fw_bytes_sent), hl
+        pop     hl
+        xor     a
+        ld      (neo_fw_tx_wait_state), a
+        jr      .phase7_ack_received
+
+.phase7_length_high_tx_done:
+        call    gs_boot_receive_data_byte
+        jp      c, .upload_failed
+        cp      NGS_BOOTSTRAP_LENGTH_ACK
+        jp      nz, .upload_failed
+
+.phase7_ack_received:
 
         ; Phase 8: stream the custom firmware to RAM address $0000.
         ld      a, 8
@@ -955,6 +992,14 @@ gs_boot_send_data_byte:
         ld      a, b
         or      c
         jr      nz, .data_wait_free
+        ; Distinguish a timeout before the byte is written from a timeout
+        ; while waiting for the receiver to consume the written byte.
+        ld      a, (neo_fw_timeout_phase)
+        cp      #53
+        jr      nz, .data_free_timeout
+        ld      a, #531
+        ld      (neo_fw_timeout_phase), a
+.data_free_timeout:
         scf
         ret
 .data_slot_free:
@@ -972,6 +1017,13 @@ gs_boot_send_data_byte:
         ld      a, b
         or      c
         jr      nz, .data_wait_consumed
+        ; Phase #532 means #40 was written but DBIT never returned low.
+        ld      a, (neo_fw_timeout_phase)
+        cp      #53
+        jr      nz, .data_consumed_timeout
+        ld      a, #532
+        ld      (neo_fw_timeout_phase), a
+.data_consumed_timeout:
         scf
         ret
 .data_consumed:
