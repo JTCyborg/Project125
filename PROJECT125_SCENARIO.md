@@ -516,3 +516,16 @@
 - Статус: IMPLEMENTED / NOT BUILT / NOT RUN.
 
 | 2026-11-03 | Fix DBIT turnaround after #A1 and #A3 | IMPLEMENTED / NOT BUILT | Publish ACK then immediately receive next host byte without requiring a sampled DBIT-low interval. |
+
+## A1.27 — возврат ACK handshake bootstrap к проверенному V1 (2026-11-03)
+
+- [x] Runtime A22: после запуска bootstrap host на фазе #06 получил #E1 вместо #A1.
+- [x] По исходнику установлено: #E1 формируется только в bootstrap_timeout после исчерпания ожидания входящего байта.
+- [x] Выявлен дефект A22: `bootstrap_send_ack_no_wait` сразу переходил к приёму, пока DBIT мог ещё оставаться установленным собственным исходящим ACK. Приёмник мог принять собственный ACK за входящий байт длины, после чего тайм-аутить второй байт и отправлять #E1.
+- [x] Bootstrap целиком восстановлен побайтно из проверенного Project124 V1 commit `39e8632966db0ce3bff1591c2b550f052ac386d9`; обычная отправка #A1/#A3 снова ожидает подтверждённого чтения host.
+- [x] Host-side обработчик гонки #40/#A1 из A22 сохранён; маркер драйвера обновлён до A23.
+- [ ] Windows build: проверить сборку и фактический размер NEOLOAD.C (1..254 байта).
+- [ ] Runtime: проверить прохождение фазы #06 с #A1, затем передачу #C5/#3D, ACK #A3, поток NEOFW.C и ACK #A2.
+- Статус: IMPLEMENTED / NOT BUILT / NOT RUN. Исправление не считается подтверждённым до нового runtime-лога.
+
+| 2026-11-03 | Restore V1 bootstrap ACK turnaround | IMPLEMENTED / NOT BUILT | Reverted the no-wait ACK receiver race; preserved host A22 pending-ACK handling under marker A23. |
