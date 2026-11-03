@@ -7,8 +7,8 @@
 ;   Length: 8192 bytes
 ;   Sectors: 32
 ;
-; The file is never staged as a complete 8 KiB host-RAM buffer. One 256-byte
-; sector is read to #C000, sent through zx_main/bios_transfer.asm, then reused.
+; BIOS.C is staged in host RAM at #C000..#DFFF before DMA starts. The complete
+; disk-read phase and DMA-send phase are deliberately kept separate.
 ;
 ; Include order in the host program:
 ;   shared/neogs_io.inc
@@ -26,7 +26,7 @@ BIOS_TRDOS_SECTOR_COUNT    EQU #20
 BIOS_TRDOS_SECTOR_SIZE     EQU #0100
 BIOS_TRDOS_BUFFER          EQU #C000
 
-; Open BIOS.C, stream 32 sectors to NeoGS page 75 and validate the ROM.
+; Open BIOS.C, stage 32 sectors, send them to NeoGS page 75, then validate.
 neogs_bios_load_from_trdos:
         di
         ld      (bios_trdos_saved_sp), sp
@@ -138,7 +138,8 @@ neogs_bios_load_from_trdos:
         xor     a
         ld      (bios_trdos_file_error), a
         or      a
-        ld      sp, (bios_trdos_saved_sp)
+        ld      hl, (bios_trdos_saved_sp)
+        ld      sp, hl
         ret
 
 bios_trdos_file_not_found:
@@ -171,7 +172,8 @@ bios_trdos_rom_validation_error:
 
 bios_trdos_fail:
         ld      (bios_trdos_file_error), a
-        ld      sp, (bios_trdos_saved_sp)
+        ld      hl, (bios_trdos_saved_sp)
+        ld      sp, hl
         scf
         ret
 
@@ -232,6 +234,9 @@ bios_trdos_read_next_sector:
         ld      a, (bios_trdos_sectors_left)
         dec     a
         ld      (bios_trdos_sectors_left), a
+        or      a
+        call    z, bios_trdos_debug_dump_tail
+        ld      a, (bios_trdos_sectors_left)
         or      a
         ret
 .bios_sector_io_error:
@@ -342,7 +347,9 @@ bios_trdos_debug_dump_tail:
         out     (c), a
         jr      .bios_debug_prefix_loop
 .bios_debug_prefix_done:
-        ld      hl, BIOS_TRDOS_BUFFER + #00F0
+        ld      hl, (bios_trdos_last_buffer)
+        ld      de, #00F0
+        add     hl, de
         ld      e, 5
 .bios_debug_tail_loop:
         ld      a, (hl)
