@@ -521,29 +521,19 @@ bios_rom_debug_dump_tail:
         ld      a, 75
         rrca
         out     (MPAGEX), a
-        ld      hl, bios_rom_tail_prefix
-        call    neo_debug_send_string
         ld      hl, #DFF0
         ld      e, 5
 .bios_tail_dump_loop:
         ld      a, (hl)
-        call    neo_debug_hex8
-        ld      a, ' '
+        ; Send raw bytes; the Host drains these while waiting for CBIT release.
         call    neo_send_data_byte
         inc     hl
         dec     e
         jr      nz, .bios_tail_dump_loop
-        ld      a, 13
-        call    neo_send_data_byte
-        ld      a, 10
-        call    neo_send_data_byte
         pop     hl
         pop     bc
         pop     af
         ret
-
-bios_rom_tail_prefix:
-        defb    "[BIOS DST FFF0] ", 0
 
 bios_boot_message:
         defb    "[BIOS] RESET FFFF:0000", 13, 10, 0
