@@ -554,3 +554,13 @@
 - Статус: IMPLEMENTED / NOT BUILT / NOT RUN.
 
 | 2026-11-03 | Extend post-#A1 DBIT-low interval | IMPLEMENTED / NOT BUILT | A24's #0400 interval did not prevent the phase #07 timeout; extend the interval to #FFFF iterations for a decisive timing test. |
+
+
+## A1.30 — неинвазивная трассировка handshake длины (A26, 2026-11-03)
+
+- [x] Добавлены маркеры порта #EF перед отправкой младшего байта длины, после подтверждения младшего байта, перед/после старшего байта и при ожидании/получении ACK #A3.
+- [x] Маркеры не обращаются к портам GS и не изменяют состояние DBIT; последовательность обмена Project124 V1 сохранена.
+- [x] Маркер драйвера обновлён до A26.
+- [ ] Windows build: проверить sjasmplus, отсутствие конфликтов меток и размер NEOLOAD.C.
+- [ ] Runtime: прислать лог от DRIVER A26. По последнему маркеру будет видно, на каком именно участке handshake остановился обмен.
+- Статус: IMPLEMENTED / NOT BUILT / NOT RUN. Исправлением протокола не является; это трассировка.
