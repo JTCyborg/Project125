@@ -279,3 +279,23 @@ No feature above is considered implemented merely because it is described here.
 ## 18. NeoGS physical memory, ROM overlay and boot chain
 
 The detailed contract is maintained in [PROJECT125_MEMORY_LAYOUT.md](PROJECT125_MEMORY_LAYOUT.md). It defines the four 16-KiB windows, NOROM/RAM-over-ROM behavior, staged bootstrap, resident firmware, stack, DMA buffers, banked overlays and x86 guest RAM. This is a Project124-derived reference and remains subject to Project125 hardware validation. Do not enlarge a flat firmware image by merely raising its size limit; use a validated segmented/banked image format.
+
+
+## 19. Fixed NeoGS physical memory reservations
+
+Project125 reserves fixed physical backing before general-purpose allocation:
+
+| Resource | Physical NeoGS allocation | Capacity |
+|---|---|---:|
+| Resident firmware | Page 0 (RAM-over-ROM, WIN0) | 16 KiB |
+| Firmware overlays | Pages 68-74 (WIN2 banked) | 112 KiB |
+| **Complete NeoGS firmware budget** | **Page 0 + pages 68-74** | **128 KiB total** |
+| BIOS ROM backing | Pages 75-78 | 64 KiB maximum; BIOS image accepted from 8 KiB |
+
+The 128-KiB firmware budget includes the resident 16-KiB page; it is not an extra 128 KiB on top of that page. The BIOS receives a separate 64-KiB backing reservation, independent of firmware size. These pages are excluded from general allocation and guest writable RAM.
+
+The Project124-derived x86 guest RAM pool remains pages 4-67 (1 MiB). BIOS backing pages 75-78 are exposed only through the guest memory-region decoder as a read-only ROM region. Guest physical mapping is defined by a BIOS manifest and reset-vector validation; do not assume a fixed F0000h/FE000h mapping before inspecting the chosen binary.
+
+The complete allocation requires at least 79 unique physical 16-KiB pages (1,294,336 bytes) including page zero. A 2-MiB board nominally has 128 pages, but Project125 must probe actual capacity, aliases and read/write integrity before use. The memory contract, exact page ownership, loader invariants and failure behavior are specified in [PROJECT125_MEMORY_LAYOUT.md](PROJECT125_MEMORY_LAYOUT.md).
+
+These reservations are architectural commitments only. They do not imply that Stage-0/Stage-1, BIOS ROM protection or hardware page validation are implemented yet.
