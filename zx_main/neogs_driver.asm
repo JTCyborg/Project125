@@ -9,7 +9,7 @@ IPC_BYTE_TIMEOUT EQU #FFFF
 IPC_CMD_TIMEOUT EQU #FFFF
 
 ; -------------------------------------------------------------------------
-; Open the single NeoGS package on TR-DOS and read its first sector to #C000.
+; Open either standalone NeoGS file on TR-DOS and read its first sector to #C000.
 ; The same 256-byte buffer is reused for every following sector while the
 ; firmware is streamed to NeoGS. The complete file is NEVER staged in host RAM.
 ; OUT: Carry clear, first sector at #C000, file length and next-sector cursor set.
@@ -54,7 +54,7 @@ neo_fw_open_file:
         or      b
         jp      nz, .bad_descriptor
 
-        ; Store the actual package length; its header separates the two code sections.
+        ; Store the exact standalone file length.
         ld      hl, (#5CE8)
         ld      (neo_fw_file_length), hl
         ld      a, h
@@ -81,7 +81,7 @@ neo_fw_open_file:
         ld      (neo_fw_load_buffer), hl
 
         ; Read only the first sector now. Later sectors are fetched on demand
-        ; by upload_firmware after the preceding buffer bytes have been sent.
+        ; by the active transfer after the preceding buffer bytes have been sent.
         call    neo_fw_read_next_sector
         jp      c, .sector_read_failed
         xor     a
@@ -341,7 +341,7 @@ upload_firmware::
 .phase5_jump_ready:
         ; Bootstrap has enabled RAM-over-ROM and is waiting at $0000.
 
-        ; The bootstrap is running and has sent READY. Open NEOF W.C
+        ; The bootstrap is running and has sent READY. Open NEOFW.C
         ; independently; its descriptor, length and sector cursor are new.
         call    load_neogs_firmware_file
         jp      c, .upload_failed
