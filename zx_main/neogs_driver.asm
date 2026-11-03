@@ -411,9 +411,21 @@ upload_firmware::
         jp      nz, .upload_failed
 
 .phase5_jump_ready:
-        ; Phase 7: immediately send length after consuming #A1.
-        ; Bootstrap waits for the first length byte only #FFFF polls; no
-        ; host delay or #EF diagnostics may be inserted in this interval.
+        ; The DBIT flag is shared by both data directions. After the host
+        ; consumes #A1, keep the slot idle long enough for NeoGS to observe
+        ; DBIT=0 before publishing the first length byte. Project124 V1 uses
+        ; the same #0400-iteration turnaround in gs_boot_receive_data_byte.
+        ; The A28+ bootstrap now waits for length without a local timeout.
+        push    bc
+        ld      bc, #0400
+.phase5_ready_turnaround:
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .phase5_ready_turnaround
+        pop     bc
+
+        ; Phase 7: send length low/high and receive the #A3 acceptance ACK.
         ld      a, 7
         ld      (neo_fw_timeout_phase), a
         ld      hl, (neo_fw_length)
@@ -1160,4 +1172,4 @@ msg_p7_high_tx:        db "[P125] PH7 TX HIGH", 13, 10, 0
 msg_p7_high_ok:       db "[P125] PH7 HIGH ACK", 13, 10, 0
 msg_p7_wait_a3:        db "[P125] PH7 WAIT A3", 13, 10, 0
 msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A29", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A30", 13, 10, 0
