@@ -1103,3 +1103,17 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.70 trace BIOS.C track/sector reads | SOURCE COMMITTED | Host prints the internal TR-DOS track/sector cursor before every sector read. |
+
+
+## A1.71 — проверка фактической записи каждого BIOS-сектора в host buffer (2026-11-04)
+
+- [x] Runtime A1.70: все 32 запроса C=#05 идут последовательно от 02/03 до 04/02 с корректным rollover 0..15.
+- [x] Runtime A1.70: после последнего чтения буфер #C000+#F0 всё ещё содержит байты первого сектора BIOS (0B B0 FF E6 01), а не reset vector (EA 5B E0 00 F0).
+- [x] Сверка с Project124 подтвердила совпадение параметров TR-DOS C=#05: B=1, D=track, E=sector, HL=destination. Модель нумерации 0..15 оставлена без изменений.
+- [x] В BIOS loader добавлен вывод [BIOS DATA F0] сразу после каждого успешного вызова C=#05. Пять байтов берутся из повторно используемого буфера #C000+#F0.
+- [ ] Сборка через build.bat; проверить SjASMPlus и размер host image.
+- [ ] Runtime: сравнить 32 строки [BIOS DATA F0]. Если все строки одинаковы, исследовать сам вызов TR-DOS/состояние дискового сервиса; если меняются, определить, на каком чтении содержимое перестаёт соответствовать ожидаемому сектору.
+- [ ] DMA target, длина, page mapping и NeoGS handshake не менять до установления корректности источника.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.71 trace BIOS buffer contents after every sector read | SOURCE COMMITTED | Five bytes at buffer offset #F0 are emitted after each successful C=#05 read; build and runtime remain pending. |
