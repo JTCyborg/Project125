@@ -1,7 +1,7 @@
 # Project125 — сценарий разработки и испытаний
 
 Дата начала: 2026-11-03
-Ветка: main
+Ветка: neogs-driver-rewrite
 Статус: начат перенос runtime; BIOS-кандидат и исходные модули x86 импортированы. Сборка и исполнение в Project125 ещё не подтверждены.
 
 ## Правила ведения
@@ -588,3 +588,21 @@
 - [ ] Windows build: проверить размер NEOLOAD.C (максимум 254 байта), sjasmplus и относительные переходы.
 - [ ] Runtime: проверить #C5/#3D, ACK #A3, передачу NEOFW.C и ACK #A2.
 - Статус: IMPLEMENTED / NOT BUILT / NOT RUN. Проверка runtime обязательна.
+
+
+## NGT-RW — новая реализация NeoGS loader/driver (2026-11-03)
+
+Ветка переписывания: `neogs-driver-rewrite`; `main` не изменялась.
+
+- [x] Создан `zx_main/neogs_transport_v2.asm`: отдельные bounded wait для CBIT/DBIT, command, argument preload, byte TX/RX.
+- [x] Создан `zx_main/neogs_rom_loader_v2.asm`: cold restart, RAM probe, GS105a #14, передача bootstrap в #4000 и #13 JUMP.
+- [x] Создан `neogs_sub/neogs_bootstrap_v2.asm`: handshake #A1/#A3, приём размера и payload, переход на #0000.
+- [ ] Сверить точную семантику #13/#14 и CBIT/DBIT по GS105a ROM и модели NeoGS.
+- [ ] Подключить новые модули к build pipeline, сохранив BIOS/video API.
+- [ ] Добавить потоковое чтение TR-DOS через повторный буфер для файлов больше 16 KiB.
+- [ ] Добавить CRC/контроль целостности всего firmware payload.
+- [ ] Сборка SjASMPlus.
+- [ ] Эмуляторный тест.
+- [ ] Тест на физической ATM Turbo 2+ / NeoGS.
+
+Статус: IMPLEMENTED (файлы созданы) / NOT BUILT / NOT TESTED / NOT RUNTIME. Новые модули пока изолированы и не включены в `main.asm`; старый драйвер оставлен для сохранения существующего запуска до прохождения тестов.
