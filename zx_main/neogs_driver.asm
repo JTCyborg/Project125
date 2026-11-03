@@ -1053,19 +1053,8 @@ gs_boot_receive_data_byte:
 .receive_ready:
         in      a, (GSDAT)
         ld      (neo_fw_last_rx_byte), a
-        ; DBIT is shared by both directions. After reading a NeoGS byte,
-        ; let the sender observe the cleared slot before the host writes
-        ; the next byte; otherwise a fast turnaround can hide the clear edge.
-        push    af
-        push    bc
-        ld      bc, #0400
-.receive_turnaround_delay:
-        dec     bc
-        ld      a, b
-        or      c
-        jr      nz, .receive_turnaround_delay
-        pop     bc
-        pop     af
+        ; Match the proven Project124 V1 transport exactly: reading GSDAT
+        ; clears DBIT and returns immediately. No host-side turnaround delay.
         or      a
         ret
 
@@ -1175,4 +1164,4 @@ neo_fw_initial_status:  db 0
 neo_fw_last_status:     db 0
 neo_fw_timeout_phase:   db 0
 neo_fw_last_tx_phase:   db 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A18", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A19", 13, 10, 0
