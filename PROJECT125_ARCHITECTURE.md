@@ -299,3 +299,20 @@ The Project124-derived x86 guest RAM pool remains pages 4-67 (1 MiB). BIOS backi
 The complete allocation requires at least 79 unique physical 16-KiB pages (1,294,336 bytes) including page zero. A 2-MiB board nominally has 128 pages, but Project125 must probe actual capacity, aliases and read/write integrity before use. The memory contract, exact page ownership, loader invariants and failure behavior are specified in [PROJECT125_MEMORY_LAYOUT.md](PROJECT125_MEMORY_LAYOUT.md).
 
 These reservations are architectural commitments only. They do not imply that Stage-0/Stage-1, BIOS ROM protection or hardware page validation are implemented yet.
+
+
+## 20. NeoGS-to-ATM video frame transport and reserved memory
+
+The first ATM video presenter supports the already exercised ATM Turbo 2+ graphics targets: 640×200 graphics and 320×200 EGA with 16 colors. The 320×200×16 packed 4-bpp image is 32,000 bytes. Each graphics frame slot is therefore budgeted at 32 KiB, including mode-specific attribute data/alignment for the 640×200 adapter; the exact 640×200 byte layout must be verified against the ATM mode implementation.
+
+NeoGS reserves two independent 32-KiB physical frame slots:
+- Frame A: physical pages 79-80.
+- Frame B: physical pages 81-82.
+
+NeoGS renders into one slot while ATM consumes the other. The in-flight slot is immutable until transfer completion is acknowledged. A versioned frame descriptor carries mode, dimensions, format/layout, stride, payload length, palette when needed, frame sequence and integrity data. Transfers are fragmented/chunked; a complete frame need not fit one IPC packet.
+
+The guest video adapter produces a logical frame; the ATM presenter converts it into ATM-native video pages/planes using the mode-specific ATM routines. Guest video memory and ATM physical video RAM are separate address spaces. Vsync/commit and frame-drop policy belong to the ATM presenter. Text and smaller graphics modes use the same protocol with smaller payloads or a text path, without extra reserved framebuffer pages.
+
+The two slots consume 64 KiB and raise the complete physical page-map gate to 83 unique 16-KiB pages (pages 0-82, 1,359,872 bytes). Physical pages 79-82 are reserved and cannot be used for guest RAM, firmware, BIOS or unrelated DMA. Direct DMA/zero-copy access is not assumed until hardware tests prove addressability and completion semantics; bounded copy/stream transport remains the baseline.
+
+See [PROJECT125_MEMORY_LAYOUT.md](PROJECT125_MEMORY_LAYOUT.md) for the complete allocation, frame ownership and mapping rules. This is an architectural reservation, not a claim that frame transport or hardware DMA has been implemented.
