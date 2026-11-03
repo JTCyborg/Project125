@@ -15,8 +15,6 @@
 
 neogs_bootstrap_start:
         di
-        ld      a, 'B'
-        out     (#EF), a              ; NeoGS-local debug port: bootstrap entered
 
         ; GS105a RECEIVE BLOCK (#14) may leave the Spectrum DMA module
         ; enabled. The bootstrap changes to byte-wise GSDAT transfers, so
@@ -60,8 +58,6 @@ neogs_bootstrap_start:
         in      a, (ZXDATRD)
 
         ; Tell Spectrum that the tiny loader is running and waiting for length.
-        ld      a, '1'
-        out     (#EF), a              ; about to publish READY #A1
         ; Publish READY directly and enter the receive state immediately.
         ; Do not wait for DBIT to return low here: the host may consume #A1
         ; and publish the first length byte before this Z80 observes the
@@ -151,27 +147,40 @@ bootstrap_timeout:
         jr      nz, .timeout_wait_host
         jp      bootstrap_halt
 
+; Emit the received byte as two ASCII hexadecimal digits on local port #EF.
+; IN: A = received byte. OUT: A is preserved.
+bootstrap_debug_hex8:
+        push    af
+        rrca
+        rrca
+        rrca
+        rrca
+        and     #0F
+        call    bootstrap_debug_hex_digit
+        pop     af
+        and     #0F
+bootstrap_debug_hex_digit:
+        add     a, #30
+        cp      #3A
+        jr      c, .hex_digit
+        add     a, 7
+.hex_digit:
+        out     (#EF), a
+        ret
+
 ; Receive a length byte using the fixed NeoGS local I/O page.
 ; IN A,(n) uses A as the high byte of the Z80 I/O address; use IN A,(C)
 ; with B=#FF so the status/data ports are addressed consistently.
 ; Reading ZXDATRD consumes the host byte and clears DBIT.
 bootstrap_receive_length_byte:
-        ld      a, 'L'
-        out     (#EF), a              ; entered length-byte receiver
 .length_wait:
         ld      bc, #FF04              ; ZXSTAT
         in      a, (c)
         bit     B_DBIT, a
         jr      z, .length_wait
-        ld      a, 'S'
-        out     (#EF), a              ; ZXSTAT observed DBIT=1
         ld      bc, #FF02              ; ZXDATRD
         in      a, (c)
-        push    af
-        ld      a, 'R'
-        out     (#EF), a              ; ZXDATRD read completed
-        pop     af
-        ret
+        jp      bootstrap_debug_hex8
 
 ; Wait for one byte from Spectrum. Reading ZXDATRD clears DBIT.
 bootstrap_receive_data_byte:
