@@ -2,7 +2,7 @@
 ; PROJECT 124 — NeoGS host-side driver
 ; Stage 2 uses GS105a #14 (RECEIVE BLOCK) and #13 (JUMP) to start a two-stage bootstrap.
 ; =========================================================================
-        INCLUDE "../shared/neogs_io.inc"
+; shared/neogs_io.inc is included once by zx_main/main.asm before this module.
 
 FW_BYTE_TIMEOUT EQU #FFFF
 IPC_BYTE_TIMEOUT EQU #FFFF
