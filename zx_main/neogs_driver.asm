@@ -432,6 +432,19 @@ upload_firmware::
         ld      a, l
         call    gs_boot_send_data_byte
         jp      c, .upload_failed
+
+        ; DBIT is shared by both directions. Give the NeoGS receiver time
+        ; to leave the first length-byte read and enter the second-byte wait
+        ; before the host republishes DBIT for the high byte.
+        push    bc
+        ld      bc, #0400
+.phase7_length_turnaround:
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .phase7_length_turnaround
+        pop     bc
+
         ld      hl, (neo_fw_length)
         ld      a, h
         call    gs_boot_send_data_byte
@@ -1172,4 +1185,4 @@ msg_p7_high_tx:        db "[P125] PH7 TX HIGH", 13, 10, 0
 msg_p7_high_ok:       db "[P125] PH7 HIGH ACK", 13, 10, 0
 msg_p7_wait_a3:        db "[P125] PH7 WAIT A3", 13, 10, 0
 msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A31", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A32", 13, 10, 0
