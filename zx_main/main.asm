@@ -193,13 +193,47 @@ p125_bios_image_end:
         ASSERT p125_bios_image_end - p125_bios_image_start = #2000
         SAVETRD "disk_A.trd", "BIOS.C", #C000, #2000
 
+        INCLUDE "neoprog_chunks.inc"
+        ASSERT NEOGS_PACKAGE_CHUNK_COUNT >= 1
+        ASSERT NEOGS_PACKAGE_CHUNK_COUNT <= 4
+        ASSERT NEOGS_PACKAGE_TOTAL_SIZE <= #FF00
+
+        PAGE 1
         ORG #C000
-p125_neogs_package_start:
-        DW p125_neogs_bootstrap_end - p125_neogs_bootstrap_start
-p125_neogs_bootstrap_start:
-        INCBIN "build/neogs_bootstrap.bin"
-p125_neogs_bootstrap_end:
-        INCBIN "build/neogs_code.bin"
-p125_neogs_package_end:
-        ASSERT p125_neogs_package_end - p125_neogs_package_start <= #FF00
-        SAVETRD "disk_A.trd", "neoprog.C", #C000, p125_neogs_package_end - p125_neogs_package_start
+p125_neoprog_chunk0_start:
+        INCBIN "zx_main/neoprog_part0.bin"
+p125_neoprog_chunk0_end:
+        ASSERT p125_neoprog_chunk0_end - p125_neoprog_chunk0_start = NEOGS_PACKAGE_CHUNK0_SIZE
+        SAVETRD "disk_A.trd", "neoprog.C", #C000, NEOGS_PACKAGE_CHUNK0_SIZE
+
+        IF NEOGS_PACKAGE_CHUNK_COUNT > 1
+        PAGE 3
+        ORG #C000
+p125_neoprog_chunk1_start:
+        INCBIN "zx_main/neoprog_part1.bin"
+p125_neoprog_chunk1_end:
+        ASSERT p125_neoprog_chunk1_end - p125_neoprog_chunk1_start = NEOGS_PACKAGE_CHUNK1_SIZE
+        SAVETRD "disk_A.trd", &"neoprog.C", #C000, NEOGS_PACKAGE_CHUNK1_SIZE
+        ENDIF
+
+        IF NEOGS_PACKAGE_CHUNK_COUNT > 2
+        PAGE 4
+        ORG #C000
+p125_neoprog_chunk2_start:
+        INCBIN "zx_main/neoprog_part2.bin"
+p125_neoprog_chunk2_end:
+        ASSERT p125_neoprog_chunk2_end - p125_neoprog_chunk2_start = NEOGS_PACKAGE_CHUNK2_SIZE
+        SAVETRD "disk_A.trd", &"neoprog.C", #C000, NEOGS_PACKAGE_CHUNK2_SIZE
+        ENDIF
+
+        IF NEOGS_PACKAGE_CHUNK_COUNT > 3
+        PAGE 6
+        ORG #C000
+p125_neoprog_chunk3_start:
+        INCBIN "zx_main/neoprog_part3.bin"
+p125_neoprog_chunk3_end:
+        ASSERT p125_neoprog_chunk3_end - p125_neoprog_chunk3_start = NEOGS_PACKAGE_CHUNK3_SIZE
+        SAVETRD "disk_A.trd", &"neoprog.C", #C000, NEOGS_PACKAGE_CHUNK3_SIZE
+        ENDIF
+
+        PAGE 0
