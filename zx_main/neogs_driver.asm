@@ -234,7 +234,12 @@ upload_firmware::
         ; Bootstrap executes at $4000; keep it below stage-1 scratch at $4800.
         ld      a, d
         cp      8
-        jp      nc, .upload_failed
+        jr      c, .bootstrap_size_valid
+        jp      nz, .upload_failed
+        ld      a, e
+        or      a
+        jp      nz, .upload_failed
+.bootstrap_size_valid:
         ld      a, d
         or      e
         jp      z, .upload_failed
