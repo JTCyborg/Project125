@@ -73,11 +73,9 @@ neogs_bios_load_from_trdos:
         jp      nz, bios_trdos_bad_size
         ld      (bios_trdos_sectors_left), a
 
-        ; TR-DOS sector IDs are 1..16 (not zero-based 0..15).
+        ; Project124/TR-DOS 5.04T descriptor stores internal sectors 0..15.
         ld      a, (#5CEB)
-        cp      1
-        jp      c, bios_trdos_bad_descriptor
-        cp      17
+        cp      16
         jp      nc, bios_trdos_bad_descriptor
         ld      (bios_trdos_sector), a
         ld      a, (#5CEC)
@@ -204,13 +202,12 @@ bios_trdos_read_next_sector:
         or      b
         jr      nz, .bios_sector_io_error
 
-        ; TR-DOS physical sector IDs are 1..16. After sector 16,
-        ; continue at sector 1 of the next track; sector 0 is not valid.
+        ; TR-DOS 5.04T internal sector IDs are 0..15; roll over to 0.
         ld      a, (bios_trdos_sector)
         inc     a
-        cp      17
+        cp      16
         jr      c, .bios_sector_same_track
-        ld      a, 1
+        xor     a
         ld      (bios_trdos_sector), a
         ld      a, (bios_trdos_track)
         inc     a
