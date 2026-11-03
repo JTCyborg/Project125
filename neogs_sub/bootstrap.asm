@@ -43,18 +43,12 @@ neogs_bootstrap_start:
         call    bootstrap_send_data_byte
 
         ; Host sends length low byte, then high byte.
+        ; Keep the original Project124 V1 sequence: receive both bytes
+        ; without intermediate echo replies, then send one #A3 acceptance ACK.
         call    bootstrap_receive_data_byte
         ld      e, a
-        ; Diagnostic handshake: echo the received low length byte. This
-        ; proves that the host's first length byte reached bootstrap RX.
-        ld      a, e
-        call    bootstrap_send_data_byte
         call    bootstrap_receive_data_byte
         ld      d, a
-        ; Echo the high length byte as a separate receive confirmation. The
-        ; host validates this exact value before waiting for the #A3 accept ACK.
-        ld      a, d
-        call    bootstrap_send_data_byte
 
         ; Reject zero length and any image larger than the low 16-KiB window ($4000).
         ld      a, d
