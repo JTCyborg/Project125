@@ -161,7 +161,7 @@ x86_modrm_set_ss:
 ; Fetch one displacement byte from the bounded instruction stream.
 ; IN/OUT: BC advances, A=byte, carry on end-of-program.
 x86_modrm_fetch_disp8:
-        ld      hl, (x86_program_end)
+        ld      hl, (x86_real_task_end)
         or      a
         sbc     hl, bc
         jp      z, x86_modrm_truncated
@@ -173,7 +173,7 @@ x86_modrm_fetch_disp8:
 
 ; Fetch little-endian disp16. OUT HL=value, BC advances by two.
 x86_modrm_fetch_disp16:
-        ld      hl, (x86_program_end)
+        ld      hl, (x86_real_task_end)
         or      a
         sbc     hl, bc
         jp      c, x86_modrm_truncated
