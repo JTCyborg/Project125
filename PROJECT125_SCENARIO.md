@@ -800,3 +800,15 @@
 - [ ] Runtime: проверить полный trace READY/length/ACK/firmware.
 - **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME.
 
+
+
+## A1.48 — исправление объявления локальной метки host driver (2026-11-03)
+
+- [x] По логу локальной сборки подтверждено: NeoGS firmware и bootstrap собираются без ошибок; NEOLOAD.C = 237 байт, NEOFW.C = 15813 байт.
+- [x] Исправлено объявление `.phase5_jump_tx_done` в `zx_main/neogs_driver.asm`: удалён лишний отступ перед локальной меткой, из-за которого SjASMPlus воспринимал её как неизвестную инструкцию; переход `JR` оставался неразрешённым.
+- [x] Логика передачи #40, обработка раннего #A1, тайминги и протокол не менялись.
+- [ ] Повторная сборка ATM host: проверить отсутствие ошибок метки и JR range.
+- [ ] Runtime: проверить полный запуск NeoGS и последующие BIOS/x86 тесты.
+- **Статус:** SOURCE FIX APPLIED / NOT BUILT / NOT RUNTIME.
+
+| 2026-11-03 | A1.48 fix local label declaration | SOURCE FIX APPLIED | Corrected `.phase5_jump_tx_done` declaration; previous local build confirms bootstrap size limit passed, host assembly still pending. |
