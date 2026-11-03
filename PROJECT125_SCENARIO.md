@@ -752,3 +752,16 @@
 - **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Изменение только добавляет наблюдаемость; оно не заявляется как исправление DBIT handshake.
 
 | 2026-11-03 | Trace actual NeoGS length bytes and host send boundaries | IMPLEMENTED / NOT BUILT | NeoGS prints each consumed length byte as two hex digits; host prints l/h immediately before the corresponding send. |
+
+
+## A1.44 — корректный адрес чтения stale byte перед READY (2026-11-03)
+
+- [x] Runtime A33: NeoGS hex trace показал принятый bootstrap байт `#40` (логовые ASCII bytes `34 30`). Это совпадает с high byte адреса `#4000`, передаваемым host после GS105a `#13 JUMP ADDRESS`; host остановился в фазе #06 до начала передачи длины.
+- [x] Повторная проверка Z80 I/O выявила конкретную ошибку: ранняя очистка latch использовала `IN A,(ZXDATRD)`. Для этой формы Z80 формирует старший байт I/O-адреса из прежнего значения A, а не из страницы `#FF`. Поэтому инструкция не гарантировала чтение NeoGS `#FF02`.
+- [x] Исправлено на явную адресацию `LD BC,#FF02 / IN A,(C)`. Это та же фиксированная local-I/O адресация, которая уже используется в приёмнике байтов длины.
+- [x] Host marker обновлён до A34. Остальная передача, READY и timing не менялись; hex trace A1.43 оставлен для проверки фактического байта после очистки.
+- [ ] SjASMPlus build: проверить размер NEOLOAD.C (1..254 байта), адреса и ASSERT.
+- [ ] Runtime: подтвердить, что bootstrap больше не принимает `#40` как длину; host должен перейти через READY `#A1`, markers `l/h`, принятые байты `#C5/#3D`, ACK `#A3`, firmware stream и ACK `#A2`.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Причина ошибки подтверждается семантикой Z80 `IN A,(n)`; исправление ожидает сборку и runtime-проверку.
+
+| 2026-11-03 | Fix NeoGS stale-latch read address before READY | IMPLEMENTED / NOT BUILT | Use BC=#FF02 with IN A,(C), not IN A,(n), to read the actual NeoGS local data port. |
