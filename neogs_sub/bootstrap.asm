@@ -42,10 +42,14 @@ neogs_bootstrap_start:
         ld      a, NGS_BOOTSTRAP_READY_ACK
         call    bootstrap_send_data_byte
 
-        ; Host sends length low byte, then high byte.
-        call    bootstrap_receive_data_byte
+        ; Host sends length low byte, then high byte. The READY ACK has
+        ; already completed its DBIT turnaround; do not use the short bounded
+        ; payload receiver here. The host may need more than #FFFF NeoGS polls
+        ; to enter its next OUT, so wait until each length byte is actually
+        ; published instead of timing out and deadlocking on the host DBIT.
+        call    bootstrap_receive_length_byte
         ld      e, a
-        call    bootstrap_receive_data_byte
+        call    bootstrap_receive_length_byte
         ld      d, a
 
         ; Reject zero length and any image larger than the low 16-KiB window ($4000).
@@ -121,6 +125,17 @@ bootstrap_timeout:
         or      c
         jr      nz, .timeout_wait_host
         jp      bootstrap_halt
+
+; Receive the two-byte firmware length without a local timeout.
+; The host has just consumed #A1 and may be entering its first OUT instruction.
+; Waiting indefinitely avoids a false timeout that would leave host DBIT set.
+bootstrap_receive_length_byte:
+.length_wait:
+        in      a, (ZXSTAT)
+        bit     B_DBIT, a
+        jr      z, .length_wait
+        in      a, (ZXDATRD)
+        ret
 
 ; Wait for one byte from Spectrum. Reading ZXDATRD clears DBIT.
 bootstrap_receive_data_byte:
