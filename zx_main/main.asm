@@ -162,6 +162,11 @@ msg_bios_result:      defb "[P125] BIOS RETURN STATUS/AX: ", 0
 
 P125_OLD_SP: dw 0
 
+; Host-side modules: firmware bootstrap, BIOS DMA transport and TR-DOS reader.
+        INCLUDE "neogs_driver.asm"
+        INCLUDE "bios_transfer.asm"
+        INCLUDE "bios_file_loader.asm"
+
 ; Keep the resident host image below the stack at AFFFh.
 ProgramEnd:
         ASSERT ProgramEnd <= #A800
@@ -173,7 +178,7 @@ ProgramEnd:
         SAVETRD "disk_A.trd", "proj125.C", HOST_PROGRAM_START, ProgramEnd - HOST_PROGRAM_START
 
         ORG #E000
-        INCLUDE "zx_main/boot_loader.asm"
+        INCLUDE "boot_loader.asm"
         SAVETRD "disk_A.trd", "boot.B", BASIC_START, BASIC_END - BASIC_START
 
 ; -------------------------------------------------------------------------
