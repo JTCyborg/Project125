@@ -436,7 +436,11 @@ command_load_bios:
         out     (DMA_CST), a
         call    bios_rom_validate
         jr      nc, .bios_image_valid
-        ld      hl, #B101
+        ; Preserve the exact failed byte check in AX: B110..B115.
+        ld      a, (bios_rom_check_id)
+        add     a, #10
+        ld      l, a
+        ld      h, #B1
         ld      (saved_x86_ax), hl
         ld      a, 13
         ld      (x86_exit_status), a
