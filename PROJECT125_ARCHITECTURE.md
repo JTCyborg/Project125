@@ -274,3 +274,8 @@ Open decisions:
 - Timing fidelity target.
 
 No feature above is considered implemented merely because it is described here.
+
+
+## 18. NeoGS physical memory, ROM overlay and boot chain
+
+The detailed contract is maintained in [PROJECT125_MEMORY_LAYOUT.md](PROJECT125_MEMORY_LAYOUT.md). It defines the four 16-KiB windows, NOROM/RAM-over-ROM behavior, staged bootstrap, resident firmware, stack, DMA buffers, banked overlays and x86 guest RAM. This is a Project124-derived reference and remains subject to Project125 hardware validation. Do not enlarge a flat firmware image by merely raising its size limit; use a validated segmented/banked image format.
