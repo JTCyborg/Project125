@@ -1,5 +1,5 @@
 ; =========================================================================
-; PROJECT 124 — 8086 physical memory backend for NeoGS GS105a
+; PROJECT 125 — 8086 physical memory backend with BIOS ROM overlay
 ;
 ; Guest RAM below FE000h maps to NeoGS pages 4..67. The 8 KiB BIOS ROM
 ; overlay at FE000h-FFFFFh is read from NeoGS page 75 (offset 0000-1FFF).
@@ -17,7 +17,7 @@
 ;   x86_mem_init: enable NOROM + EXPAG, preserving other GSCFG0 bits.
 ;   x86_mem_read8:  IN x86_mem_addr; OUT A=value, carry=invalid address.
 ;   x86_mem_write8: IN x86_mem_addr and x86_mem_value; carry=invalid address.
-;   x86_mem_test: destructive test of the reserved 1 MiB x86 RAM region.
+;   x86_mem_test: destructive test of the 64-page RAM backing with BIOS overlay.
 ;                 status=0, AX=0001 on pass; status=5, AX=phase:page on fail.
 ;
 ; The test leaves NOROM+EXPAG enabled. It tests the writable guest RAM span,
