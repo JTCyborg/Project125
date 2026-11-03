@@ -111,6 +111,8 @@ main_loop:
         jp      z, command_load_bios
         cp      CMD_BOOT_BIOS
         jp      z, command_boot_bios
+        cp      CMD_VIDEO_CRC_TEST
+        jp      z, command_video_crc_test
 
         ; Unknown command: release CBIT so the host cannot deadlock.
         xor     a
@@ -336,6 +338,32 @@ command_int_guest_test:
 ; Stage 3A: guest INT 10h video BIOS service test.
 command_bios_video_test:
         call    bios_int10_video_test
+        xor     a
+        out     (CLRCBIT), a
+        jp      main_loop
+
+; Verify the shared CRC-16 routine against the standard 123456789 vector.
+command_video_crc_test:
+        ld      hl, #FFFF
+        ld      de, video_crc_test_vector
+        ld      b, 9
+.video_crc_test_loop:
+        ld      a, (de)
+        call    video_crc16_update
+        inc     de
+        djnz    .video_crc_test_loop
+        ld      (saved_x86_ax), hl
+        ld      de, #29B1
+        or      a
+        sbc     hl, de
+        jr      z, .video_crc_test_pass
+        ld      a, 14
+        ld      (x86_exit_status), a
+        jr      .video_crc_test_done
+.video_crc_test_pass:
+        xor     a
+        ld      (x86_exit_status), a
+.video_crc_test_done:
         xor     a
         out     (CLRCBIT), a
         jp      main_loop
