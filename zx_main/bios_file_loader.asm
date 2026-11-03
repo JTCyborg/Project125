@@ -241,7 +241,7 @@ bios_trdos_debug_dump_tail:
         jr      .bios_debug_prefix_loop
 .bios_debug_prefix_done:
         ld      hl, BIOS_TRDOS_BUFFER + #00F0
-        ld      b, 5
+        ld      e, 5
 .bios_debug_tail_loop:
         ld      a, (hl)
         call    bios_trdos_debug_hex8
@@ -249,7 +249,8 @@ bios_trdos_debug_dump_tail:
         ld      bc, #00EF
         out     (c), a
         inc     hl
-        djnz    .bios_debug_tail_loop
+        dec     e
+        jr      nz, .bios_debug_tail_loop
         ld      a, 13
         ld      bc, #00EF
         out     (c), a
