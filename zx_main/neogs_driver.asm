@@ -231,14 +231,18 @@ upload_firmware::
         ; Loader and resident firmware are independent TR-DOS files.
         ld      (neo_fw_bootstrap_source), hl
         ld      (neo_fw_bootstrap_length), de
+        ; Bootstrap executes at $4000; keep it below stage-1 scratch at $4800.
         ld      a, d
-        or      a
+        cp      8
+        jr      c, .bootstrap_size_valid
         jp      nz, .upload_failed
         ld      a, e
         or      a
+        jp      nz, .upload_failed
+.bootstrap_size_valid:
+        ld      a, d
+        or      e
         jp      z, .upload_failed
-        cp      255
-        jp      nc, .upload_failed
 
         xor     a
         ld      (neo_fw_bytes_sent), a
@@ -279,65 +283,87 @@ upload_firmware::
         jp      c, .upload_failed
 .stock_rom_ready:
 
-        ; Phase 3: use the native GS105a memory loader, not the MOD player.
-        ; #14 RECEIVE BLOCK header is diagnosed byte-by-byte. These values
-        ; are deliberately distinct from the old aggregate phase 3:
-        ; #30 = preload negative-length low byte (before #14)
-        ; #31 = negative-length high byte
-        ; #32 = destination low byte ($00)
-        ; #33 = destination high byte ($40)
-        ; The first byte is preloaded before issuing the command.
-        ld      hl, 0
-        ld      de, (neo_fw_bootstrap_length)
-        or      a
-        sbc     hl, de                  ; HL = -bootstrap length
-        ld      (neo_fw_block_length), hl
-        ld      a, #30
+        ; Phase 3: stream NEOLOAD.C in independent GS105a #14 blocks.
+        ; Each TR-DOS sector is read only after the previous #14 block completes.
+        ; This avoids staging the complete loader in host RAM and permits files
+        ; up to $0800 bytes in NeoGS RAM $4000-$47FF.
+        ld      hl, (neo_fw_bootstrap_length)
+        ld      (neo_fw_stream_remaining), hl
+        ld      hl, #4000
+        ld      (neo_fw_bootstrap_address), hl
+        ld      a, 4
         ld      (neo_fw_timeout_phase), a
+
+.bootstrap_sector_loop:
+        ; A full sector is 256 bytes; the last sector may be shorter.
+        ld      hl, (neo_fw_stream_remaining)
+        ld      a, h
+        or      a
+        jr      nz, .bootstrap_full_sector
+        ld      a, l
+        ld      e, a
+        ld      d, 0
+        jr      .bootstrap_chunk_ready
+.bootstrap_full_sector:
+        ld      de, 256
+.bootstrap_chunk_ready:
+        ld      (neo_fw_chunk_length), de
+
+        ; GS105a #14 header: preload -length low, command, then
+        ; -length high and destination low/high.
+        ld      hl, 0
+        or      a
+        sbc     hl, de
+        ld      (neo_fw_block_length), hl
         ld      a, (neo_fw_block_length)
         call    gs_boot_write_command_argument
         jp      c, .upload_failed
-
-        ; Command #14 switches the ROM loader into RECEIVE BLOCK mode.
-        ld      a, #31
-        ld      (neo_fw_timeout_phase), a
         ld      a, GS_CMD_RECEIVE_BLOCK
         call    gs_boot_send_command
         jp      c, .upload_failed
-
-        ; Remaining #14 header: -length high, destination $4000.
-        ld      a, #31
-        ld      (neo_fw_timeout_phase), a
         ld      a, (neo_fw_block_length+1)
         call    gs_boot_send_data_byte
         jp      c, .upload_failed
-        ld      a, #32
-        ld      (neo_fw_timeout_phase), a
-        xor     a
-        call    gs_boot_send_data_byte  ; destination low = $00
+        ld      hl, (neo_fw_bootstrap_address)
+        ld      a, l
+        call    gs_boot_send_data_byte
         jp      c, .upload_failed
-        ld      a, #33
-        ld      (neo_fw_timeout_phase), a
-        ld      a, #40
-        call    gs_boot_send_data_byte  ; destination high = $40
+        ld      a, h
+        call    gs_boot_send_data_byte
         jp      c, .upload_failed
 
-        ; Phase 4: transfer the executable bootstrap into RAM $4000.
-        ld      a, 4
-        ld      (neo_fw_timeout_phase), a
-        ld      hl, (neo_fw_bootstrap_source)
-        ld      de, (neo_fw_bootstrap_length)
-.bootstrap_block_loop:
-        ld      a, d
-        or      e
-        jr      z, .bootstrap_block_done
+        ; Send exactly this sector fragment.
+        ld      hl, #C000
+        ld      de, (neo_fw_chunk_length)
+.bootstrap_chunk_send:
         ld      a, (hl)
         call    gs_boot_send_data_byte
         jp      c, .upload_failed
         inc     hl
         dec     de
-        jr      .bootstrap_block_loop
-.bootstrap_block_done:
+        ld      a, d
+        or      e
+        jr      nz, .bootstrap_chunk_send
+
+        ; Advance destination and total byte count.
+        ld      hl, (neo_fw_bootstrap_address)
+        ld      de, (neo_fw_chunk_length)
+        add     hl, de
+        ld      (neo_fw_bootstrap_address), hl
+        ld      hl, (neo_fw_stream_remaining)
+        or      a
+        sbc     hl, de
+        ld      (neo_fw_stream_remaining), hl
+        ld      a, h
+        or      l
+        jr      z, .bootstrap_stream_done
+
+        ; Refill #C000 only after the previous sector has been transmitted.
+        call    neo_fw_read_next_sector
+        jp      c, .upload_failed
+        jr      .bootstrap_sector_loop
+
+.bootstrap_stream_done:
 
         ; Prepare NEOFW.C while the bootstrap is loaded but NOT running.
         ; The bootstrap receive timeout is finite (#FFFF polls), so no TR-DOS
@@ -453,10 +479,28 @@ upload_firmware::
         ; dispatch and is therefore intentionally not counted.
         ld      a, 10
         ld      (neo_fw_timeout_phase), a
+        ; Every #14 chunk has its own three trailing header bytes.
+        ; Number of chunks is ceil(bootstrap_length / 256), not always one.
         ld      hl, (neo_fw_bootstrap_length)
         ld      de, (neo_fw_length)
         add     hl, de
-        ld      de, 6
+        ld      a, (neo_fw_bootstrap_length+1)
+        ld      b, a
+        ld      a, (neo_fw_bootstrap_length)
+        or      a
+        ld      a, b
+        jr      z, .count_chunks_ready
+        inc     a
+.count_chunks_ready:
+        ; Add 3 * #14 chunk count, then #13 address high + two length bytes.
+        ld      e, a
+        add     a, a
+        add     a, e
+        ld      e, a
+        ld      d, 0
+        inc     de
+        inc     de
+        inc     de
         add     hl, de
         ld      de, (neo_fw_bytes_sent)
         or      a
@@ -901,10 +945,27 @@ gs_boot_send_command_long:
         or      a
         ret
 
+; GS105a command channel: GSCOM publishes a command and CBIT reports
+; command-handler completion. Do not use DBIT as the command-complete flag.
 gs_boot_send_command:
         ld      (neo_fw_command_byte), a
         ld      a, (neo_fw_command_byte)
         out     (GSCOM), a
+        ; A1.60 trace: host command write requests CBIT assertion.
+        ld      a, (neo_fw_timeout_phase)
+        cp      5
+        jr      nz, .command_trace_done
+        ld      a, 'H'
+        out     (#EF), a
+        ld      a, 'C'
+        out     (#EF), a
+        ld      a, (neo_fw_command_byte)
+        call    p125_print_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.command_trace_done:
         ld      bc, FW_BYTE_TIMEOUT
 .command_wait:
         in      a, (GSSTAT)
@@ -918,11 +979,28 @@ gs_boot_send_command:
         scf
         ret
 .command_done:
+        ; CBIT is now observed clear by the host; ROM/NeoGS released command.
+        ld      a, (neo_fw_timeout_phase)
+        cp      5
+        jr      nz, .command_done_no_trace
+        ld      a, 'H'
+        out     (#EF), a
+        ld      a, 'c'
+        out     (#EF), a
+        ld      a, '-'
+        out     (#EF), a
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.command_done_no_trace:
         or      a
         ret
 
-; Preload the first argument byte of GS105a commands #13/#14. Those
-; handlers read this byte before clearing CBIT; later arguments use DBIT.
+; GS105a command arguments are a two-part transaction: preload the first
+; byte in GSDAT, then dispatch via GSCOM; the ROM handler consumes it while
+; processing the command. Later block bytes travel on the DBIT byte stream.
+; This is distinct from the article's generic ZXCMD port-command protocol.
 gs_boot_write_command_argument:
         ld      (neo_fw_tx_byte), a
         ld      bc, FW_BYTE_TIMEOUT
@@ -943,6 +1021,8 @@ gs_boot_write_command_argument:
         or      a
         ret
 
+; Bulk byte channel: GSDAT + DBIT handshake. CBIT is reserved for GSCOM
+; command completion and must not replace this per-byte acknowledgement.
 gs_boot_send_data_byte:
         ld      (neo_fw_tx_byte), a
         ld      (neo_fw_last_tx_byte), a
@@ -965,6 +1045,21 @@ gs_boot_send_data_byte:
 .data_slot_free:
         ld      a, (neo_fw_tx_byte)
         out     (GSDAT), a
+        ; Trace only the failing startup handshake, not the 15-KiB firmware stream.
+        ld      a, (neo_fw_timeout_phase)
+        cp      7
+        jr      nz, .data_tx_trace_done
+        ld      a, 'H'
+        out     (#EF), a
+        ld      a, '+'
+        out     (#EF), a
+        ld      a, (neo_fw_tx_byte)
+        call    p125_print_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.data_tx_trace_done:
         ld      a, 2
         ld      (neo_fw_tx_wait_state), a
         ld      bc, FW_BYTE_TIMEOUT
@@ -990,6 +1085,8 @@ gs_boot_send_data_byte:
         or      a
         ret
 
+; Bulk byte channel in the reverse direction: DBIT announces a byte,
+; reading GSDAT consumes it. Command reads use CBIT/ZXCMD instead.
 gs_boot_receive_data_byte:
         ld      bc, FW_BYTE_TIMEOUT
 .receive_wait:
@@ -1006,8 +1103,38 @@ gs_boot_receive_data_byte:
 .receive_ready:
         in      a, (GSDAT)
         ld      (neo_fw_last_rx_byte), a
-        ; Match the proven Project124 V1 transport exactly: reading GSDAT
-        ; clears DBIT and returns immediately. No host-side turnaround delay.
+        ; Trace received startup ACKs: reading GSDAT is the host DBIT-clear edge.
+        ld      a, (neo_fw_timeout_phase)
+        cp      6
+        jr      z, .receive_trace
+        cp      7
+        jr      nz, .receive_trace_done
+.receive_trace:
+        ld      a, 'H'
+        out     (#EF), a
+        ld      a, '-'
+        out     (#EF), a
+        ld      a, (neo_fw_last_rx_byte)
+        call    p125_print_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.receive_trace_done:
+        ld      a, (neo_fw_last_rx_byte)
+        ; DBIT is shared by both directions. Give the NeoGS sender time to
+        ; observe the cleared slot before the host starts its next TX byte.
+        ; This is the turnaround wait present in the working Project124 V1.
+        push    af
+        push    bc
+        ld      bc, #0400
+.receive_turnaround_delay:
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .receive_turnaround_delay
+        pop     bc
+        pop     af
         or      a
         ret
 
@@ -1102,6 +1229,7 @@ neo_fw_source:          dw 0
 neo_fw_length:          dw 0
 neo_fw_bootstrap_address: dw #4000
 neo_fw_block_length:    dw 0
+neo_fw_chunk_length:    dw 0
 neo_fw_rom_ram_low:     db 0
 neo_fw_rom_ram_mid:     db 0
 neo_fw_rom_ram_high:    db 0
@@ -1124,4 +1252,4 @@ msg_p7_high_tx:        db "[P125] PH7 TX HIGH", 13, 10, 0
 msg_p7_high_ok:       db "[P125] PH7 HIGH ACK", 13, 10, 0
 msg_p7_wait_a3:        db "[P125] PH7 WAIT A3", 13, 10, 0
 msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A38", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A41 TRACE", 13, 10, 0

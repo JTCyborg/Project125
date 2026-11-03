@@ -434,9 +434,17 @@ command_load_bios:
 .bios_dma_host_end:
         xor     a
         out     (DMA_CST), a
+        ; Compare the final reset-vector bytes in physical page 75 before
+        ; the ROM overlay validator reads them through x86_mem_read8.
+        call    bios_rom_debug_dump_tail
         call    bios_rom_validate
         jr      nc, .bios_image_valid
-        ld      hl, #B101
+        ; Report the actual byte read at the failing ROM address.
+        ; AX=B2xx, where xx is the byte returned by x86_mem_read8.
+        ; The failed address remains identified by bios_rom_check_id.
+        ld      a, (bios_rom_actual)
+        ld      l, a
+        ld      h, #B2
         ld      (saved_x86_ax), hl
         ld      a, 13
         ld      (x86_exit_status), a
@@ -502,6 +510,30 @@ command_boot_bios:
         xor     a
         out     (CLRCBIT), a
         jp      main_loop
+
+; Dump physical page-75 bytes at image offset 1FF0 (guest FFFF0..FFFF4).
+; This is deliberately performed after DMA is disabled and before validation.
+bios_rom_debug_dump_tail:
+        push    af
+        push    bc
+        push    hl
+        ; Explicitly select physical page 75; DMA does not change MPAGEX.
+        ld      a, 75
+        rrca
+        out     (MPAGEX), a
+        ld      hl, #DFF0
+        ld      e, 5
+.bios_tail_dump_loop:
+        ld      a, (hl)
+        ; Send raw bytes; the Host drains these while waiting for CBIT release.
+        call    neo_send_data_byte
+        inc     hl
+        dec     e
+        jr      nz, .bios_tail_dump_loop
+        pop     hl
+        pop     bc
+        pop     af
+        ret
 
 bios_boot_message:
         defb    "[BIOS] RESET FFFF:0000", 13, 10, 0

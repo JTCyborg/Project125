@@ -889,3 +889,244 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED; BUILD NOT VERIFIED; RUNTIME NOT VERIFIED. Это узкий возврат изменённого receiver к проверенному V1, не заявление об исправлении runtime.
 
 | 2026-11-03 | A1.55 restore V1 bootstrap receiver | SOURCE COMMITTED | Restore original ZXSTAT/ZXDATRD byte receiver after A38 high-length-byte DBIT timeout. |
+
+
+## A1.56 — учёт документации NeoGS: разделение CBIT-команд и DBIT-потока (2026-11-03)
+
+Источник: статья «NeoGS – шаг в будущее», №32, 10.10.2009, фрагменты NeoGS Z80 и Spectrum host: https://abzac.retropc.ru/content?id=876.
+
+- [x] В исходниках Project125 зафиксировано принципиальное разделение двух интерфейсов:
+  - **CBIT / GSCOM / ZXCMD** — командный интерфейс. Хост публикует команду через GSCOM и ждёт сброса CBIT; NeoGS читает ZXCMD.
+  - **DBIT / GSDAT / ZXDATRD / ZXDATWR** — байтовый канал данных. DBIT показывает наличие/занятость байта; чтение/запись соответствующего data port завершает передачу байта.
+- [x] Сверено с кодом статьи: NeoGS-side обработчик сначала ждёт CBIT и читает ZXCMD, затем для операции записи читает ZXDATRD; для чтения пишет результат в ZXDATWR. Spectrum-side WRPORT/RDPORT отправляют адрес внутреннего порта через GSCOM и ждут CBIT.
+- [x] В `neogs_sub/bootstrap.asm` и `zx_main/neogs_driver.asm` добавлены комментарии, явно отделяющие GS105a command dispatch от bulk byte stream.
+- [x] Логика передач, значения битов, порядок команд #13/#14, handshake #A1/#A3/#A2 и тайминги **не менялись**: статья описывает командный доступ к внутренним портам NeoGS, а не заменяет транспорт загрузчика GS105a.
+- [ ] Сборка `build.bat`: проверить размер NEOLOAD.C (1..254 байта), отсутствие ошибок SjASMPlus/ASSERT/JR.
+- [ ] Runtime: повторить трассу после A1.55; отдельно фиксировать CBIT при GSCOM-командах и DBIT на каждом байте длины/прошивки.
+- **Статус:** SOURCE UPDATED / NOT BUILT / NOT RUNTIME. Изменения документируют корректную трактовку интерфейсов; не заявляют исправление runtime-зависания.
+
+| 2026-11-03 | A1.56 document CBIT command vs DBIT stream | SOURCE UPDATED | Added source comments and scenario entry from the NeoGS article; no protocol logic changed. |
+
+## A1.57 — сверка загрузчика GS105a по AD13 / SE01 / ZF6 (2026-11-03)
+
+Источники проекта:
+- NeoGS/ad13prgs.txt — Stinger, «Прямое программирование General Sound», интерфейс, команды #13/#14 и загрузчик.
+- NeoGS/se01gsfc.txt — практические процедуры SENDCOM / SENDDAT / GETDAT.
+- NeoGS/zf6gsprg.txt — спецификация GS ROM 1.03, регистры и команды #30/#D1/#D2.
+
+Подтверждённые правила:
+- [x] Host port #BB — запись команды GSCOM, чтение статуса GSSTAT. CBIT = bit 0, DBIT = bit 7.
+- [x] Host port #B3 — запись входного байта GS и чтение выходного байта GS. DBIT выставляется после записи host byte и сбрасывается, когда GS читает его; в обратном направлении DBIT выставляется после записи GS output и сбрасывается, когда host читает его.
+- [x] Command bit сбрасывает только NeoGS; ожидание команды — IN A,(#BB) / RRCA / JR C.
+- [x] Host byte write wait — IN A,(#BB) / RLCA / JR C; receive-ready wait — IN A,(#BB) / RLCA / JR NC; затем IN A,(#B3).
+- [x] GS105a #14 порядок аргументов подтверждён AD13: preload length low → issue #14 and wait CBIT → length high → destination low → destination high → block bytes. Project125 следует этому порядку.
+- [x] GS105a #13 порядок подтверждён AD13: preload address low → issue #13 and wait CBIT → address high. Project125 следует этому порядку.
+- [x] Спецификация ZF6 говорит, что input и output data registers независимы, но используют общий DBIT; состояние DBIT на этапах команды, если оно не определено форматом, нельзя считать гарантированным.
+- [x] Команды #30/#38 используют отдельный поток: после команды и handle открывается #D1, байты передаются по DBIT, завершение — #D2. Это не транспорт загрузки GS105a #14/#13.
+
+Анализ runtime A38:
+- [x] Bootstrap marker 2 ставится только после возврата из bootstrap_receive_data_byte для старшего байта длины. Следовательно, NeoGS уже прочитал #3D из host data register.
+- [x] Host сообщает GSSTAT=#FE и TXSTATE=#02: DBIT всё ещё установлен, CBIT сброшен.
+- [x] ZF6 описывает общий DBIT для двух независимых направлений. Bootstrap после чтения high byte сразу публикует #A3 через bootstrap_send_data_byte; возможна гонка: host не успевает увидеть промежуточный DBIT=0 между чтением #3D и публикацией #A3.
+- [ ] До изменения протокола подтвердить гипотезу трассой статуса/выходного байта на границе high-length → #A3 либо сравнением с точным Project124 V1 runtime.
+- [ ] Если гонка подтверждена, исправить только границу ответа #A3; не менять общий DBIT алгоритм всех байтов, #14, CBIT команды или поток firmware.
+- **Статус:** SOURCE ANALYSIS RECORDED / NO TRANSFER LOGIC CHANGED / BUILD AND RUNTIME NOT VERIFIED.
+
+| 2026-11-03 | A1.57 document GS105a protocol from AD13/SE01/ZF6 and analyze A3 boundary race | ANALYSIS RECORDED | Added command ordering, DBIT semantics and a testable explanation for the A38 high-length-byte stall. |
+## A1.58 — потоковая загрузка NEOLOAD.C блоками GS105a #14 (2026-11-03)
+
+- [x] Убрано ограничение загрузчика одним сектором и 254 байтами: допустимый размер NEOLOAD.C увеличен до 2048 байт.
+- [x] Host передаёт каждый сектор (или остаток последнего сектора) отдельной командой GS105a #14 непосредственно в последовательную область NeoGS RAM `$4000-$47FF`.
+- [x] Следующий сектор TR-DOS читается в буфер `$C000` только после завершения передачи предыдущего блока; весь NEOLOAD.C в host RAM не собирается.
+- [x] Для каждого блока заново формируется отрицательная 16-битная длина #14 и адрес назначения; длина последнего блока равна фактическому остатку файла.
+- [x] Область загрузчика ограничена `$4000-$47FF`, не пересекая временную область stage-1 `$4800-$4FFF`.
+- [x] Обновлены packer, ASM ASSERT и driver build ID `20261103-A39`.
+- [ ] Собрать `build.bat`: проверить SjASMPlus, ASSERT, размер NEOLOAD.C и отсутствие ошибок диапазона переходов.
+- [ ] Runtime: проверить файл размером больше 256 байт (минимум 508 байт), подтвердить все блоки #14, запуск bootstrap с `$4000` и дальнейшую загрузку NEOFW.C.
+- [ ] Runtime stress: проверить максимальный NEOLOAD.C размером 2048 байт.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME NOT VERIFIED. Не считать загрузку подтверждённой до проверки в Unreal Speccy.
+
+| 2026-11-03 | A1.58 stream NEOLOAD.C through sector-sized GS105a #14 blocks | SOURCE COMMITTED | NEOLOAD.C up to 2048 bytes is streamed sector-by-sector into $4000-$47FF; next TR-DOS sector is read only after the previous block completes. |
+## A1.59 — исправление DBIT turnaround на границах направлений (2026-11-03)
+
+- [x] Сравнение с рабочим Project124 V1 выявило существенное отличие: в `gs_boot_receive_data_byte` Project124 после чтения GSDAT выполняет turnaround delay `#0400`, а Project125 возвращался немедленно.
+- [x] Восстановлена эта пауза на Host после каждого принятого байта: NeoGS получает время увидеть DBIT=0 до следующего Host TX.
+- [x] В NeoGS bootstrap добавлена отдельная пауза `#0400` после приёма старшего байта длины и до публикации обратного ACK `#A3`. Это устраняет гонку, когда ACK мог повторно установить общий DBIT раньше, чем Host замечал освобождение TX-слота.
+- [x] Не менялись номера команд GS105a, порядок #13/#14, порядок байтов длины, порты и формат существующего обмена.
+- [x] Driver build ID обновлён до `20261103-A40`.
+- [ ] Сборка `build.bat` и проверка размера NEOLOAD.C.
+- [ ] Runtime: подтвердить прохождение #A1 → length low → length high → #A3 без TXSTATE #02 timeout.
+- [ ] Runtime: подтвердить непрерывную передачу NEOFw.C и финальный #A2.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME NOT VERIFIED.
+
+| 2026-11-03 | A1.59 restore DBIT turnaround and guard high-length-to-A3 transition | SOURCE COMMITTED | Host turnaround delay restored from Project124 V1; NeoGS waits before publishing #A3 after consuming length high byte. |
+
+## A1.60 — DBIT/CBIT edge trace on Host and NeoGS port #EF (2026-11-03)
+
+- [x] Added Host-side trace for the startup handshake only: H+XX means Host wrote GSDAT (DBIT set); H-XX means Host read GSDAT (DBIT cleared); HCXX means Host issued GSCOM (CBIT request); Hc- means Host observed CBIT clear.
+- [x] Added NeoGS bootstrap trace: N+XX means NeoGS wrote ZXDATWR (DBIT set); N-XX means NeoGS read ZXDATRD (DBIT cleared).
+- [x] NeoGS logs only the first two received bytes (firmware length low/high), so the 15,813-byte firmware stream does not flood the log.
+- [x] Host logs only phase #06/#07 receive events and phase #07 transmit events; firmware payload logging is disabled.
+- [x] Trace events are emitted after the corresponding data-port operation; no polling-loop instrumentation was added.
+- [x] The trace adds CPU/I/O instructions immediately after selected port operations and can perturb timing; if the fault disappears only with tracing enabled, compare against A1.59 without trace before concluding the race is fixed.
+- [ ] Build build.bat; verify the host and NEOLOAD.C assemble and that the bootstrap remains within $4000-$47FF.
+- [ ] Runtime: capture the combined #EF log and check event order around #A1, length low/high (#C5/#3D in the current test), and #A3.
+- [ ] Verify that NeoGS #EF events and Host #EF events are present in the same output file/log stream in Unreal Speccy. Existing B/R/1/2 markers indicate NeoGS port output is captured, but common-file ordering must be confirmed.
+- **Status:** SOURCE UPDATED / NOT BUILT / NOT RUNTIME. Instrumentation is diagnostic only; DBIT/CBIT protocol operations and timeout logic are unchanged.
+
+| 2026-11-03 | A1.60 add host/NeoGS port #EF handshake edge trace | SOURCE UPDATED | Compact, bounded trace around the startup handshake; common-log ordering still requires emulator runtime confirmation. |
+
+
+## A1.61 — снять устаревший ASSERT 254 байта для bootstrap (2026-11-04)
+
+- [x] Причина build error: в `neogs_sub/build_firmware.asm` оставался ASSERT `neogs_bootstrap_end - neogs_bootstrap_start <= 254`, унаследованный от старой загрузки одним сектором.
+- [x] Заменён на ASSERT максимального размера `$0800` (2048 байт), соответствующий потоковой загрузке NEOLOAD.C блоками GS105a #14 из A1.58.
+- [x] Добавлен ASSERT конечного адреса `<= $4800`, чтобы bootstrap не заходил в зарезервированную область stage-1 scratch/stack.
+- [ ] Запустить `build.bat`; подтвердить, что bootstrap укладывается в 2048 байт, NEOLOAD.C создаётся и все последующие сборочные этапы проходят.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.61 remove stale 254-byte bootstrap assertion | SOURCE COMMITTED | Build-time limit now matches the 2048-byte streamed bootstrap area $4000-$47FF. |
+
+
+## A1.62 — учёт заголовка каждого потокового блока #14 (2026-11-04)
+
+- [x] Runtime A1.61/A1.60: Host принял #A1, отправил длину #3DC5, NeoGS принял оба байта и вернул #A3; передача NEOFW завершилась, Host дошёл до финальной проверки после #A2.
+- [x] Установлена причина ошибки фазы #0A: NEOLOAD.C размером #014F передаётся двумя блоками #14 (256 + 79 байт), каждый блок содержит три учитываемых байта заголовка.
+- [x] Исправлен расчёт ожидаемого neo_fw_bytes_sent: теперь учитывается 3 * ceil(bootstrap_length / 256) плюс один байт адреса #13 и два байта длины NEOFW.
+- [x] Для текущих размеров ожидаемое значение изменено с #3F1A на #3F1D.
+- [ ] Сборка build.bat.
+- [ ] Runtime: подтвердить завершение проверки фазы #0A без ошибки и запуск дальнейшего IPC.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME FIX NOT YET VERIFIED.
+
+| 2026-11-04 | A1.62 count each #14 streamed-block header | SOURCE COMMITTED | Correct expected DBIT byte count for multi-block NEOLOAD.C transfers. |
+
+
+## A1.63 — диагностика результата проверки BIOS ROM (2026-11-04)
+
+- [x] Runtime: NeoGS firmware ready и VIDEO CRC selftest PASS; BIOS transfer доходит до команды завершения DMA.
+- [x] По коду `bios_trdos_file_error = 10` установлено: это `bios_trdos_rom_validation_error`, а не ошибка чтения сектора или DMA timeout.
+- [x] BIOS validator проверяет байт `#20` по FE000 и reset vector `EA 5B E0 00 F0` по FFFF0..FFFF4.
+- [x] Host теперь при ошибке BIOS дополнительно печатает возвращённые NeoGS `bios_host_result_status` и `bios_host_result_ax`, чтобы отличить timeout DMA (#B103), несовпадение ROM (#B101) и другие причины.
+- [ ] Собрать `build.bat`.
+- [ ] Runtime: прислать строку `BIOS STATUS` и `AX`; по ней локализовать следующий дефект, не меняя DMA без доказательств.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.63 expose BIOS validation status and AX | SOURCE COMMITTED | Host prints NeoGS result frame when BIOS file/validation stage reports error #0A. |
+
+
+## A1.64 — исправление дальних переходов Host main.asm (2026-11-04)
+
+- [x] Причина ошибок SjASMPlus на строках 96 и 109: относительный `JR p125_halt` выходит за допустимый диапазон смещения Z80 (-128..+127); фактические смещения +159 и +134.
+- [x] Заменены дальние переходы к общей метке остановки на абсолютные `JP p125_halt`. Логика ветвления и обработка ошибок не менялись.
+- [ ] Повторно запустить `build.bat`; проверить отсутствие ошибок диапазона переходов и пройти следующие ошибки сборки, если появятся.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED.
+
+| 2026-11-04 | A1.64 fix out-of-range JR to p125_halt | SOURCE COMMITTED | Long-range error exits now use absolute JP; build still requires local verification. |
+
+
+## A1.65 — точная локализация ROM validation mismatch (2026-11-04)
+
+- [x] Runtime A1.64: передача firmware проходит; BIOS DMA завершается, но ROM validator возвращает status #0D / AX #B101.
+- [x] По исходникам подтверждено: #B101 выставляется только после неуспешной проверки байта заголовка или одного из пяти байтов reset vector; это не DMA timeout (#B103).
+- [x] Добавлена идентификация конкретной проверки: AX #B110 = заголовок FE000, #B111..#B115 = байты FFF0..FFF4.
+- [ ] Сборка `build.bat`; проверить отсутствие ошибок SjASMPlus.
+- [ ] Runtime: прислать новый AX-код; по нему определить, не совпадает первый байт или адрес reset vector.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING. DMA target, transfer loop и Host↔NeoGS handshake не менялись.
+
+| 2026-11-04 | A1.65 identify exact failing BIOS validation byte | SOURCE COMMITTED | Validator now returns a distinct AX code for header and each reset-vector byte. |
+
+- [x] Исправлена полярность проверки carry в диагностической цепочке: переход к следующему байту выполняется только после успешной проверки; при mismatch validator немедленно возвращает ошибку.
+
+
+## A1.66 — передача кода ROM validator в AX (2026-11-04)
+
+- [x] По повторному runtime #B101 обнаружено, что `neogs_sub/main.asm` жёстко записывал #B101 после любого отказа validator и тем самым скрывал диагностический индекс, подготовленный `bios_rom_validate`.
+- [x] Исправлено: при отказе AX теперь формируется как #B110 + `bios_rom_check_id`: #B110 — заголовок FE000; #B111..#B115 — FFF0..FFF4.
+- [x] DMA target, приём данных, handshake и успешный код #B105 не менялись.
+- [ ] Пересобрать `build.bat` и проверить runtime AX.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.66 propagate BIOS validator check index | SOURCE COMMITTED | Host-visible AX now reports the exact failing validation byte. |
+
+
+## A1.67 — передача фактического байта ROM mismatch (2026-11-04)
+
+- [x] Runtime A1.66: BIOS validator локализовал отказ на reset-vector offset #1FF0 / physical FFFF0h (AX #B111).
+- [x] Добавлено сохранение фактического значения, прочитанного x86_mem_read8, в bios_rom_actual.
+- [x] При mismatch NeoGS теперь возвращает AX=#B2xx, где xx — фактически прочитанный байт. Адрес проверки по-прежнему определяется последним bios_rom_check_id (для текущей трассы #01 = FFF0).
+- [x] Не изменялись DMA target, DMA length, host sector stream, page mapping и handshake.
+- [ ] Сборка build.bat: проверить SjASMPlus и создание NEOFW.C.
+- [ ] Runtime: при повторной загрузке BIOS прислать строку AX #B2xx; сравнить xx с ожидаемым #EA.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.67 report actual byte on BIOS ROM validation mismatch | SOURCE COMMITTED | AX now carries the byte actually read at the failing ROM address as #B2xx. |
+
+
+## A1.68 — сравнение reset-vector до и после BIOS DMA (2026-11-04)
+
+- [x] Runtime A1.67: validator прочитал #00 по guest physical FFFF0h вместо ожидаемого #EA (AX #B200).
+- [x] Добавлен Host dump пяти байтов BIOS.C по смещению #1FF0 непосредственно из буфера последнего TR-DOS сектора до передачи DMA: строка `[BIOS SRC FFF0]`.
+- [x] Добавлен NeoGS dump пяти байтов физической страницы 75 по смещению #1FF0 после отключения DMA и до ROM validator: строка `[BIOS DST FFF0]`.
+- [x] NeoGS передаёт эти пять байтов как raw DBIT payload; Host принимает их внутри `neogs_bios_transfer_finish` до ожидания CBIT=0 и печатает `[BIOS DST FFF0]`. Это исключает блокировку обмена из-за невычитанных debug-байтов.
+- [x] Не менялись DMA target, размер и порядок передачи, TR-DOS чтение, memory mapping и handshake.
+- [ ] Сборка `build.bat`: проверить SjASMPlus, локальные метки и размер firmware.
+- [ ] Runtime: сравнить `[BIOS SRC FFF0]` и `[BIOS DST FFF0]`. Если source начинается `EA 5B E0 00 F0`, а destination отличается — проблема в DMA записи/счётчике; если source уже отличается — проблема в выборе/чтении BIOS.C.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / NOT BUILT / NOT RUNTIME.
+
+| 2026-11-04 | A1.68 compare BIOS reset-vector bytes before and after DMA | SOURCE COMMITTED | Host and NeoGS each print the five reset-vector bytes at BIOS image offset #1FF0. |
+
+
+## A1.69 — исправление нумерации TR-DOS секторов BIOS.C (2026-11-04)
+
+- [x] Runtime A1.68: источник последнего сектора дал `0B B0 FF E6 01`, тогда как проверенный `bios/BIOS.BIN` содержит `EA 5B E0 00 F0` по смещению `#1FF0`.
+- [x] Сверка загрузчика выявила ошибочную zero-based модель секторов: код принимал номера 0..15 и переходил после 15 на сектор 0 следующей дорожки.
+- [x] Исправлена проверка начального сектора из каталога: допустимы только TR-DOS sector IDs 1..16.
+- [x] Исправлен cursor rollover: после сектора 16 следующий сектор — 1 следующей дорожки; сектор 0 больше не запрашивается.
+- [x] DMA target, размер передачи, handshake и NeoGS mapping не изменялись.
+- [ ] Сборка `build.bat`.
+- [ ] Runtime: проверить `[BIOS SRC FFF0] EA 5B E0 00 F0`.
+- [ ] После подтверждения корректного SRC отдельно локализовать `[BIOS DST FFF0]`; пока его нулевое значение не объяснено и DMA/page mapping не объявляются исправными.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.69 fix TR-DOS sector IDs and track rollover | SOURCE COMMITTED | BIOS.C sequential reader now follows sector IDs 1..16 and rolls 16 to 1 on the next track. |
+
+
+## A1.70 — трассировка всех чтений BIOS.C (2026-11-04)
+
+- [x] Сверка с рабочим Project124 `main/zx_main/x86_loader.asm` и `zx_main/file_utils.asm` подтвердила, что TR-DOS 5.04T использует внутренние номера секторов 0..15. Предыдущее предположение о диапазоне 1..16 было ошибочным.
+- [x] Изменение A1.69, переводившее BIOS loader на 1..16, отменено отдельным commit; исходная проверенная модель 0..15 восстановлена.
+- [x] В `bios_trdos_read_next_sector` добавлен вывод точной пары track/sector перед каждым вызовом TR-DOS C=#05: `[BIOS READ] TT/SS`.
+- [x] Сверка образа `bios/BIOS.BIN` подтвердила размер 8192 байта и ожидаемые байты `EA 5B E0 00 F0` по смещению #1FF0. Последовательность из runtime `0B B0 FF E6 01` находится в образе по смещению #00F0 — это содержимое первого сектора, а не reset vector.
+- [ ] Сборка `build.bat`.
+- [ ] Runtime: проверить 32 строки `[BIOS READ]`, особенно начало и переходы дорожек, затем `[BIOS SRC FFF0]`.
+- [ ] Не менять DMA target/mapping до подтверждения правильной последовательности чтения и правильного SRC.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.70 trace BIOS.C track/sector reads | SOURCE COMMITTED | Host prints the internal TR-DOS track/sector cursor before every sector read. |
+
+
+## A1.71 — проверка фактической записи каждого BIOS-сектора в host buffer (2026-11-04)
+
+- [x] Runtime A1.70: все 32 запроса C=#05 идут последовательно от 02/03 до 04/02 с корректным rollover 0..15.
+- [x] Runtime A1.70: после последнего чтения буфер #C000+#F0 всё ещё содержит байты первого сектора BIOS (0B B0 FF E6 01), а не reset vector (EA 5B E0 00 F0).
+- [x] Сверка с Project124 подтвердила совпадение параметров TR-DOS C=#05: B=1, D=track, E=sector, HL=destination. Модель нумерации 0..15 оставлена без изменений.
+- [x] В BIOS loader добавлен вывод [BIOS DATA F0] сразу после каждого успешного вызова C=#05. Пять байтов берутся из повторно используемого буфера #C000+#F0.
+- [ ] Сборка через build.bat; проверить SjASMPlus и размер host image.
+- [ ] Runtime: сравнить 32 строки [BIOS DATA F0]. Если все строки одинаковы, исследовать сам вызов TR-DOS/состояние дискового сервиса; если меняются, определить, на каком чтении содержимое перестаёт соответствовать ожидаемому сектору.
+- [ ] DMA target, длина, page mapping и NeoGS handshake не менять до установления корректности источника.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.71 trace BIOS buffer contents after every sector read | SOURCE COMMITTED | Five bytes at buffer offset #F0 are emitted after each successful C=#05 read; build and runtime remain pending. |
+
+
+## A1.72 — полный HEX-дамп каждого сектора BIOS.C (2026-11-04)
+
+- [x] Диагностика A1.71 расширена: после каждого успешного C=#05 выводятся все 256 байт буфера #C000.
+- [x] Формат дампа: 16 строк на сектор, 16 байт в строке, префикс [BIOS DATA], смещение строки 00..F0.
+- [x] Существующий вывод [BIOS READ] TT/SS сохранён; порядок — позиция, затем полный дамп считанного сектора.
+- [x] TR-DOS sector cursor, DMA target/length, NeoGS handshake и передача данных не менялись.
+- [ ] Собрать через build.bat; проверить SjASMPlus и размер host image.
+- [ ] Runtime: прислать дампы как минимум первого и последнего секторов; по возможности весь лог. Сверить байты с BIOS.BIN и определить фактическое содержимое каждого сектора.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.72 full 256-byte dump after each BIOS sector read | SOURCE COMMITTED | Every successful TR-DOS read now prints 16 rows of 16 bytes from #C000; build/runtime pending. |

@@ -95,6 +95,10 @@ neogs_bios_transfer_finish:
         ld      a, #FF
         out     (GSCOM), a
 
+        ; NeoGS returns five raw bytes from page-75 offset 1FF0 through DBIT.
+        ; Drain them here, before waiting for CBIT=0, to avoid blocking NeoGS.
+        call    neogs_bios_transfer_read_tail_dump
+
         ld      bc, BIOS_HOST_WAIT_LIMIT
 .bios_finish_wait:
         in      a, (GSSTAT)
@@ -238,6 +242,76 @@ neogs_bios_wait_data_byte:
         in      a, (GSDAT)
         or      a
         ret
+
+; Receive the five reset-vector bytes emitted by NeoGS after DMA closes.
+; They are sent as ordinary DBIT bytes while CBIT remains asserted.
+neogs_bios_transfer_read_tail_dump:
+        ld      hl, bios_host_tail_prefix
+.bios_tail_prefix_loop:
+        ld      a, (hl)
+        inc     hl
+        or      a
+        jr      z, .bios_tail_prefix_done
+        ld      bc, #00EF
+        out     (c), a
+        jr      .bios_tail_prefix_loop
+.bios_tail_prefix_done:
+        ld      a, 5
+        ld      (bios_host_dump_bytes_left), a
+.bios_tail_receive_loop:
+        call    neogs_bios_wait_data_byte
+        jr      c, .bios_tail_receive_failed
+        call    bios_host_debug_hex8
+        ld      a, ' '
+        ld      bc, #00EF
+        out     (c), a
+        ld      a, (bios_host_dump_bytes_left)
+        dec     a
+        ld      (bios_host_dump_bytes_left), a
+        jr      nz, .bios_tail_receive_loop
+        ld      a, 13
+        ld      bc, #00EF
+        out     (c), a
+        ld      a, 10
+        out     (c), a
+        ret
+.bios_tail_receive_failed:
+        ld      a, 9
+        ld      (bios_host_transfer_error), a
+        ld      a, '!'
+        ld      bc, #00EF
+        out     (c), a
+        ld      a, 13
+        out     (c), a
+        ld      a, 10
+        out     (c), a
+        ret
+
+; IN A=byte. Print two uppercase hexadecimal digits on host port #EF.
+bios_host_debug_hex8:
+        push    af
+        rrca
+        rrca
+        rrca
+        rrca
+        and     #0F
+        call    bios_host_debug_hex_nibble
+        pop     af
+        and     #0F
+bios_host_debug_hex_nibble:
+        add     a, '0'
+        cp      '9' + 1
+        jr      c, .bios_host_hex_digit
+        add     a, 7
+.bios_host_hex_digit:
+        ld      bc, #00EF
+        out     (c), a
+        ret
+
+bios_host_tail_prefix:
+        defb    "[BIOS DST FFF0] ", 0
+
+bios_host_dump_bytes_left: db 0
 
 bios_host_sectors_left:   db BIOS_HOST_SECTOR_COUNT
 bios_host_missing_sectors:db 0

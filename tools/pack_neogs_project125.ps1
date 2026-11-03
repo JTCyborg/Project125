@@ -18,8 +18,8 @@ foreach ($path in @($bootstrapPath, $firmwarePath)) {
 [byte[]]$loader = [System.IO.File]::ReadAllBytes($bootstrapPath)
 [byte[]]$firmware = [System.IO.File]::ReadAllBytes($firmwarePath)
 
-if ($loader.Length -lt 1 -or $loader.Length -gt 254) {
-    throw ("NEOLOAD.C size {0} is outside the supported 1..254 byte range." -f $loader.Length)
+if ($loader.Length -lt 1 -or $loader.Length -gt 0x0800) {
+    throw ("NEOLOAD.C size {0} is outside the supported 1..2048 byte range." -f $loader.Length)
 }
 if ($firmware.Length -lt 1 -or $firmware.Length -gt 0x4000) {
     throw ("NEOFW.C size {0} exceeds the current single-file 1..16384 byte limit." -f $firmware.Length)

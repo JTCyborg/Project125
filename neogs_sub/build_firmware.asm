@@ -20,9 +20,11 @@
         INCLUDE "bootstrap.asm"
         ASSERT neogs_bootstrap_start = $4000
         ASSERT neogs_bootstrap_end <= $7FFF
-; The host keeps the first TR-DOS sector in its reusable #C000 buffer while
-; it installs and starts this bootstrap. Header + bootstrap must fit in 256 bytes.
-        ASSERT neogs_bootstrap_end - neogs_bootstrap_start <= 254
+; The host streams NEOLOAD.C sector-by-sector through GS105a #14.
+; Bootstrap is installed at $4000 and must end before the stage-1 scratch
+; region at $4800. The supported maximum is therefore 2048 bytes.
+        ASSERT neogs_bootstrap_end - neogs_bootstrap_start <= $0800
+        ASSERT neogs_bootstrap_end <= $4800
         SAVEBIN "neogs_bootstrap.bin", neogs_bootstrap_start, neogs_bootstrap_end - neogs_bootstrap_start
         SAVEBIN "build/neogs_bootstrap.bin", neogs_bootstrap_start, neogs_bootstrap_end - neogs_bootstrap_start
 

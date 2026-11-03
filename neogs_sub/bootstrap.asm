@@ -53,6 +53,8 @@ neogs_bootstrap_start:
         ; Temporary bootstrap stack: WIN3/page #02. The resident entry moves
         ; the operational stack to WIN1 after PG1 has been restored to page #03.
         ld      sp, #FFFE
+        xor     a
+        ld      (bootstrap_trace_rx_count), a
 
         ; Establish a known host-to-NeoGS data-channel baseline before READY.
         ; Reading ZXDATRD consumes any stale incoming byte and clears DBIT.
@@ -77,6 +79,17 @@ neogs_bootstrap_start:
         out     (#EF), a
         call    bootstrap_receive_data_byte
         ld      d, a
+        ; Turnaround guard: after consuming the host's high length byte,
+        ; keep DBIT clear long enough for the Spectrum sender to observe it
+        ; before this side publishes the reverse-direction #A3 ACK.
+        push    bc
+        ld      bc, #0400
+.length_turnaround_delay:
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .length_turnaround_delay
+        pop     bc
         ld      a, '2'
         out     (#EF), a
 
@@ -154,8 +167,10 @@ bootstrap_timeout:
         jr      nz, .timeout_wait_host
         jp      bootstrap_halt
 
-; Wait for one byte from Spectrum. Keep the proven Project124 V1
-; local-port access sequence: DBIT polling followed by ZXDATRD read.
+; Byte-stream receive path (GS105a loader/bootstrap): DBIT signals that a
+; data byte is waiting; ZXDATRD consumes that byte. This is NOT the
+; CBIT/ZXCMD command interface described in the NeoGS programmer example.
+; Keep the proven Project124 V1 local-port access sequence.
 bootstrap_receive_data_byte:
         ld      bc, #FFFF
 .rx_wait:
@@ -169,9 +184,30 @@ bootstrap_receive_data_byte:
         jp      bootstrap_timeout
 .rx_ready:
         in      a, (ZXDATRD)
+        ld      (bootstrap_trace_value), a
+        ; Log only the two length bytes; subsequent firmware bytes are omitted.
+        ld      a, (bootstrap_trace_rx_count)
+        cp      2
+        jr      nc, .rx_trace_done
+        inc     a
+        ld      (bootstrap_trace_rx_count), a
+        ld      a, 'N'
+        out     (#EF), a
+        ld      a, '-'
+        out     (#EF), a
+        ld      a, (bootstrap_trace_value)
+        call    bootstrap_trace_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.rx_trace_done:
+        ld      a, (bootstrap_trace_value)
         ret
 
-; Send one byte to Spectrum. Host reads GSDAT and clears DBIT.
+; Byte-stream transmit path (GS105a loader/bootstrap): write ZXDATWR,
+; then wait for the Spectrum host to read GSDAT and clear DBIT.
+; Command dispatch through ZXCMD/CBIT is a separate interface.
 bootstrap_send_data_byte:
         ld      (bootstrap_tx_byte), a
         ld      bc, #FFFF
@@ -187,6 +223,18 @@ bootstrap_send_data_byte:
 .tx_slot_free:
         ld      a, (bootstrap_tx_byte)
         out     (ZXDATWR), a
+        ; ZXDATWR is the NeoGS DBIT-set edge (READY / length ACK).
+        ld      (bootstrap_trace_value), a
+        ld      a, 'N'
+        out     (#EF), a
+        ld      a, '+'
+        out     (#EF), a
+        ld      a, (bootstrap_trace_value)
+        call    bootstrap_trace_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
         ld      bc, #FFFF
 .tx_wait_read:
         in      a, (ZXSTAT)
@@ -202,5 +250,31 @@ bootstrap_send_data_byte:
 
 bootstrap_tx_byte:
         db      0
+bootstrap_trace_value:
+        db      0
+bootstrap_trace_rx_count:
+        db      0
+
+; IN: A = byte. Emit two hex digits directly on NeoGS port #EF.
+bootstrap_trace_hex8:
+        push    af
+        rrca
+        rrca
+        rrca
+        rrca
+        and     #0F
+        call    bootstrap_trace_hex_nibble
+        pop     af
+        and     #0F
+        jp      bootstrap_trace_hex_nibble
+
+bootstrap_trace_hex_nibble:
+        add     a, '0'
+        cp      '9'+1
+        jr      c, .trace_hex_digit
+        add     a, 7
+.trace_hex_digit:
+        out     (#EF), a
+        ret
 
 neogs_bootstrap_end:
