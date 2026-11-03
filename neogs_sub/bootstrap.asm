@@ -63,44 +63,14 @@ neogs_bootstrap_start:
         in      a, (c)
         ; BC still has B=#FF from the explicit local port selection.
 
-        ; Tell Spectrum that the tiny loader is running and waiting for length.
-        ; Publish READY directly and enter the receive state immediately.
-        ; Do not wait for DBIT to return low here: the host may consume #A1
-        ; and publish the first length byte before this Z80 observes the
-        ; short DBIT-low interval. The receiver below can consume that byte.
+        ; Project124 V1: publish READY with the normal DBIT-aware sender.
+        ; The sender waits until the host consumes #A1 before returning.
         ld      a, 'R'
         out     (#EF), a
         ld      a, NGS_BOOTSTRAP_READY_ACK
-        out     (ZXDATWR), a
+        call    bootstrap_send_data_byte
 
-        ; Wait for a persistent host CONTINUE command instead of relying
-        ; on the brief DBIT-low interval after READY. Host writes #A6 to
-        ; GSCOM; CBIT remains set until this bootstrap consumes the command.
-        ld      de, #FFFF
-        ld      bc, #FF04
-.ready_wait_continue:
-        in      a, (c)
-        bit     B_CBIT, a
-        jr      nz, .ready_continue_received
-        dec     de
-        ld      a, d
-        or      e
-        jr      nz, .ready_wait_continue
-        jp      bootstrap_timeout
-.ready_continue_received:
-        ld      bc, #FF01
-        in      a, (c)
-        ld      d, a
-        ld      bc, #FF05
-        xor     a
-        out     (c), a
-        ld      a, d
-        cp      #A6
-        jp      nz, bootstrap_timeout
-
-        ; Host sends length low byte, then high byte. Use the same bounded
-        ; receiver as the firmware payload so all host-to-NeoGS bytes follow
-        ; exactly one ZXSTAT/ZXDATRD implementation. A timeout reports #E1.
+        ; Exact V1 order: receive length low, then length high.
         call    bootstrap_receive_data_byte
         ld      e, a
         ld      a, '1'
