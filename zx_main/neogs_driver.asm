@@ -398,11 +398,42 @@ upload_firmware::
         jp      c, .upload_failed
         ld      a, h
         call    gs_boot_send_data_byte
-        jp      c, .upload_failed
+        jr      nc, .phase7_length_high_tx_done
+
+        ; The bootstrap consumes the high length byte and immediately sends
+        ; #A3. Since DBIT is shared by both directions, the ACK can set DBIT
+        ; before the host observes the brief clear interval. In that case the
+        ; generic TX helper reports a state-2 timeout although the byte was
+        ; consumed. Accept only the expected #A3 as proof of consumption.
+        ld      a, (neo_fw_tx_wait_state)
+        cp      2
+        jp      nz, .upload_failed
+        in      a, (GSSTAT)
+        ld      (neo_fw_last_status), a
+        bit     B_DBIT, a
+        jp      z, .upload_failed
         call    gs_boot_receive_data_byte
         jp      c, .upload_failed
         cp      NGS_BOOTSTRAP_LENGTH_ACK
         jp      nz, .upload_failed
+
+        ; The #A3 ACK proves that the pending high length byte was consumed.
+        push    hl
+        ld      hl, (neo_fw_bytes_sent)
+        inc     hl
+        ld      (neo_fw_bytes_sent), hl
+        pop     hl
+        xor     a
+        ld      (neo_fw_tx_wait_state), a
+        jr      .phase7_ack_received
+
+.phase7_length_high_tx_done:
+        call    gs_boot_receive_data_byte
+        jp      c, .upload_failed
+        cp      NGS_BOOTSTRAP_LENGTH_ACK
+        jp      nz, .upload_failed
+
+.phase7_ack_received:
 
         ; Phase 8: stream the custom firmware to RAM address $0000.
         ld      a, 8
