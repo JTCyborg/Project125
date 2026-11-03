@@ -9,7 +9,7 @@
 - [Сценарий разработки и испытаний](PROJECT125_SCENARIO.md)
 
 ## Статус
-Начало проекта: 2026-11-03. Создана базовая документация, импортирован исходный x86 real-mode executor из Project124, добавлен BIOS-кандидат 8 KiB и начальная проверка его reset vector. Добавлены NeoGS-команды загрузки BIOS в page 75 и запуска 8086 reset sequence, а также read-only ROM overlay FE000h..FFFFFh. ATM host-side DMA sender module добавлен, но подключение к TR-DOS file reader, сборка и runtime пока не проверены.
+Начало проекта: 2026-11-03. Создана базовая документация, импортирован исходный x86 real-mode executor из Project124, добавлен BIOS-кандидат 8 KiB и начальная проверка его reset vector. Добавлены NeoGS-команды загрузки BIOS в page 75 и запуска 8086 reset sequence, а также read-only ROM overlay FE000h..FFFFFh. ATM host-side DMA sender и TR-DOS BIOS.C reader добавлены; минимальный host main теперь вызывает firmware bootstrap, BIOS load/validate и BIOS boot. Сборка и runtime пока не проверены.
 
 BIOS-кандидат: `bios/BIOS.BIN` — Generic Turbo XT BIOS 1987, 8192 байта. Reset vector проверен: `EA 5B E0 00 F0` по смещению `1FF0h`; начальная карта образа — `FE000h..FFFFFh`. См. `bios/BIOS_MANIFEST.md`.
 
@@ -24,3 +24,10 @@ BIOS-кандидат: `bios/BIOS.BIN` — Generic Turbo XT BIOS 1987, 8192 ба
 - Guest ROM overlay: `FE000h..FFFFFh` читает page 75; запись в ROM запрещена. Полная передача с ATM host и аппаратная проверка ещё впереди.
 
 - `zx_main/bios_transfer.asm` — host-side DMA stream sender: принимает 32 сектора по 256 байт, закрывает поток и читает NeoGS result frame; TR-DOS file reader ещё не подключён.
+
+## ATM host boot path
+- `zx_main/main.asm` — минимальный ATM host, экспортирующий `boot.B`, `proj125.C`, `neoprog.C` и `BIOS.C` в `disk_A.trd`.
+- `zx_main/bios_file_loader.asm` — читает BIOS.C по 256-байтовым секторам и проверяет точный размер 8192 байта.
+- `zx_main/bios_transfer.asm` — передаёт 32 сектора в NeoGS page 75, получает результат и запускает BIOS с отладочным потоком на порту #EF.
+- `tools/pack_neogs_project125.ps1` — собирает bootstrap+firmware пакет и разбивает его на 16-KiB части для TR-DOS.
+- `build_project125.bat` — единая сборка firmware и итогового `build/disk_A.trd`.
