@@ -411,6 +411,18 @@ upload_firmware::
         jp      nz, .upload_failed
 
 .phase5_jump_ready:
+        ; Hold the host DBIT-low interval after consuming #A1 long enough for
+        ; the bootstrap sender to observe that its ACK was read and return
+        ; from bootstrap_send_data_byte before the first length byte is sent.
+        ; Without this turnaround window the host can reassert DBIT with #C5
+        ; before the NeoGS Z80 samples the low state.
+        ld      bc, #0400
+.phase5_ack_turnaround:
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .phase5_ack_turnaround
+
         ; Phase 7: exact Project124 V1 length handshake: low, high, one #A3.
         ld      a, 7
         ld      (neo_fw_timeout_phase), a
@@ -1150,4 +1162,4 @@ neo_fw_initial_status:  db 0
 neo_fw_last_status:     db 0
 neo_fw_timeout_phase:   db 0
 neo_fw_last_tx_phase:   db 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A23", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A24", 13, 10, 0
