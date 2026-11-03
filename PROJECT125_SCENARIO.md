@@ -380,3 +380,18 @@
 - Status: IMPLEMENTED / NOT BUILT / NOT RUN. No runtime PASS assigned.
 
 | 2026-11-03 | Phase 7 inbound-byte probe | IMPLEMENTED / NOT BUILT | RXVALID/RXBYTE added; the probe runs only after the low-byte TX timeout. |
+
+
+### A1.17 — подтверждение приёма младшего байта длины (2026-11-03)
+
+- [x] Runtime A14 показал RXVALID=01, RXBYTE=#A1 при таймауте передачи #C5. Это повторный READY ACK, а не ошибка #E1; факт приёма #C5 bootstrap не подтверждён.
+- [x] Bootstrap изменён: после получения младшего байта длины он отправляет обратно точное значение принятого байта.
+- [x] Host проверяет echo: допускается только значение, совпадающее с младшим байтом длины (#C5 для текущего пакета). #A1 больше не принимается как подтверждение передачи длины.
+- [x] Обработаны оба варианта handshake: обычное снятие DBIT и гонка, когда echo появляется до того, как host заметил DBIT=0.
+- [x] Маркер драйвера изменён на A15.
+- [ ] Проверить размер собранного bootstrap и отсутствие переполнения stage-0 области.
+- [ ] Выполнить полную Windows-сборку sjasmplus.
+- [ ] Запустить свежий disk image и проверить RX/echo, ACK #A3 и дальнейшую передачу firmware.
+- Статус: IMPLEMENTED / NOT BUILT / NOT RUN. Runtime PASS не присваивается.
+
+| 2026-11-03 | Bootstrap low-length echo | IMPLEMENTED / NOT BUILT | Bootstrap эхоирует принятый low byte; host сравнивает echo с исходным байтом. |
