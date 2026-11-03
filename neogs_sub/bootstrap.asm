@@ -73,21 +73,30 @@ neogs_bootstrap_start:
         ld      a, NGS_BOOTSTRAP_READY_ACK
         out     (ZXDATWR), a
 
-        ; READY is an outgoing byte. Do not let the receiver mistake its
-        ; still-set DBIT for an incoming length byte. Host consumes #A1,
-        ; clears DBIT, then waits its turnaround before sending length low.
+        ; Wait for a persistent host CONTINUE command instead of relying
+        ; on the brief DBIT-low interval after READY. Host writes #A6 to
+        ; GSCOM; CBIT remains set until this bootstrap consumes the command.
         ld      de, #FFFF
-        ld      c, #04
-.ready_wait_consumed:
+        ld      bc, #FF04
+.ready_wait_continue:
         in      a, (c)
-        bit     B_DBIT, a
-        jr      z, .ready_consumed
+        bit     B_CBIT, a
+        jr      nz, .ready_continue_received
         dec     de
         ld      a, d
         or      e
-        jr      nz, .ready_wait_consumed
+        jr      nz, .ready_wait_continue
         jp      bootstrap_timeout
-.ready_consumed:
+.ready_continue_received:
+        ld      bc, #FF01
+        in      a, (c)
+        ld      d, a
+        ld      bc, #FF05
+        xor     a
+        out     (c), a
+        ld      a, d
+        cp      #A6
+        jp      nz, bootstrap_timeout
 
         ; Host sends length low byte, then high byte. Use the same bounded
         ; receiver as the firmware payload so all host-to-NeoGS bytes follow
