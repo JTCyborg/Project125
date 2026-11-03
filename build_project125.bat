@@ -27,6 +27,10 @@ if not exist "build\neogs_bootstrap.bin" (
     echo ERROR: build\neogs_bootstrap.bin was not produced.
     exit /b 1
 )
+echo [BUILD] Packing NeoGS bootstrap + firmware into 16 KiB TR-DOS chunks...
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "tools\pack_neogs_project125.ps1"
+if errorlevel 1 exit /b 1
+
 echo [BUILD] Assembling ATM host and exporting TR-DOS disk...
 %SJASMPLUS% --msg=all zx_main\main.asm
 if errorlevel 1 (
