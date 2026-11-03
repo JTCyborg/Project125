@@ -7,8 +7,8 @@
 ;   Length: 8192 bytes
 ;   Sectors: 32
 ;
-; The file is never staged as a complete 8 KiB host-RAM buffer. One 256-byte
-; sector is read to #C000, sent through zx_main/bios_transfer.asm, then reused.
+; BIOS.C is staged in host RAM at #C000..#DFFF before DMA starts. The complete
+; disk-read phase and DMA-send phase are deliberately kept separate.
 ;
 ; Include order in the host program:
 ;   shared/neogs_io.inc
@@ -26,11 +26,15 @@ BIOS_TRDOS_SECTOR_COUNT    EQU #20
 BIOS_TRDOS_SECTOR_SIZE     EQU #0100
 BIOS_TRDOS_BUFFER          EQU #C000
 
-; Open BIOS.C, stream 32 sectors to NeoGS page 75 and validate the ROM.
+; Open BIOS.C, stage 32 sectors, send them to NeoGS page 75, then validate.
 neogs_bios_load_from_trdos:
         di
+        ld      (bios_trdos_saved_sp), sp
+        ld      sp, #BFFF
         xor     a
         ld      (bios_trdos_file_error), a
+        ld      hl, BIOS_TRDOS_BUFFER
+        ld      (bios_trdos_read_buffer), hl
 
         ; Search exact 8.3 name BIOS.C.
         ld      hl, bios_trdos_filename
@@ -81,37 +85,40 @@ neogs_bios_load_from_trdos:
         ld      a, (#5CEC)
         ld      (bios_trdos_track), a
 
-        ; Read the first sector before opening the NeoGS DMA window.
+        ; Stage all sectors in host RAM before starting NeoGS DMA.
+        ; This follows the proven Project124 ordering: finish disk I/O first.
+.bios_read_all_sectors:
+        ld      a, (bios_trdos_sectors_left)
+        or      a
+        jr      z, .bios_all_sectors_read
         call    bios_trdos_read_next_sector
         jp      c, bios_trdos_initial_read_error
+        jr      .bios_read_all_sectors
 
+.bios_all_sectors_read:
+        ; The complete 8 KiB image is resident at #C000..#DFFF.
         call    neogs_bios_transfer_start
         jp      c, bios_trdos_start_error
 
-        ; Send the first sector already in #C000.
+        ld      a, BIOS_TRDOS_SECTOR_COUNT
+        ld      (bios_trdos_transfer_sectors_left), a
         ld      hl, BIOS_TRDOS_BUFFER
+.bios_transfer_all_sectors:
+        ld      a, (bios_trdos_transfer_sectors_left)
+        or      a
+        jr      z, .bios_transfer_complete
+        push    hl
         call    neogs_bios_transfer_sector
+        pop     hl
         jp      c, bios_trdos_sender_error
+        ld      de, BIOS_TRDOS_SECTOR_SIZE
+        add     hl, de
+        ld      a, (bios_trdos_transfer_sectors_left)
+        dec     a
+        ld      (bios_trdos_transfer_sectors_left), a
+        jr      .bios_transfer_all_sectors
 
-.bios_stream_next:
-        ld      a, (bios_trdos_sectors_left)
-        or      a
-        jr      z, .bios_stream_complete
-
-        call    bios_trdos_read_next_sector
-        jr      c, .bios_stream_disk_error
-
-        ; The final sector contains BIOS offsets 1F00..1FFF. Print the
-        ; expected reset-vector bytes from its buffer before DMA consumes it.
-        ld      a, (bios_trdos_sectors_left)
-        or      a
-        call    z, bios_trdos_debug_dump_tail
-
-        ld      hl, BIOS_TRDOS_BUFFER
-        call    neogs_bios_transfer_sector
-        jr      c, .bios_stream_sender_error
-        jr      .bios_stream_next
-
+.bios_transfer_complete:
 .bios_stream_complete:
         call    neogs_bios_transfer_finish
         jp      c, bios_trdos_finish_error
@@ -131,17 +138,9 @@ neogs_bios_load_from_trdos:
         xor     a
         ld      (bios_trdos_file_error), a
         or      a
+        ld      hl, (bios_trdos_saved_sp)
+        ld      sp, hl
         ret
-
-.bios_stream_disk_error:
-        ; Close the DMA window even when the disk read fails mid-stream.
-        call    neogs_bios_transfer_finish
-        ld      a, 6
-        jr      bios_trdos_fail
-.bios_stream_sender_error:
-        call    neogs_bios_transfer_finish
-        ld      a, 7
-        jr      bios_trdos_fail
 
 bios_trdos_file_not_found:
         ld      a, 1
@@ -173,6 +172,8 @@ bios_trdos_rom_validation_error:
 
 bios_trdos_fail:
         ld      (bios_trdos_file_error), a
+        ld      hl, (bios_trdos_saved_sp)
+        ld      sp, hl
         scf
         ret
 
@@ -193,7 +194,8 @@ bios_trdos_read_next_sector:
         ld      d, a
         ld      a, (bios_trdos_sector)
         ld      e, a
-        ld      hl, BIOS_TRDOS_BUFFER
+        ld      hl, (bios_trdos_read_buffer)
+        ld      (bios_trdos_last_buffer), hl
         ld      b, 1
         ld      c, 5
         xor     a
@@ -206,8 +208,14 @@ bios_trdos_read_next_sector:
         or      b
         jr      nz, .bios_sector_io_error
 
-        ; Dump the complete 256-byte sector after every successful TR-DOS read.
+        ; Dump the just-read sector from its unique staging address.
         call    bios_trdos_debug_dump_sector
+
+        ; Advance the host staging pointer by one sector.
+        ld      hl, (bios_trdos_read_buffer)
+        ld      de, BIOS_TRDOS_SECTOR_SIZE
+        add     hl, de
+        ld      (bios_trdos_read_buffer), hl
 
         ; TR-DOS 5.04T internal sector IDs are 0..15; roll over to 0.
         ld      a, (bios_trdos_sector)
@@ -226,6 +234,9 @@ bios_trdos_read_next_sector:
         ld      a, (bios_trdos_sectors_left)
         dec     a
         ld      (bios_trdos_sectors_left), a
+        or      a
+        call    z, bios_trdos_debug_dump_tail
+        ld      a, (bios_trdos_sectors_left)
         or      a
         ret
 .bios_sector_io_error:
@@ -285,7 +296,7 @@ bios_trdos_debug_dump_sector:
         out     (c), a
         jr      .bios_data_prefix_loop
 .bios_data_prefix_done:
-        ld      hl, BIOS_TRDOS_BUFFER
+        ld      hl, (bios_trdos_last_buffer)
         ld      d, 0
 .bios_data_row:
         ld      a, d
@@ -336,7 +347,9 @@ bios_trdos_debug_dump_tail:
         out     (c), a
         jr      .bios_debug_prefix_loop
 .bios_debug_prefix_done:
-        ld      hl, BIOS_TRDOS_BUFFER + #00F0
+        ld      hl, (bios_trdos_last_buffer)
+        ld      de, #00F0
+        add     hl, de
         ld      e, 5
 .bios_debug_tail_loop:
         ld      a, (hl)
@@ -391,3 +404,7 @@ bios_trdos_track:        db 0
 bios_trdos_sector:       db 0
 bios_trdos_sectors_left: db 0
 bios_trdos_file_error:   db 0
+bios_trdos_saved_sp:     dw 0
+bios_trdos_read_buffer:  dw BIOS_TRDOS_BUFFER
+bios_trdos_last_buffer:  dw BIOS_TRDOS_BUFFER
+bios_trdos_transfer_sectors_left: db 0
