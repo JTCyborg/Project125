@@ -739,3 +739,16 @@
 - **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Исправление следует из наблюдаемой последовательности и анализа handshake; runtime-подтверждение обязательно.
 
 | 2026-11-03 | Bypass READY post-send DBIT-clear wait | IMPLEMENTED / NOT BUILT | NeoGS now publishes #A1 and immediately enters length RX, avoiding a missed DBIT-low interval if host sends #C5 quickly. |
+
+
+## A1.43 — диагностика фактических байтов длины NeoGS (2026-11-03)
+
+- [x] Предыдущий runtime A32 дал NeoGS trace `B1LSRL`: первый байт был прочитан, второй приёмник не увидел. При этом host error snapshot сохранил TXBYTE=`#40`, TXPHASE=`#05`, TXSTATE=`#00`, поэтому он не доказывал, что в фазе длины был отправлен `#C5`.
+- [x] Диагностические маркеры bootstrap `B/1/L/S/R` заменены выводом двух ASCII hex-цифр фактически прочитанного байта через локальный порт `#EF`. Полученные значения сохраняются в A и используются штатным кодом длины.
+- [x] Host marker `l` выводится непосредственно перед отправкой младшего байта длины, marker `h` — непосредственно перед отправкой старшего. Маркер сборки драйвера обновлён до A33.
+- [x] Протокол GSDAT/ZXDAT, порядок передачи, тайминги, ACK и firmware payload не менялись; это диагностическое изменение.
+- [ ] SjASMPlus build: проверить размер NEOLOAD.C (1..254 байта), корректность helper и отсутствие переполнения.
+- [ ] Runtime: проверить совмещённые логи host/NeoGS. После host marker `l` NeoGS должен вывести `C5`, после marker `h` — `3D`; затем ожидается ACK `#A3`, полный NEOFW stream и ACK `#A2`.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Изменение только добавляет наблюдаемость; оно не заявляется как исправление DBIT handshake.
+
+| 2026-11-03 | Trace actual NeoGS length bytes and host send boundaries | IMPLEMENTED / NOT BUILT | NeoGS prints each consumed length byte as two hex digits; host prints l/h immediately before the corresponding send. |
