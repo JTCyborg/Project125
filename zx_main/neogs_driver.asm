@@ -479,10 +479,28 @@ upload_firmware::
         ; dispatch and is therefore intentionally not counted.
         ld      a, 10
         ld      (neo_fw_timeout_phase), a
+        ; Every #14 chunk has its own three trailing header bytes.
+        ; Number of chunks is ceil(bootstrap_length / 256), not always one.
         ld      hl, (neo_fw_bootstrap_length)
         ld      de, (neo_fw_length)
         add     hl, de
-        ld      de, 6
+        ld      a, (neo_fw_bootstrap_length+1)
+        ld      b, a
+        ld      a, (neo_fw_bootstrap_length)
+        or      a
+        ld      a, b
+        jr      z, .count_chunks_ready
+        inc     a
+.count_chunks_ready:
+        ; Add 3 * #14 chunk count, then #13 address high + two length bytes.
+        ld      e, a
+        add     a, a
+        add     a, e
+        ld      e, a
+        ld      d, 0
+        inc     de
+        inc     de
+        inc     de
         add     hl, de
         ld      de, (neo_fw_bytes_sent)
         or      a
