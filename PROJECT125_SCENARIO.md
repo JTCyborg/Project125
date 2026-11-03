@@ -889,3 +889,20 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED; BUILD NOT VERIFIED; RUNTIME NOT VERIFIED. Это узкий возврат изменённого receiver к проверенному V1, не заявление об исправлении runtime.
 
 | 2026-11-03 | A1.55 restore V1 bootstrap receiver | SOURCE COMMITTED | Restore original ZXSTAT/ZXDATRD byte receiver after A38 high-length-byte DBIT timeout. |
+
+
+## A1.56 — учёт документации NeoGS: разделение CBIT-команд и DBIT-потока (2026-11-03)
+
+Источник: статья «NeoGS – шаг в будущее», №32, 10.10.2009, фрагменты NeoGS Z80 и Spectrum host: https://abzac.retropc.ru/content?id=876.
+
+- [x] В исходниках Project125 зафиксировано принципиальное разделение двух интерфейсов:
+  - **CBIT / GSCOM / ZXCMD** — командный интерфейс. Хост публикует команду через GSCOM и ждёт сброса CBIT; NeoGS читает ZXCMD.
+  - **DBIT / GSDAT / ZXDATRD / ZXDATWR** — байтовый канал данных. DBIT показывает наличие/занятость байта; чтение/запись соответствующего data port завершает передачу байта.
+- [x] Сверено с кодом статьи: NeoGS-side обработчик сначала ждёт CBIT и читает ZXCMD, затем для операции записи читает ZXDATRD; для чтения пишет результат в ZXDATWR. Spectrum-side WRPORT/RDPORT отправляют адрес внутреннего порта через GSCOM и ждут CBIT.
+- [x] В `neogs_sub/bootstrap.asm` и `zx_main/neogs_driver.asm` добавлены комментарии, явно отделяющие GS105a command dispatch от bulk byte stream.
+- [x] Логика передач, значения битов, порядок команд #13/#14, handshake #A1/#A3/#A2 и тайминги **не менялись**: статья описывает командный доступ к внутренним портам NeoGS, а не заменяет транспорт загрузчика GS105a.
+- [ ] Сборка `build.bat`: проверить размер NEOLOAD.C (1..254 байта), отсутствие ошибок SjASMPlus/ASSERT/JR.
+- [ ] Runtime: повторить трассу после A1.55; отдельно фиксировать CBIT при GSCOM-командах и DBIT на каждом байте длины/прошивки.
+- **Статус:** SOURCE UPDATED / NOT BUILT / NOT RUNTIME. Изменения документируют корректную трактовку интерфейсов; не заявляют исправление runtime-зависания.
+
+| 2026-11-03 | A1.56 document CBIT command vs DBIT stream | SOURCE UPDATED | Added source comments and scenario entry from the NeoGS article; no protocol logic changed. |
