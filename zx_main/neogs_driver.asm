@@ -1024,6 +1024,17 @@ gs_boot_send_data_byte:
 .data_slot_free:
         ld      a, (neo_fw_tx_byte)
         out     (GSDAT), a
+
+        ; Give the NeoGS-side Z80 / ZX-BUS latch a short settling window
+        ; before the host starts polling DBIT for consumption. This delay is
+        ; after the physical write, not merely between two host calls.
+        ld      bc, #0015
+.data_interbyte_hold:
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .data_interbyte_hold
+
         ld      a, 2
         ld      (neo_fw_tx_wait_state), a
         ld      bc, FW_BYTE_TIMEOUT
