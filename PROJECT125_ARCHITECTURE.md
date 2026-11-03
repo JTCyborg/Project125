@@ -2,7 +2,7 @@
 
 Версия документа: 2.0
 Дата: 2026-11-03
-Статус: архитектурная спецификация; реализация ещё не подтверждена.
+Статус: архитектурная спецификация и первый исходный runtime baseline реализованы; сборка и runtime ещё не подтверждены.
 
 ## 1. Цель и базовый принцип
 
@@ -262,7 +262,7 @@ PASS присваивается только конкретному уровню
 - Project124 contains candidate bios/BIOS.BIN (8192 bytes), bios/bios.asm, bios/bios.txt.
 - Active executor in Project124 is neogs_sub/x86_real_mode.asm plus modules listed in its build dependencies; legacy x86_interpreter.asm is not the active core.
 - Project124 BIOS_XT_OPCODE_AUDIT.md identifies substantial missing instruction families and lack of full PC/XT device models.
-- Project125 currently contains architecture/scenario docs; runtime has not yet been ported.
+- Project125 now contains the initial NeoGS 8086 real-mode runtime, BIOS ROM overlay/loader commands, and ATM host TR-DOS load/boot path. Build, DMA hardware behavior and guest execution remain unverified.
 
 Open decisions:
 - Exact BIOS binary and provenance.
