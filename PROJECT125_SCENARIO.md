@@ -503,3 +503,16 @@
 - Статус: IMPLEMENTED / NOT BUILT / NOT RUN. Runtime Project125 ещё не подтверждён.
 
 | 2026-11-03 | Restore Project124 V1 loader sequence | IMPLEMENTED / NOT BUILT | Restored the proven V1 launch and length-handshake sequence. |
+
+
+## A1.26 — устранение гонки DBIT на ACK #A1/#A3 (2026-11-03)
+
+- [x] Восстановлена обработка случая, когда после #40 DBIT уже повторно установлен входящим #A1; ACK проверяется обычным приёмником.
+- [x] Bootstrap отправляет #A1 без ожидания DBIT=0 после публикации ACK и сразу переходит к приёму длины.
+- [x] Bootstrap отправляет #A3 тем же способом и сразу переходит к приёму первого байта firmware.
+- [x] Обычная передача данных и ACK #A2 не менялись.
+- [ ] Windows build: проверить сборку, размер NEOLOAD.C (1..254) и отсутствие переполнения относительных переходов.
+- [ ] Runtime: подтвердить #A1, #C5/#3D, #A3, передачу firmware и ACK #A2.
+- Статус: IMPLEMENTED / NOT BUILT / NOT RUN.
+
+| 2026-11-03 | Fix DBIT turnaround after #A1 and #A3 | IMPLEMENTED / NOT BUILT | Publish ACK then immediately receive next host byte without requiring a sampled DBIT-low interval. |
