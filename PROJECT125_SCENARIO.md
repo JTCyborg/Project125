@@ -906,3 +906,30 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE UPDATED / NOT BUILT / NOT RUNTIME. Изменения документируют корректную трактовку интерфейсов; не заявляют исправление runtime-зависания.
 
 | 2026-11-03 | A1.56 document CBIT command vs DBIT stream | SOURCE UPDATED | Added source comments and scenario entry from the NeoGS article; no protocol logic changed. |
+
+## A1.57 — сверка загрузчика GS105a по AD13 / SE01 / ZF6 (2026-11-03)
+
+Источники проекта:
+- NeoGS/ad13prgs.txt — Stinger, «Прямое программирование General Sound», интерфейс, команды #13/#14 и загрузчик.
+- NeoGS/se01gsfc.txt — практические процедуры SENDCOM / SENDDAT / GETDAT.
+- NeoGS/zf6gsprg.txt — спецификация GS ROM 1.03, регистры и команды #30/#D1/#D2.
+
+Подтверждённые правила:
+- [x] Host port #BB — запись команды GSCOM, чтение статуса GSSTAT. CBIT = bit 0, DBIT = bit 7.
+- [x] Host port #B3 — запись входного байта GS и чтение выходного байта GS. DBIT выставляется после записи host byte и сбрасывается, когда GS читает его; в обратном направлении DBIT выставляется после записи GS output и сбрасывается, когда host читает его.
+- [x] Command bit сбрасывает только NeoGS; ожидание команды — IN A,(#BB) / RRCA / JR C.
+- [x] Host byte write wait — IN A,(#BB) / RLCA / JR C; receive-ready wait — IN A,(#BB) / RLCA / JR NC; затем IN A,(#B3).
+- [x] GS105a #14 порядок аргументов подтверждён AD13: preload length low → issue #14 and wait CBIT → length high → destination low → destination high → block bytes. Project125 следует этому порядку.
+- [x] GS105a #13 порядок подтверждён AD13: preload address low → issue #13 and wait CBIT → address high. Project125 следует этому порядку.
+- [x] Спецификация ZF6 говорит, что input и output data registers независимы, но используют общий DBIT; состояние DBIT на этапах команды, если оно не определено форматом, нельзя считать гарантированным.
+- [x] Команды #30/#38 используют отдельный поток: после команды и handle открывается #D1, байты передаются по DBIT, завершение — #D2. Это не транспорт загрузки GS105a #14/#13.
+
+Анализ runtime A38:
+- [x] Bootstrap marker 2 ставится только после возврата из bootstrap_receive_data_byte для старшего байта длины. Следовательно, NeoGS уже прочитал #3D из host data register.
+- [x] Host сообщает GSSTAT=#FE и TXSTATE=#02: DBIT всё ещё установлен, CBIT сброшен.
+- [x] ZF6 описывает общий DBIT для двух независимых направлений. Bootstrap после чтения high byte сразу публикует #A3 через bootstrap_send_data_byte; возможна гонка: host не успевает увидеть промежуточный DBIT=0 между чтением #3D и публикацией #A3.
+- [ ] До изменения протокола подтвердить гипотезу трассой статуса/выходного байта на границе high-length → #A3 либо сравнением с точным Project124 V1 runtime.
+- [ ] Если гонка подтверждена, исправить только границу ответа #A3; не менять общий DBIT алгоритм всех байтов, #14, CBIT команды или поток firmware.
+- **Статус:** SOURCE ANALYSIS RECORDED / NO TRANSFER LOGIC CHANGED / BUILD AND RUNTIME NOT VERIFIED.
+
+| 2026-11-03 | A1.57 document GS105a protocol from AD13/SE01/ZF6 and analyze A3 boundary race | ANALYSIS RECORDED | Added command ordering, DBIT semantics and a testable explanation for the A38 high-length-byte stall. |
