@@ -1,9 +1,9 @@
 ; =========================================================================
-; Build NeoGS firmware and one deployable package from the Project 124 root:
+; Build Project125 NeoGS firmware from the repository root:
 ;   sjasmplus neogs_sub/build_firmware.asm
 ;
 ; neogs_code.bin       custom firmware, loaded at logical RAM address $0000
-; neogs_bootstrap.bin  intermediate bootstrap; neoprog.bin packages it with firmware
+; neogs_bootstrap.bin  intermediate bootstrap; PowerShell packer creates neoprog.C chunks
 ; =========================================================================
         DEVICE ZXSPECTRUM128
         INCLUDE "main.asm"
@@ -26,5 +26,5 @@
         SAVEBIN "neogs_bootstrap.bin", neogs_bootstrap_start, neogs_bootstrap_end - neogs_bootstrap_start
         SAVEBIN "build/neogs_bootstrap.bin", neogs_bootstrap_start, neogs_bootstrap_end - neogs_bootstrap_start
 
-; neoprog.bin is assembled by the build scripts after both intermediate
-; binaries have been written. It is the only NeoGS payload exported to TR-DOS.
+; tools/pack_neogs_project125.ps1 packages these binaries into a segmented
+; neoprog.C file; zx_main/main.asm exports it to the TR-DOS disk image.
