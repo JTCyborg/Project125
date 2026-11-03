@@ -9,6 +9,7 @@
 - [Карта памяти NeoGS](PROJECT125_MEMORY_LAYOUT.md)
 - [Сценарий разработки и испытаний](PROJECT125_SCENARIO.md)
 - [Манифест BIOS](bios/BIOS_MANIFEST.md)
+- [Video Frame ABI v1](PROJECT125_VIDEO_ABI.md)
 
 ## Статус
 Начало проекта: 2026-11-03. Создана базовая документация, импортирован исходный x86 real-mode executor из Project124, добавлен BIOS-кандидат 8 KiB и начальная проверка его reset vector. Добавлены NeoGS-команды загрузки BIOS в page 75 и запуска 8086 reset sequence, а также read-only ROM overlay FE000h..FFFFFh. ATM host-side DMA sender и TR-DOS BIOS.C reader добавлены; минимальный host main теперь вызывает firmware bootstrap, BIOS load/validate и BIOS boot. Сборка и runtime пока не проверены.
