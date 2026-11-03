@@ -695,3 +695,18 @@
 - **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Изменение является timing experiment; прохождение runtime должно подтвердить его эффективность.
 
 | 2026-11-03 | Add post-OUT GSDAT settling window | IMPLEMENTED / NOT BUILT | Delay DBIT polling for #0015 iterations immediately after each host GSDAT write. |
+
+
+## A1.40 — аудит синхронизации Unreal Speccy и DBIT handshake (2026-11-03)
+
+- [x] Проверен исходный код Unreal Speccy `gsz80.cpp`: `out_gs()` вызывает `flush_gs_z80()` до изменения `gsdata_out` при записи в GSDAT.
+- [x] Проверен `in_gs()`: перед чтением GSDAT/GSSTAT также вызывается `flush_gs_z80()`.
+- [x] Проверен `gsz80.inl`: `z80loop()` исполняет NeoGS Z80 до временной отметки, вычисленной из `cpu.t`, `GSCPUFQI`, `conf.frame` и `gscpu_t_at_frame_start`. Поэтому гипотеза о безусловном выполнении хостом целого кадра без синхронизации NeoGS не подтверждается для этой версии исходников.
+- [x] Подтверждено, что `in()` на NeoGS порту #03 имеет побочный эффект DBIT=1, но штатный bootstrap читает ZXDATRD=#02. Ошибочное чтение #03 было бы отдельной ошибкой адресации, не установленной в текущем коде.
+- [x] Повторно проверен активный `gs_boot_send_data_byte` в `zx_main/neogs_driver.asm`: после `OUT (GSDAT),A` он ожидает DBIT=0 в `.data_wait_consumed` с ограниченным тайм-аутом. Между вызовами отправки уже обеспечено подтверждение потребления предыдущего байта.
+- [x] Дополнительный `call ngt_wait_dbit_clear` в неактивном `neogs_transport_v2.asm` не добавлен: текущая загрузка использует `gs_boot_send_data_byte`, а дублирование уже имеющегося ожидания не исправляет доказанную проблему.
+- [ ] Runtime: проверить следующий запуск на текущей сборке; записать статус и `TXBYTE` для фазы #07.
+- [ ] Если отказ повторится, снять трассу порядка host OUT GSDAT → NeoGS IN ZXDATRD → host IN GSSTAT с временными отметками; отдельно проверить точную версию/сборку Unreal Speccy, используемую пользователем.
+- **Статус:** SOURCE AUDIT COMPLETE / NO DRIVER CHANGE / RUNTIME PENDING. Вывод относится к проверенной реализации Unreal Speccy; соответствие локального исполняемого файла этой версии ещё нужно подтвердить.
+
+| 2026-11-03 | Audit emulator-side GS Z80 synchronization | SOURCE AUDIT COMPLETE | Confirmed flush_gs_z80 before host GSDAT writes and GSSTAT reads; active host driver already waits for DBIT clear after every byte. |
