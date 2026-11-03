@@ -31,3 +31,11 @@ BIOS-кандидат: `bios/BIOS.BIN` — Generic Turbo XT BIOS 1987, 8192 ба
 - `zx_main/bios_transfer.asm` — передаёт 32 сектора в NeoGS page 75, получает результат и запускает BIOS с отладочным потоком на порту #EF.
 - `tools/pack_neogs_project125.ps1` — собирает bootstrap+firmware пакет и разбивает его на 16-KiB части для TR-DOS.
 - `build_project125.bat` — единая сборка firmware и итогового `build/disk_A.trd`.
+
+## Сборка и первый запуск
+1. Установить sjasmplus 1.23.1 (положить EXE в tools/ либо добавить в PATH).
+2. Запустить build_project125.bat из корня репозитория.
+3. Результат: build/disk_A.trd. Внутри должны находиться boot.B, proj125.C, neoprog.C и BIOS.C.
+4. Загрузить disk_A.trd в ATM Turbo 2+ с TR-DOS и запустить BASIC boot.B.
+
+Сборка и запуск пока не подтверждены: сначала требуется получить лог sjasmplus и проверить итоговый TR-DOS каталог.
