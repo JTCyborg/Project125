@@ -30,6 +30,92 @@ BIOS_VIDEO_MODE_TEXT      EQU #03
 BIOS_TEXT_COLUMNS         EQU 80
 BIOS_TEXT_ROWS            EQU 25
 BIOS_POST_SIGNATURE       EQU #B105
+BIOS_ROM_BASE             EQU #FE000
+BIOS_ROM_RESET_VECTOR     EQU #FFFF0
+BIOS_ROM_BACKING_PAGE     EQU 75
+
+; Initialize the architectural 8086 reset state after page 75 has been loaded.
+; 8086 reset starts at FFFF:0000 (physical FFFF0h), not F000:FFF0.
+; The BIOS reset-vector instruction then far-jumps to F000:E05B.
+bios_rom_reset_state:
+        call    x86_mem_init
+        xor     a
+        ld      (x86_reg_ax), a
+        ld      (x86_reg_ax+1), a
+        ld      (x86_reg_bx), a
+        ld      (x86_reg_bx+1), a
+        ld      (x86_reg_cx), a
+        ld      (x86_reg_cx+1), a
+        ld      (x86_reg_dx), a
+        ld      (x86_reg_dx+1), a
+        ld      (x86_reg_bp), a
+        ld      (x86_reg_bp+1), a
+        ld      (x86_reg_si), a
+        ld      (x86_reg_si+1), a
+        ld      (x86_reg_di), a
+        ld      (x86_reg_di+1), a
+        ld      (x86_reg_es), a
+        ld      (x86_reg_es+1), a
+        ld      (x86_reg_ds), a
+        ld      (x86_reg_ds+1), a
+        ld      (x86_reg_ss), a
+        ld      (x86_reg_ss+1), a
+        ld      (x86_reg_sp), a
+        ld      (x86_reg_sp+1), a
+        ld      hl, #FFFF
+        ld      (x86_reg_cs), hl
+        ld      hl, 0
+        ld      (x86_reg_ip), hl
+        ld      hl, #0002
+        ld      (x86_reg_flags), hl
+        xor     a
+        ld      (x86_real_bounds_enable), a
+        ld      (x86_exit_status), a
+        ret
+
+; Validate the ROM header and the five bytes at the reset vector after DMA.
+; This is a structural check; full-image CRC is a separate transport task.
+bios_rom_validate:
+        ld      hl, #E000
+        ld      a, #20
+        call    bios_rom_expect_byte
+        ret     c
+        ld      hl, #FFF0
+        ld      a, #EA
+        call    bios_rom_expect_byte
+        ret     c
+        ld      hl, #FFF1
+        ld      a, #5B
+        call    bios_rom_expect_byte
+        ret     c
+        ld      hl, #FFF2
+        ld      a, #E0
+        call    bios_rom_expect_byte
+        ret     c
+        ld      hl, #FFF3
+        xor     a
+        call    bios_rom_expect_byte
+        ret     c
+        ld      hl, #FFF4
+        ld      a, #F0
+        jp      bios_rom_expect_byte
+
+; IN: HL=low 16 address bits, A=expected byte. BIOS ROM is at high nibble 0F.
+bios_rom_expect_byte:
+        ld      (bios_rom_expected), a
+        ld      (x86_mem_addr), hl
+        ld      a, #0F
+        ld      (x86_mem_addr+2), a
+        call    x86_mem_read8
+        ret     c
+        ld      b, a
+        ld      a, (bios_rom_expected)
+        cp      b
+        ret     z
+        scf
+        ret
+
+bios_rom_expected: db 0
 
 bios_post:
         call    x86_mem_init
