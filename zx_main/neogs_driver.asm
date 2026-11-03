@@ -231,14 +231,13 @@ upload_firmware::
         ; Loader and resident firmware are independent TR-DOS files.
         ld      (neo_fw_bootstrap_source), hl
         ld      (neo_fw_bootstrap_length), de
+        ; Bootstrap executes at $4000; keep it below stage-1 scratch at $4800.
         ld      a, d
-        or      a
-        jp      nz, .upload_failed
-        ld      a, e
-        or      a
-        jp      z, .upload_failed
-        cp      255
+        cp      8
         jp      nc, .upload_failed
+        ld      a, d
+        or      e
+        jp      z, .upload_failed
 
         xor     a
         ld      (neo_fw_bytes_sent), a
@@ -279,65 +278,87 @@ upload_firmware::
         jp      c, .upload_failed
 .stock_rom_ready:
 
-        ; Phase 3: use the native GS105a memory loader, not the MOD player.
-        ; #14 RECEIVE BLOCK header is diagnosed byte-by-byte. These values
-        ; are deliberately distinct from the old aggregate phase 3:
-        ; #30 = preload negative-length low byte (before #14)
-        ; #31 = negative-length high byte
-        ; #32 = destination low byte ($00)
-        ; #33 = destination high byte ($40)
-        ; The first byte is preloaded before issuing the command.
-        ld      hl, 0
-        ld      de, (neo_fw_bootstrap_length)
-        or      a
-        sbc     hl, de                  ; HL = -bootstrap length
-        ld      (neo_fw_block_length), hl
-        ld      a, #30
+        ; Phase 3: stream NEOLOAD.C in independent GS105a #14 blocks.
+        ; Each TR-DOS sector is read only after the previous #14 block completes.
+        ; This avoids staging the complete loader in host RAM and permits files
+        ; up to $0800 bytes in NeoGS RAM $4000-$47FF.
+        ld      hl, (neo_fw_bootstrap_length)
+        ld      (neo_fw_stream_remaining), hl
+        ld      hl, #4000
+        ld      (neo_fw_bootstrap_address), hl
+        ld      a, 4
         ld      (neo_fw_timeout_phase), a
+
+.bootstrap_sector_loop:
+        ; A full sector is 256 bytes; the last sector may be shorter.
+        ld      hl, (neo_fw_stream_remaining)
+        ld      a, h
+        or      a
+        jr      nz, .bootstrap_full_sector
+        ld      a, l
+        ld      e, a
+        ld      d, 0
+        jr      .bootstrap_chunk_ready
+.bootstrap_full_sector:
+        ld      de, 256
+.bootstrap_chunk_ready:
+        ld      (neo_fw_chunk_length), de
+
+        ; GS105a #14 header: preload -length low, command, then
+        ; -length high and destination low/high.
+        ld      hl, 0
+        or      a
+        sbc     hl, de
+        ld      (neo_fw_block_length), hl
         ld      a, (neo_fw_block_length)
         call    gs_boot_write_command_argument
         jp      c, .upload_failed
-
-        ; Command #14 switches the ROM loader into RECEIVE BLOCK mode.
-        ld      a, #31
-        ld      (neo_fw_timeout_phase), a
         ld      a, GS_CMD_RECEIVE_BLOCK
         call    gs_boot_send_command
         jp      c, .upload_failed
-
-        ; Remaining #14 header: -length high, destination $4000.
-        ld      a, #31
-        ld      (neo_fw_timeout_phase), a
         ld      a, (neo_fw_block_length+1)
         call    gs_boot_send_data_byte
         jp      c, .upload_failed
-        ld      a, #32
-        ld      (neo_fw_timeout_phase), a
-        xor     a
-        call    gs_boot_send_data_byte  ; destination low = $00
+        ld      hl, (neo_fw_bootstrap_address)
+        ld      a, l
+        call    gs_boot_send_data_byte
         jp      c, .upload_failed
-        ld      a, #33
-        ld      (neo_fw_timeout_phase), a
-        ld      a, #40
-        call    gs_boot_send_data_byte  ; destination high = $40
+        ld      a, h
+        call    gs_boot_send_data_byte
         jp      c, .upload_failed
 
-        ; Phase 4: transfer the executable bootstrap into RAM $4000.
-        ld      a, 4
-        ld      (neo_fw_timeout_phase), a
-        ld      hl, (neo_fw_bootstrap_source)
-        ld      de, (neo_fw_bootstrap_length)
-.bootstrap_block_loop:
-        ld      a, d
-        or      e
-        jr      z, .bootstrap_block_done
+        ; Send exactly this sector fragment.
+        ld      hl, #C000
+        ld      de, (neo_fw_chunk_length)
+.bootstrap_chunk_send:
         ld      a, (hl)
         call    gs_boot_send_data_byte
         jp      c, .upload_failed
         inc     hl
         dec     de
-        jr      .bootstrap_block_loop
-.bootstrap_block_done:
+        ld      a, d
+        or      e
+        jr      nz, .bootstrap_chunk_send
+
+        ; Advance destination and total byte count.
+        ld      hl, (neo_fw_bootstrap_address)
+        ld      de, (neo_fw_chunk_length)
+        add     hl, de
+        ld      (neo_fw_bootstrap_address), hl
+        ld      hl, (neo_fw_stream_remaining)
+        or      a
+        sbc     hl, de
+        ld      (neo_fw_stream_remaining), hl
+        ld      a, h
+        or      l
+        jr      z, .bootstrap_stream_done
+
+        ; Refill #C000 only after the previous sector has been transmitted.
+        call    neo_fw_read_next_sector
+        jp      c, .upload_failed
+        jr      .bootstrap_sector_loop
+
+.bootstrap_stream_done:
 
         ; Prepare NEOFW.C while the bootstrap is loaded but NOT running.
         ; The bootstrap receive timeout is finite (#FFFF polls), so no TR-DOS
@@ -1110,6 +1131,7 @@ neo_fw_source:          dw 0
 neo_fw_length:          dw 0
 neo_fw_bootstrap_address: dw #4000
 neo_fw_block_length:    dw 0
+neo_fw_chunk_length:    dw 0
 neo_fw_rom_ram_low:     db 0
 neo_fw_rom_ram_mid:     db 0
 neo_fw_rom_ram_high:    db 0
@@ -1132,4 +1154,4 @@ msg_p7_high_tx:        db "[P125] PH7 TX HIGH", 13, 10, 0
 msg_p7_high_ok:       db "[P125] PH7 HIGH ACK", 13, 10, 0
 msg_p7_wait_a3:        db "[P125] PH7 WAIT A3", 13, 10, 0
 msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A38", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A39", 13, 10, 0
