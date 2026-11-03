@@ -725,3 +725,17 @@
 - **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Адрес #EF принят по аналогии с ATM host debug port; локальная реализация и фактический вывод должны быть подтверждены запуском.
 
 | 2026-11-03 | Add NeoGS-local bootstrap trace on port #EF | IMPLEMENTED / NOT BUILT | Emits B/1/L/S/R markers around bootstrap entry, READY and both length-byte receive steps. |
+
+
+## A1.42 — устранение гонки DBIT между READY #A1 и длиной (2026-11-03)
+
+- [x] По runtime-логу NeoGS установлено: выводится последовательность только `B1`; bootstrap входит и доходит до публикации READY, но не доходит до маркера `L`.
+- [x] По исходному коду локализовано зависание: `bootstrap_send_data_byte` после публикации `#A1` ждёт DBIT=0. Хост после чтения `#A1` выдерживает фиксированный интервал и публикует `#C5`; если NeoGS не успевает увидеть промежуточный DBIT=0, новый DBIT=1 неотличим от неподтверждённого `#A1`.
+- [x] Для READY введена отдельная публикация: прямой `OUT (ZXDATWR),A` с `#A1`, затем немедленный переход к приёму длины. Обычный TX handshake для остальных ответов не менялся.
+- [x] Хост по-прежнему сначала ожидает и читает `#A1`, поэтому отправка первого байта длины остаётся упорядоченной протоколом; приёмник NeoGS теперь сам потребляет `#C5`, не требуя поймать короткий DBIT-low промежуток.
+- [ ] SjASMPlus build: проверить синтаксис, размер NEOLOAD.C (1..254 байта), адреса и относительные переходы.
+- [ ] Runtime: ожидаемая трасса начинается `B1L`, затем `S/R` для каждого байта длины; подтвердить `#C5/#3D`, ACK `#A3`, полный поток NEOFw и ACK `#A2`.
+- [ ] Regression: BIOS load, x86 boot, DMA window и video CRC.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Исправление следует из наблюдаемой последовательности и анализа handshake; runtime-подтверждение обязательно.
+
+| 2026-11-03 | Bypass READY post-send DBIT-clear wait | IMPLEMENTED / NOT BUILT | NeoGS now publishes #A1 and immediately enters length RX, avoiding a missed DBIT-low interval if host sends #C5 quickly. |
