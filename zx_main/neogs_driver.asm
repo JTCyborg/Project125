@@ -339,6 +339,31 @@ upload_firmware::
         jr      .bootstrap_block_loop
 .bootstrap_block_done:
 
+        ; Prepare NEOFW.C while the bootstrap is loaded but NOT running.
+        ; The bootstrap receive timeout is finite (#FFFF polls), so no TR-DOS
+        ; directory lookup, sector read or diagnostic dump may occur after #A1.
+        ; Once #13 starts it, the host can send the length immediately.
+        call    load_neogs_firmware_file
+        jp      c, .upload_failed
+        ld      hl, (neo_fw_file_length)
+        ld      a, h
+        or      l
+        jp      z, .upload_failed
+        ld      a, h
+        cp      #40
+        jr      c, .firmware_file_length_ok
+        jp      nz, .upload_failed
+        ld      a, l
+        or      a
+        jp      nz, .upload_failed
+.firmware_file_length_ok:
+        ld      hl, (neo_fw_file_length)
+        ld      (neo_fw_length), hl
+        ld      hl, #C000
+        ld      (neo_fw_source), hl
+        ld      hl, 256
+        ld      (neo_fw_buffer_remaining), hl
+
         ; Phase 5: #13 JUMP TO ADDRESS. The low byte is the command's
         ; first argument and must be written before issuing the command.
         ; Split phase 5 into sub-phases so a real GS105a handshake failure
@@ -398,29 +423,6 @@ upload_firmware::
 
 .phase5_jump_ready:
         ; Bootstrap has enabled RAM-over-ROM and is waiting at $0000.
-
-        ; The bootstrap is running and has sent READY. Open NEOFW.C
-        ; independently; its descriptor, length and sector cursor are new.
-        call    load_neogs_firmware_file
-        jp      c, .upload_failed
-        ld      hl, (neo_fw_file_length)
-        ld      a, h
-        or      l
-        jp      z, .upload_failed
-        ld      a, h
-        cp      #40
-        jr      c, .firmware_file_length_ok
-        jp      nz, .upload_failed
-        ld      a, l
-        or      a
-        jp      nz, .upload_failed
-.firmware_file_length_ok:
-        ld      hl, (neo_fw_file_length)
-        ld      (neo_fw_length), hl
-        ld      hl, #C000
-        ld      (neo_fw_source), hl
-        ld      hl, 256
-        ld      (neo_fw_buffer_remaining), hl
 
         ; Phase 7: Project124 V1 handshake.
         ; Send length low/high directly, then receive the bootstrap's #A3.
@@ -1164,4 +1166,4 @@ neo_fw_initial_status:  db 0
 neo_fw_last_status:     db 0
 neo_fw_timeout_phase:   db 0
 neo_fw_last_tx_phase:   db 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A19", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A20", 13, 10, 0
