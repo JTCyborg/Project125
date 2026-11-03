@@ -464,3 +464,17 @@
 - Статус: IMPLEMENTED / NOT BUILT / NOT RUN. Runtime PASS не присваивается.
 
 | 2026-11-03 | Project124 V1 receive primitive restored | IMPLEMENTED / NOT BUILT | Removed Project125-only #0400 turnaround delay after GSDAT read. |
+
+
+## A1.23 — подготовка NEOFW до запуска bootstrap (2026-11-03)
+
+- [x] По runtime A19 установлено, что после ACK `#A1` хост выполнял TR-DOS lookup/read и диагностический дамп `NEOFW.C` до отправки первого байта длины.
+- [x] Выявлена временная гонка: bootstrap ждёт длину ограниченным циклом `#FFFF`; дисковые операции между `#A1` и длиной могли завершить ожидание раньше отправки `#C5`.
+- [x] Перенесена загрузка и проверка `NEOFW.C` на момент после передачи bootstrap в NeoGS, но до команды запуска `#13`.
+- [x] После запуска bootstrap хосту остаётся немедленно отправить два байта длины и принять `#A3`; TR-DOS операции между `#A1` и длиной удалены.
+- [x] Маркер драйвера изменён на A20.
+- [ ] Windows build: проверить сборку и маркер DRIVER A20.
+- [ ] Runtime: проверить прохождение #07, получение #A3, передачу firmware и ACK #A2.
+- Статус: IMPLEMENTED / NOT BUILT / NOT RUN. Причина является подтверждаемой гипотезой по временной последовательности; runtime-проверка обязательна.
+
+| 2026-11-03 | Prepare firmware before bootstrap launch | IMPLEMENTED / NOT BUILT | Moved NEOFW TR-DOS access before #13/#A1 to avoid exhausting bootstrap's finite receive wait. |
