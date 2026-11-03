@@ -1022,3 +1022,15 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED.
 
 | 2026-11-04 | A1.64 fix out-of-range JR to p125_halt | SOURCE COMMITTED | Long-range error exits now use absolute JP; build still requires local verification. |
+
+
+## A1.65 — точная локализация ROM validation mismatch (2026-11-04)
+
+- [x] Runtime A1.64: передача firmware проходит; BIOS DMA завершается, но ROM validator возвращает status #0D / AX #B101.
+- [x] По исходникам подтверждено: #B101 выставляется только после неуспешной проверки байта заголовка или одного из пяти байтов reset vector; это не DMA timeout (#B103).
+- [x] Добавлена идентификация конкретной проверки: AX #B110 = заголовок FE000, #B111..#B115 = байты FFF0..FFF4.
+- [ ] Сборка `build.bat`; проверить отсутствие ошибок SjASMPlus.
+- [ ] Runtime: прислать новый AX-код; по нему определить, не совпадает первый байт или адрес reset vector.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING. DMA target, transfer loop и Host↔NeoGS handshake не менялись.
+
+| 2026-11-04 | A1.65 identify exact failing BIOS validation byte | SOURCE COMMITTED | Validator now returns a distinct AX code for header and each reset-vector byte. |
