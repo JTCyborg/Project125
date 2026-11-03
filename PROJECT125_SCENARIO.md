@@ -339,3 +339,12 @@
 - [ ] Build/runtime не подтверждены; PASS не присваивается.
 
 | 2026-11-03 | Driver build marker | IMPLEMENTED / NOT BUILT | Маркер внутри включаемого модуля позволяет проверить фактическую версию собранного драйвера. |
+
+
+### A1.13 — независимый снимок фазы передачи (2026-11-03)
+
+- [x] Runtime подтвердил включение актуального host driver маркером DRIVER A12.
+- [x] Добавлен независимый снимок `neo_fw_last_tx_phase` непосредственно при входе в `gs_boot_send_data_byte`; теперь лог печатает TXPHASE отдельно от timeout PHASE.
+- [x] Сброшены `neo_fw_tx_wait_state`, `neo_fw_last_tx_byte` и `neo_fw_last_tx_phase` в начале upload, чтобы исключить старые значения диагностики.
+- [ ] Выполнить Windows build и runtime; сравнить PHASE, TXPHASE, TXBYTE, TXSTATE.
+- [ ] Build/runtime не подтверждены; PASS не присваивается.
