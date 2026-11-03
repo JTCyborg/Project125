@@ -1177,3 +1177,4 @@ neo_fw_bytes_sent:      dw 0
 neo_fw_initial_status:  db 0
 neo_fw_last_status:     db 0
 neo_fw_timeout_phase:   db 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A12", 13, 10, 0
