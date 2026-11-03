@@ -364,56 +364,20 @@ upload_firmware::
         ld      hl, 256
         ld      (neo_fw_buffer_remaining), hl
 
-        ; Phase 5: #13 JUMP TO ADDRESS. The low byte is the command's
-        ; first argument and must be written before issuing the command.
-        ; Split phase 5 into sub-phases so a real GS105a handshake failure
-        ; identifies whether the low argument, command, or high argument stalled.
-        ld      a, #51                  ; 5.1: preload entry address low byte
+        ; Phase 5: #13 JUMP TO ADDRESS. Exact Project124 V1 sequence.
+        ld      a, 5
         ld      (neo_fw_timeout_phase), a
-        xor     a                       ; entry address low = $00
+        xor     a
         call    gs_boot_write_command_argument
         jp      c, .upload_failed
-        ld      a, #52                  ; 5.2: issue #13 and wait for CBIT clear
-        ld      (neo_fw_timeout_phase), a
         ld      a, GS_CMD_JUMP_ADDRESS
         call    gs_boot_send_command
         jp      c, .upload_failed
-        ld      a, #53                  ; 5.3: send entry address high byte
-        ld      (neo_fw_timeout_phase), a
-        ld      a, #40                  ; entry address high = $40
+        ld      a, #40
         call    gs_boot_send_data_byte
-        jr      nc, .phase5_jump_tx_done
-
-        ; The bootstrap may consume #40, start immediately and publish #A1
-        ; before the host observes the short DBIT-clear interval. In that
-        ; case DBIT is set by the incoming ACK, not by an unconsumed TX byte.
-        ; Accept this only for a post-write timeout in phase #53.
-        ld      a, (neo_fw_tx_wait_state)
-        cp      2
-        jp      nz, .upload_failed
-        ld      a, (neo_fw_last_tx_phase)
-        cp      #53
-        jp      nz, .upload_failed
-        in      a, (GSSTAT)
-        ld      (neo_fw_last_status), a
-        bit     B_DBIT, a
-        jp      z, .upload_failed
-        ld      a, 6
-        ld      (neo_fw_timeout_phase), a
-        call    gs_boot_receive_data_byte
         jp      c, .upload_failed
-        cp      NGS_BOOTSTRAP_READY_ACK
-        jp      nz, .upload_failed
-        ; #A1 proves that the pending #40 was consumed.
-        ld      hl, (neo_fw_bytes_sent)
-        inc     hl
-        ld      (neo_fw_bytes_sent), hl
-        xor     a
-        ld      (neo_fw_tx_wait_state), a
-        jr      .phase5_jump_ready
 
-.phase5_jump_tx_done:
-        ; Normal case: #40 was acknowledged by DBIT going low.
+        ; Phase 6: receive READY ACK exactly as Project124 V1.
         ld      a, 6
         ld      (neo_fw_timeout_phase), a
         call    gs_boot_receive_data_byte
@@ -421,13 +385,7 @@ upload_firmware::
         cp      NGS_BOOTSTRAP_READY_ACK
         jp      nz, .upload_failed
 
-.phase5_jump_ready:
-        ; Bootstrap has enabled RAM-over-ROM and is waiting at $0000.
-
-        ; Phase 7: Project124 V1 handshake.
-        ; Send length low/high directly, then receive the bootstrap's #A3.
-        ; No per-byte echo: the host and bootstrap use the original GS105a
-        ; data-channel sequence that was proven by the Project124 V1 runtime.
+        ; Phase 7: exact Project124 V1 length handshake: low, high, one #A3.
         ld      a, 7
         ld      (neo_fw_timeout_phase), a
         ld      hl, (neo_fw_length)
@@ -1166,4 +1124,4 @@ neo_fw_initial_status:  db 0
 neo_fw_last_status:     db 0
 neo_fw_timeout_phase:   db 0
 neo_fw_last_tx_phase:   db 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A20", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A21", 13, 10, 0
