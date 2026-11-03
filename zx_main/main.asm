@@ -234,7 +234,7 @@ ProgramEnd:
         SAVETRD "disk_A.trd", "boot.B", BASIC_START, BASIC_END - BASIC_START
 
 ; -------------------------------------------------------------------------
-; BIOS.C, NEOLOAD.C and NEOF W.C are independent TR-DOS files.
+; BIOS.C, NEOLOAD.C and NEOFW.C are independent TR-DOS files.
 ; The complete 8 KiB BIOS is never staged in the host program's resident RAM.
 ; -------------------------------------------------------------------------
         PAGE 1
@@ -248,8 +248,8 @@ p125_bios_image_end:
         INCLUDE "neogs_files.inc"
         ASSERT NEOLOAD_FILE_SIZE >= 1
         ASSERT NEOLOAD_FILE_SIZE <= 254
-        ASSERT NEOF W_FILE_SIZE >= 1
-        ASSERT NEOF W_FILE_SIZE <= #4000
+        ASSERT NEOFW_FILE_SIZE >= 1
+        ASSERT NEOFW_FILE_SIZE <= #4000
 
         PAGE 1
         ORG #C000
@@ -264,7 +264,7 @@ p125_neoload_end:
 p125_neofw_start:
         INCBIN "zx_main/neofw.bin"
 p125_neofw_end:
-        ASSERT p125_neofw_end - p125_neofw_start = NEOF W_FILE_SIZE
-        SAVETRD "disk_A.trd", "NEOFW.C", #C000, NEOF W_FILE_SIZE
+        ASSERT p125_neofw_end - p125_neofw_start = NEOFW_FILE_SIZE
+        SAVETRD "disk_A.trd", "NEOFW.C", #C000, NEOFW_FILE_SIZE
 
         PAGE 0
