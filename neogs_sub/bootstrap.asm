@@ -55,7 +55,10 @@ neogs_bootstrap_start:
         ; Establish a known host-to-NeoGS data-channel baseline before READY.
         ; Reading ZXDATRD consumes any stale incoming byte and clears DBIT.
         ; This is required before the host starts the length stream after #A1.
-        in      a, (ZXDATRD)
+        ; Z80 IN A,(n) would use the current A as the high I/O address.
+        ; Select the NeoGS local page explicitly so this really reads #FF02.
+        ld      bc, #FF02
+        in      a, (c)
 
         ; Tell Spectrum that the tiny loader is running and waiting for length.
         ; Publish READY directly and enter the receive state immediately.
