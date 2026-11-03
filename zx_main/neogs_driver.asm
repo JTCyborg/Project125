@@ -284,6 +284,9 @@ upload_firmware::
         ld      (neo_fw_bytes_sent), a
         ld      (neo_fw_bytes_sent+1), a
         ld      (neo_fw_timeout_phase), a
+        ld      (neo_fw_tx_wait_state), a
+        ld      (neo_fw_last_tx_byte), a
+        ld      (neo_fw_last_tx_phase), a
         in      a, (GSSTAT)
         ld      (neo_fw_initial_status), a
         ld      (neo_fw_last_status), a
@@ -994,6 +997,9 @@ gs_boot_write_command_argument:
 gs_boot_send_data_byte:
         ld      (neo_fw_tx_byte), a
         ld      (neo_fw_last_tx_byte), a
+        ld      a, (neo_fw_timeout_phase)
+        ld      (neo_fw_last_tx_phase), a
+        ld      a, (neo_fw_tx_byte)
         ld      a, 1
         ld      (neo_fw_tx_wait_state), a
         ld      bc, FW_BYTE_TIMEOUT
@@ -1177,4 +1183,5 @@ neo_fw_bytes_sent:      dw 0
 neo_fw_initial_status:  db 0
 neo_fw_last_status:     db 0
 neo_fw_timeout_phase:   db 0
+neo_fw_last_tx_phase:   db 0
 neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A12", 13, 10, 0
