@@ -211,7 +211,7 @@ command_load_x86:
 neogs_dma_handler_end:
 
 ; -------------------------------------------------------------------------
-; CMD_RUN_X86 — execute the length-framed payload beginning at $5002.
+; CMD_RUN_X86_REAL — execute the length-framed 8086 real-mode payload beginning at $5002.
 ; -------------------------------------------------------------------------
 ; Project125 does not link the legacy flat-mode Project124 interpreter.
 ; BIOS execution uses the bounded 8086 real-mode CS:IP executor below.
