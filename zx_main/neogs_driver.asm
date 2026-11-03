@@ -420,14 +420,17 @@ upload_firmware::
         jp      nz, .upload_failed
 
 .phase5_jump_ready:
-        ; The DBIT flag is shared by both data directions. After the host
-        ; consumes #A1, keep the slot idle long enough for NeoGS to observe
-        ; DBIT=0 before publishing the first length byte. Project124 V1 uses
-        ; the same #0400-iteration turnaround in gs_boot_receive_data_byte.
-        ; The A28+ bootstrap now waits for length without a local timeout.
+        ; The host has consumed READY (#A1), which clears DBIT. In Unreal
+        ; Speccy the NeoGS CPU is advanced by flush_gs_z80() on GS port I/O.
+        ; A pure Z80 delay does not force that scheduler to run, so explicitly
+        ; read GSSTAT repeatedly. Each IN #BB flushes NeoGS and lets its
+        ; READY-consumed loop observe DBIT=0 before length low is published.
         push    bc
-        ld      bc, #0400
+        ld      bc, #0200
 .phase5_ready_turnaround:
+        in      a, (GSSTAT)
+        bit     B_DBIT, a
+        jr      nz, .phase5_ready_turnaround
         dec     bc
         ld      a, b
         or      c
