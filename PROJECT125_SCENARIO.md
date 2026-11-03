@@ -986,3 +986,16 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME NOT VERIFIED.
 
 | 2026-11-04 | A1.61 remove stale 254-byte bootstrap assertion | SOURCE COMMITTED | Build-time limit now matches the 2048-byte streamed bootstrap area $4000-$47FF. |
+
+
+## A1.62 — учёт заголовка каждого потокового блока #14 (2026-11-04)
+
+- [x] Runtime A1.61/A1.60: Host принял #A1, отправил длину #3DC5, NeoGS принял оба байта и вернул #A3; передача NEOFW завершилась, Host дошёл до финальной проверки после #A2.
+- [x] Установлена причина ошибки фазы #0A: NEOLOAD.C размером #014F передаётся двумя блоками #14 (256 + 79 байт), каждый блок содержит три учитываемых байта заголовка.
+- [x] Исправлен расчёт ожидаемого neo_fw_bytes_sent: теперь учитывается 3 * ceil(bootstrap_length / 256) плюс один байт адреса #13 и два байта длины NEOFW.
+- [x] Для текущих размеров ожидаемое значение изменено с #3F1A на #3F1D.
+- [ ] Сборка build.bat.
+- [ ] Runtime: подтвердить завершение проверки фазы #0A без ошибки и запуск дальнейшего IPC.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME FIX NOT YET VERIFIED.
+
+| 2026-11-04 | A1.62 count each #14 streamed-block header | SOURCE COMMITTED | Correct expected DBIT byte count for multi-block NEOLOAD.C transfers. |
