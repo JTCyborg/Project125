@@ -120,6 +120,23 @@ Init_Z80_System:
         call    p125_print_string
         ld      a, (bios_trdos_file_error)
         call    p125_print_hex8
+        ; Error #0A means the DMA command completed, but NeoGS rejected
+        ; the ROM image. Print its returned status and AX validation code.
+        ld      hl, msg_bios_diag_status
+        call    p125_print_string
+        ld      a, (bios_host_result_status)
+        call    p125_print_hex8
+        ld      hl, msg_bios_diag_ax
+        call    p125_print_string
+        ld      hl, (bios_host_result_ax)
+        ld      a, h
+        call    p125_print_hex8
+        ld      a, l
+        call    p125_print_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
         jr      p125_halt
 
 .bios_loaded:
@@ -204,6 +221,8 @@ msg_fw_rxbyte:        defb " RXBYTE #", 0
 msg_fw_ready:         defb "[P125] NEOGS FIRMWARE READY", 13, 10, 0
 msg_bios_load:        defb "[P125] LOAD BIOS.C TO PAGE 75", 13, 10, 0
 msg_bios_load_error:  defb "[P125] ERROR: BIOS FILE/DMA #", 0
+msg_bios_diag_status: defb " BIOS STATUS #", 0
+msg_bios_diag_ax:     defb " AX #", 0
 msg_bios_valid:       defb "[P125] BIOS ROM VALIDATED", 13, 10, 0
 msg_bios_run:         defb "[P125] EXECUTE 8086 BIOS FROM FFFF:0000", 13, 10, 0
 msg_bios_run_error:   defb "[P125] ERROR: BIOS EXECUTION IPC #", 0
