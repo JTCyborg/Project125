@@ -39,33 +39,22 @@ BIOS_ROM_BACKING_PAGE     EQU 75
 ; The BIOS reset-vector instruction then far-jumps to F000:E05B.
 bios_rom_reset_state:
         call    x86_mem_init
-        xor     a
-        ld      (x86_reg_ax), a
-        ld      (x86_reg_ax+1), a
-        ld      (x86_reg_bx), a
-        ld      (x86_reg_bx+1), a
-        ld      (x86_reg_cx), a
-        ld      (x86_reg_cx+1), a
-        ld      (x86_reg_dx), a
-        ld      (x86_reg_dx+1), a
-        ld      (x86_reg_bp), a
-        ld      (x86_reg_bp+1), a
-        ld      (x86_reg_si), a
-        ld      (x86_reg_si+1), a
-        ld      (x86_reg_di), a
-        ld      (x86_reg_di+1), a
-        ld      (x86_reg_es), a
-        ld      (x86_reg_es+1), a
-        ld      (x86_reg_ds), a
-        ld      (x86_reg_ds+1), a
-        ld      (x86_reg_ss), a
-        ld      (x86_reg_ss+1), a
-        ld      (x86_reg_sp), a
-        ld      (x86_reg_sp+1), a
+        ld      hl, 0
+        ld      (x86_reg_ax), hl
+        ld      (x86_reg_bx), hl
+        ld      (x86_reg_cx), hl
+        ld      (x86_reg_dx), hl
+        ld      (x86_reg_bp), hl
+        ld      (x86_reg_si), hl
+        ld      (x86_reg_di), hl
+        ld      (x86_reg_es), hl
+        ld      (x86_reg_ds), hl
+        ld      (x86_reg_ss), hl
+        ld      (x86_reg_sp), hl
+        ld      (x86_reg_ip), hl
+        ld      (x86_reg_cs), hl
         ld      hl, #FFFF
         ld      (x86_reg_cs), hl
-        ld      hl, 0
-        ld      (x86_reg_ip), hl
         ld      hl, #0002
         ld      (x86_reg_flags), hl
         xor     a
