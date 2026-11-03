@@ -80,31 +80,31 @@ bios_rom_validate:
         ld      hl, #E000
         ld      a, #20
         call    bios_rom_expect_byte
-        ret     nc
+        ret     c
         ld      a, 1
         ld      (bios_rom_check_id), a
         ld      hl, #FFF0
         ld      a, #EA
         call    bios_rom_expect_byte
-        ret     nc
+        ret     c
         ld      a, 2
         ld      (bios_rom_check_id), a
         ld      hl, #FFF1
         ld      a, #5B
         call    bios_rom_expect_byte
-        ret     nc
+        ret     c
         ld      a, 3
         ld      (bios_rom_check_id), a
         ld      hl, #FFF2
         ld      a, #E0
         call    bios_rom_expect_byte
-        ret     nc
+        ret     c
         ld      a, 4
         ld      (bios_rom_check_id), a
         ld      hl, #FFF3
         xor     a
         call    bios_rom_expect_byte
-        ret     nc
+        ret     c
         ld      a, 5
         ld      (bios_rom_check_id), a
         ld      hl, #FFF4
