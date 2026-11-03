@@ -488,3 +488,18 @@
 - [ ] Windows build: проверить сборку и маркер A20.
 - [ ] Runtime: проверить снятие DBIT на #C5, приём второго байта #3D и ACK #A3.
 - Статус: IMPLEMENTED / NOT BUILT / NOT RUN. Это диагностическое изменение, не доказанное исправление причины.
+
+
+## A1.25 — точный возврат к последовательности загрузчика Project124 V1 (2026-11-03)
+
+- [x] Сверен полный участок запуска bootstrap в Project124 V1 и Project125.
+- [x] Удалена Project125-специфичная ветка принятия #A1 вместо подтверждения DBIT после отправки старшего байта адреса #40.
+- [x] Этапы #13/#40/#A1 возвращены к линейной последовательности Project124 V1.
+- [x] Приём двух байтов длины в bootstrap возвращён к исходной bootstrap_receive_data_byte из Project124 V1; удалён добавленный A20 бесконечный wait.
+- [x] Передача длины на стороне host остаётся V1: low, high, затем единственный #A3.
+- [x] Обновлён маркер драйвера на A21.
+- [ ] Windows build: проверить sjasmplus и размер NEOLOAD.C (1..254 байта).
+- [ ] Runtime: проверить #13/#40, #A1, #C5/#3D, #A3, передачу NEOFW.C и ACK #A2.
+- Статус: IMPLEMENTED / NOT BUILT / NOT RUN. Runtime Project125 ещё не подтверждён.
+
+| 2026-11-03 | Restore Project124 V1 loader sequence | IMPLEMENTED / NOT BUILT | Restored the proven V1 launch and length-handshake sequence. |
