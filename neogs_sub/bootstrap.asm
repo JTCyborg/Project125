@@ -77,6 +77,17 @@ neogs_bootstrap_start:
         out     (#EF), a
         call    bootstrap_receive_data_byte
         ld      d, a
+        ; Turnaround guard: after consuming the host's high length byte,
+        ; keep DBIT clear long enough for the Spectrum sender to observe it
+        ; before this side publishes the reverse-direction #A3 ACK.
+        push    bc
+        ld      bc, #0400
+.length_turnaround_delay:
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .length_turnaround_delay
+        pop     bc
         ld      a, '2'
         out     (#EF), a
 
