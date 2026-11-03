@@ -1034,3 +1034,5 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING. DMA target, transfer loop и Host↔NeoGS handshake не менялись.
 
 | 2026-11-04 | A1.65 identify exact failing BIOS validation byte | SOURCE COMMITTED | Validator now returns a distinct AX code for header and each reset-vector byte. |
+
+- [x] Исправлена полярность проверки carry в диагностической цепочке: переход к следующему байту выполняется только после успешной проверки; при mismatch validator немедленно возвращает ошибку.
