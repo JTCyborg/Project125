@@ -651,3 +651,19 @@
 - [ ] SjASMPlus build: проверить размер `NEOLOAD.C` (1..254 байта), адреса, относительные переходы и упаковку TR-DOS.
 - [ ] Runtime: проверить, что принимаются оба байта длины (`#C5/#3D` для текущего файла), приходит `#A3`, затем проходит весь firmware stream и приходит `#A2`.
 - **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Это устранение дублирующей реализации handshake, а не подтверждённый runtime-fix.
+
+
+## A1.37 — раздельный приём длины и межбайтовый DBIT turnaround (2026-11-03)
+
+- [x] Зафиксировано сравнение Project124 V1 и Project125 A31: Project124 выдерживает turnaround после каждого принятого байта NeoGS; Project125 A31 оставил задержку только после READY #A1.
+- [x] Runtime A30: первый байт длины #C5 был принят, но второй #3D не получил подтверждения DBIT.
+- [x] Runtime A31: первый байт #C5 снова не получил подтверждения DBIT после возврата к общему приёмнику.
+- [x] В bootstrap возвращён отдельный приём двух байтов длины через явную адресацию local ports #FF04/#FF02; payload остаётся на общем приёмнике.
+- [x] В host добавлен #0400 turnaround между подтверждённым младшим и отправкой старшего байта длины.
+- [x] Маркер драйвера обновлён до A32.
+- [ ] SjASMPlus build: проверить размер NEOLOAD.C (1..254 байта), host ASSERT ProgramEnd <= #A800 и отсутствие ошибок.
+- [ ] Runtime: проверить #A1, приём #C5, приём #3D, ACK #A3, полный NEOFW stream и ACK #A2.
+- [ ] Regression: повторить BIOS.C load, video CRC self-test и BIOS boot pipeline.
+- **Статус:** IMPLEMENTED / NOT BUILT / NOT TESTED / NOT RUNTIME. Это диагностическая комбинация двух ранее частично проверенных изменений, а не подтверждённое исправление.
+
+| 2026-11-03 | Restore fixed-port length RX and add inter-byte turnaround | IMPLEMENTED / NOT BUILT | Combines the A30 first-byte progress with an explicit gap before the high length byte; runtime verification pending. |
