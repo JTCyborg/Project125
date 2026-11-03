@@ -136,14 +136,19 @@
 - [x] Добавлен PowerShell pre-build verifier: размер, header signature, reset vector, SHA-256 в build log.
 - [x] Добавлен `build_project125.bat` и отдельная точка сборки NeoGS baseline.
 - [ ] Выполнить первую сборку Project125 с sjasmplus; сохранить полный лог и размеры бинарников.
-- [ ] Исправить все ошибки/предупреждения сборки; не считать исходный Project124 код адаптированным до этого этапа.
+- [ ] Исправить все ошибки/предупреждения сборки.
 - [x] Реализован NeoGS command CMD_LOAD_BIOS: DMA target 12C000h (page 75), после transfer проверяются header byte и пять reset-vector bytes.
 - [x] Реализован guest ROM overlay FE000h..FFFFFh на page 75; guest writes в ROM блокируются.
 - [x] Изменён guest RAM test: верхняя граница writable RAM — FDFFFh; добавлена проверка отказа записи в FE000h.
 - [x] Реализован детерминированный 8086 reset state CS:IP=FFFF:0000 и команда CMD_BOOT_BIOS.
 - [x] Создан ATM host-side DMA stream sender `zx_main/bios_transfer.asm`: 32×256-byte sectors, CBIT handshakes, end marker and result-frame read.
-- [ ] Подключить sender к TR-DOS directory/file reader, чтобы получать BIOS.BIN секторами в #C000.
-- [ ] Включить BIOS transfer/validation/boot sequence в Project125 ATM startup; host transfer пока не выполнен.
+- [x] Добавлен `zx_main/bios_file_loader.asm`: поиск BIOS.C, проверка размера 8192 bytes/32 sectors, чтение секторами в #C000 и передача через DMA sender.
+- [x] Создан минимальный `zx_main/main.asm`: запуск NeoGS bootstrap/firmware, загрузка BIOS.C, команда BIOS boot и вывод статуса/AX.
+- [x] Добавлен `tools/pack_neogs_project125.ps1` для формирования package bootstrap+firmware и разбиения по 16 KiB TR-DOS chunks.
+- [x] `build_project125.bat` теперь собирает NeoGS firmware, package chunks и ATM host disk_A.trd.
+- [ ] Выполнить сборку и проверить ограничения resident firmware/host image по ASSERT.
+- [ ] Проверить содержимое disk_A.trd: boot.B, proj125.C, neoprog.C и BIOS.C.
+- [ ] Выполнить host transfer/BIOS validation/BIOS boot на эмуляторе и реальном ATM/NeoGS.
 - [ ] Проверить физический DMA destination 12C000h и содержимое page75 на целевой NeoGS.
 - [ ] Провести полный-image CRC/integrity check после загрузки.
 - [ ] Выполнить первый BIOS fetch/trace и сверить его с reset vector и дизассемблированием BIOS.
@@ -160,3 +165,5 @@
 | 2026-11-03 | Первый импорт runtime и BIOS | IMPLEMENTATION STARTED | Импортированы исходные x86 modules и BIOS 8 KiB; проверен reset vector. Сборка/загрузка/исполнение Project125 ещё не проверены. |
 
 | 2026-11-03 | BIOS ROM overlay / reset / NeoGS load commands | IMPLEMENTED, NOT BUILT | Added fixed 8 KiB page-75 DMA receive command, ROM read-only decoder, write-protect regression and 8086 reset state FFFF:0000. Host transfer, build and runtime remain pending. |
+
+| 2026-11-03 | ATM host BIOS pipeline | IMPLEMENTED, NOT BUILT | Added TR-DOS BIOS.C reader, exact 32-sector DMA sender, NeoGS result-frame retrieval, host boot loop/debug drain and disk image assembly. Runtime and assembler build are still pending. |
