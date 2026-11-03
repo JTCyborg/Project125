@@ -182,3 +182,59 @@ If fewer than 79 unique pages are verified, Project125 must report a memory-budg
 - The BIOS backing store is immutable while the guest is running. Replacing it requires stopping/resetting the guest and completing a validated reload.
 
 These are reserved architectural budgets, not claims that the corresponding loader, page probe or runtime mapping has already been implemented or tested.
+
+
+## 11. Project125 fixed physical reservation — ATM video frame buffers
+
+### 11.1 Target ATM graphics modes and frame size
+
+The first video presenter target is the set of ATM Turbo 2+ modes already exercised in Project112:
+
+| ATM mode | Resolution | Pixel format / payload budget |
+|---|---:|---:|
+| ATM 640 graphics | 640×200 | Up to 32 KiB per frame slot, including any mode-specific attribute plane |
+| ATM EGA | 320×200, 16 colors | 4 bits/pixel = 32,000 bytes (31.25 KiB) |
+| Sinclair | 256×192 | Lower than the above; handled by a mode descriptor |
+| ATM text | 80×25 | Text path; not a full graphics framebuffer |
+
+The 32-KiB slot is the fixed maximum payload budget for one supported graphics frame. For 320×200×16, packed 4-bpp pixels require exactly 32,000 bytes; the slot has 768 bytes of alignment/descriptor headroom. The 640×200 adapter must describe its exact bitmap/attribute layout and prove that the complete frame payload fits the same 32-KiB slot. Do not assume that the guest's source layout is identical to ATM's native video RAM layout.
+
+### 11.2 Physical allocation
+
+| Physical NeoGS page(s) | Capacity | Owner | Purpose |
+|---|---:|---|---|
+| Pages 79-80 | 32 KiB | Video presenter | Frame buffer A |
+| Pages 81-82 | 32 KiB | Video presenter | Frame buffer B |
+| **Video total** | **64 KiB** | **Two 32-KiB frame slots** | Double-buffered NeoGS-to-ATM frame handoff |
+
+The buffers are reserved permanently and are excluded from firmware, BIOS, x86 guest RAM, allocator and general DMA scratch allocation. Frame A/B roles are exchangeable; the currently displayed/transmitting buffer is immutable until ATM acknowledges completion. NeoGS renders into the other buffer. A frame sequence number and ownership state prevent tearing and premature reuse.
+
+### 11.3 Producer/consumer contract
+
+- NeoGS video backend produces a complete logical frame in the selected slot.
+- A frame descriptor identifies mode, width, height, pixel/attribute format, payload length, stride/layout version, palette (when applicable), frame sequence and integrity value.
+- ATM presenter receives the descriptor and payload through the host/NeoGS transport; transfer is chunked and acknowledged. One frame slot is not required to fit in one IPC packet.
+- ATM presenter converts the canonical frame representation into the ATM-native page/plane layout and writes it using the already-tested mode-specific routines. Guest video memory layout and ATM physical video memory are separate interfaces.
+- The buffer being read by the transport is pinned/locked. It becomes reusable only after successful completion acknowledgement; failed or cancelled transfers retain a defined ownership state and can be retried or discarded.
+- Vsync/frame-boundary policy is owned by the ATM presenter. A frame is committed for display only at a safe boundary when the selected mode supports it.
+- If rendering outruns presentation, policy is explicit (drop newest, drop oldest only if not in flight, or wait); never overwrite an in-flight frame.
+- Text mode and low-resolution modes may use the same frame protocol with smaller payloads, or a separate text command path, but must not consume additional unreserved framebuffer pages.
+
+### 11.4 Bank mapping and DMA constraints
+
+Pages 79-82 are physical backing pages, not permanently visible Z80 addresses. The page manager may map them through a window only when that mapping cannot evict currently executing code, stack or interrupt handlers. If WIN2 is used, overlay code must enter through a resident bank-call gateway and must not continue executing from the bank being replaced. WIN3 remains under the x86 guest-memory backend unless a separately validated arbitration protocol temporarily grants it.
+
+Do not assume ATM transport DMA can directly address these pages. Before enabling zero-copy transfer, prove physical page visibility, address encoding, alignment and DMA completion semantics on hardware. Until then, copy/stream through the established bounded transport path. Video DMA must not reuse the Project124 WIN1 DMA frame (#5000-#7FFF) while it is owned by another transfer.
+
+### 11.5 Updated physical RAM capacity gate
+
+The highest reserved page is now page 82. Project125 therefore requires at least **83 unique physical 16-KiB pages** (83 × 16,384 = 1,359,872 bytes) with no aliasing for the complete reference allocation:
+- page 0 resident firmware;
+- pages 4-67 x86 guest RAM;
+- pages 68-74 firmware overlays;
+- pages 75-78 BIOS backing;
+- pages 79-82 video frame buffers.
+
+A nominal 2-MiB NeoGS board has 128 pages and satisfies the numerical budget, subject to physical probing and alias/write-read tests. A board that cannot prove 83 unique pages must fail memory initialization rather than overlap any reservation.
+
+These 64 KiB are a fixed video transfer-buffer reservation, not the ATM's own physical video RAM and not additional guest x86 RAM. They provide two complete frame slots for NeoGS-to-ATM graphics presentation.
