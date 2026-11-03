@@ -132,3 +132,53 @@ Large images and disk transfers use bounded chunks, sequence/offset, per-chunk i
 - NEOGS_FIRMWARE_48K_LAYOUT.md: overlay pages 68/69, stack relocation and RAM-capacity gate.
 
 These are reference facts from Project124. Project125 must independently validate hardware behavior before marking implementation or runtime tests PASS.
+
+
+## 10. Project125 fixed physical reservations — firmware and BIOS
+
+Project125 reserves these resources from the beginning. They are unavailable to general-purpose allocation, even when the selected firmware or BIOS image is smaller.
+
+### 10.1 Fixed reservation table
+
+| Physical NeoGS page(s) | Capacity | Reservation | Lifetime / rules |
+|---|---:|---|---|
+| Page 0 | 16 KiB | Resident firmware segment (part of the 128-KiB firmware budget) | Fixed WIN0 RAM-over-ROM resident code/data; never allocated to guest RAM |
+| Pages 68-74 | 112 KiB | Firmware bank/overlay segments (remainder of the 128-KiB firmware budget) | Banked through WIN2; bank-call gateway required |
+| **Firmware total** | **128 KiB** | **Page 0 + pages 68-74** | Maximum complete resident+overlay firmware image budget |
+| Pages 75-78 | 64 KiB | BIOS image backing store | Reserved independently of actual BIOS size; read-only to guest CPU |
+| **Total reserved for firmware + BIOS** | **192 KiB** | **12 physical 16-KiB pages** | Pages 0 and 68-78 are not general-purpose RAM |
+
+The firmware limit is 128 KiB **including** the 16-KiB resident page 0; it is not 128 KiB in addition to the resident segment. The seven overlay pages provide up to 112 KiB for additional code/constants/data. The BIOS reservation is separate and supports images from 8 KiB through 64 KiB. An image smaller than 64 KiB uses only the required portion, but the full four-page range remains reserved.
+
+### 10.2 Compatibility with the reference x86 memory backend
+
+The existing Project124-derived guest RAM mapping remains pages 4-67 (64 × 16 KiB = 1 MiB). The BIOS backing pages 75-78 are **not** part of that guest RAM pool and must never be exposed as writable guest RAM.
+
+The x86 memory-region decoder maps the BIOS image into the configured guest ROM address range using a descriptor containing:
+- image size (8192..65536 bytes; reject anything outside the supported range);
+- guest physical base and mapped size;
+- backing physical page and offset;
+- reset-vector address and image entry metadata;
+- CRC/hash and image identifier;
+- read/execute permissions, with writes rejected or handled only by an explicitly specified shadow-RAM feature.
+
+The common 8086 PC/XT top-of-memory mapping (for example, a ROM region ending at FFFFFh) is a **profile choice**, not a hard-coded assumption. The actual mapping must be derived from the selected BIOS image layout and reset-vector bytes. For a 64-KiB image the reserved backing range can hold the full image; for an 8-KiB image the manifest identifies its exact offset and mapping. Never silently pad, truncate, mirror or relocate an image without an explicit manifest rule.
+
+### 10.3 Physical RAM capacity gate
+
+Pages 68-78 require at least 79 unique physical 16-KiB pages in the board's RAM map (pages are numbered from zero). This is 1,294,336 bytes of addressable physical RAM. A 2-MiB NeoGS board with 128 unique pages satisfies the numerical requirement; the actual board must still be probed for aliases/mirroring and write/read integrity before these pages are accepted.
+
+If fewer than 79 unique pages are verified, Project125 must report a memory-budget failure and must not silently overlap firmware, BIOS backing, guest RAM, stack or DMA. The 128-KiB firmware and 64-KiB BIOS reservations are architectural requirements; any alternative physical placement requires an explicit revised map and tests.
+
+### 10.4 Loader and runtime invariants
+
+- Stage-0/Stage-1 receive and validate the firmware manifest before writing any reserved page.
+- Firmware segments must target only page 0 and pages 68-74; total uncompressed payload plus resident segment must not exceed 128 KiB.
+- BIOS payload must target only pages 75-78; accepted image size is 8-64 KiB.
+- Firmware and BIOS ranges are separate allocation classes. Firmware loading must not overwrite BIOS backing, and BIOS loading must not overwrite executable Z80 code, stack, DMA frame or firmware.
+- Check every segment's destination, length, page span, overlap, checksum and entry point before committing it.
+- A failed/incomplete transfer leaves the currently running resident firmware intact; use staging/commit or a validated recovery path rather than overwriting the active image in place.
+- The guest CPU sees BIOS through the x86 memory decoder, not through Z80 WIN2/WIN3 addresses or physical NeoGS ports.
+- The BIOS backing store is immutable while the guest is running. Replacing it requires stopping/resetting the guest and completing a validated reload.
+
+These are reserved architectural budgets, not claims that the corresponding loader, page probe or runtime mapping has already been implemented or tested.
