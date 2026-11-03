@@ -26,6 +26,18 @@
 - [ ] Зафиксировать точные бинарные форматы IPC и machine configuration.
 - [ ] Утвердить начальный PC/XT machine profile по выбранному BIOS.
 
+## A1 — физическая память NeoGS и загрузочная цепочка
+- [x] Исследована Project124 reference map: четыре окна по 16 KiB, PG0..PG3, MPAG/MPAGEX.
+- [x] Зафиксирован принцип RAM-over-ROM через GSCFG0.NOROM; физическая stock ROM сохраняется.
+- [x] Зафиксирована staged boot chain: stock ROM #14 loads stage-0 at #4000, #13 enters it, bootstrap configures NOROM/EXPAG and receives resident firmware.
+- [x] Зафиксировано разделение resident code, return trampoline, Z80 stack, DMA frame, firmware overlays и x86 RAM.
+- [x] Создан PROJECT125_MEMORY_LAYOUT.md.
+- [ ] Проверить все map/register assumptions на целевой NeoGS hardware Project125.
+- [ ] Реализовать и испытать stage-0/stage-1 загрузчик в Project125.
+- [ ] Проверить безопасный возврат из RAM-over-ROM к stock ROM.
+- [ ] Проверить stack guard, DMA ownership, bank-call/IRQ safety.
+- [ ] Проверить BIOS image backing store и guest ROM write protection.
+
 ## P0 — исходные данные и BIOS
 - [x] Найден BIOS-кандидат в Project124: bios/BIOS.BIN, заявленный размер 8192 байта.
 - [x] Найдены BIOS source/listing: bios/bios.asm и bios/bios.txt.
