@@ -296,7 +296,7 @@ The 128-KiB firmware budget includes the resident 16-KiB page; it is not an extr
 
 The Project124-derived x86 guest RAM pool remains pages 4-67 (1 MiB). BIOS backing pages 75-78 are exposed only through the guest memory-region decoder as a read-only ROM region. Guest physical mapping is defined by a BIOS manifest and reset-vector validation; do not assume a fixed F0000h/FE000h mapping before inspecting the chosen binary.
 
-The complete allocation requires at least 79 unique physical 16-KiB pages (1,294,336 bytes) including page zero. A 2-MiB board nominally has 128 pages, but Project125 must probe actual capacity, aliases and read/write integrity before use. The memory contract, exact page ownership, loader invariants and failure behavior are specified in [PROJECT125_MEMORY_LAYOUT.md](PROJECT125_MEMORY_LAYOUT.md).
+The complete allocation requires at least 83 unique physical 16-KiB pages (1,359,872 bytes) including page zero, firmware, BIOS backing and two video frame slots. A 2-MiB board nominally has 128 pages, but Project125 must probe actual capacity, aliases and read/write integrity before use. The memory contract, exact page ownership, loader invariants and failure behavior are specified in [PROJECT125_MEMORY_LAYOUT.md](PROJECT125_MEMORY_LAYOUT.md).
 
 These reservations are architectural commitments only. They do not imply that Stage-0/Stage-1, BIOS ROM protection or hardware page validation are implemented yet.
 
