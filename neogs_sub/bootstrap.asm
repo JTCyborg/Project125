@@ -47,11 +47,9 @@ neogs_bootstrap_start:
         ld      a, NGS_BOOTSTRAP_READY_ACK
         call    bootstrap_send_data_byte
 
-        ; Host sends length low byte, then high byte. The READY ACK has
-        ; already completed its DBIT turnaround; do not use the short bounded
-        ; payload receiver here. The host may need more than #FFFF NeoGS polls
-        ; to enter its next OUT, so wait until each length byte is actually
-        ; published instead of timing out and deadlocking on the host DBIT.
+        ; Host sends length low byte, then high byte. Use the same bounded
+        ; receiver as the firmware payload so all host-to-NeoGS bytes follow
+        ; exactly one ZXSTAT/ZXDATRD implementation. A timeout reports #E1.
         call    bootstrap_receive_data_byte
         ld      e, a
         call    bootstrap_receive_data_byte
