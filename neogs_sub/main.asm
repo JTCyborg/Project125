@@ -980,6 +980,19 @@ x86_reg_ds:    dw 0
 x86_reg_ip:    dw 0
 x86_reg_flags: dw 0
 
+; Minimal PC/XT LPT1 data-register loopback used by BIOS adapter detection.
+; Guest port 03BCh is a software register; no physical NeoGS I/O is involved.
+x86_lpt1_data_latch: db 0
+
+x86_resident_lpt_read_data:
+        ld      a, (x86_lpt1_data_latch)
+        ret
+
+x86_resident_lpt_write_data:
+        ld      a, (x86_io_value)
+        ld      (x86_lpt1_data_latch), a
+        ret
+
 ; Resident one-shot trace for the first unmapped BIOS I/O read.
 ; The interpreter calls this from overlay68; keeping the logger resident
 ; avoids consuming the already-full 16 KiB interpreter overlay.
