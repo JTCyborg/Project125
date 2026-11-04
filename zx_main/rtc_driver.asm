@@ -154,6 +154,7 @@ write_byte_raw
         CALL    p125_trace_port
         LD      BC, #BFF7
         OUT     (C), L
+        LD      (rtc_write_index), A
         LD      HL, rtc_trace_10_data_out_done
         CALL    p125_trace_port
 
@@ -189,6 +190,7 @@ write_byte_raw
 
         ; This explicit return-address probe belongs to the signature write
         ; only. The later CMOS register writes have different continuations.
+        LD      A, (rtc_write_index)
         CP      #11
         JR      NZ, .return_address_ok
 
@@ -222,6 +224,7 @@ rtc_trace_hex_nl:              DEFB 13, 10, 0
 ; Emit actual DE and expected HL as four hexadecimal digits each.
 ; This routine preserves all caller registers and does not touch the stack
 ; contents below its own return address.
+rtc_write_index:   DEFB 0
 rtc_actual_addr:   DEFW 0
 rtc_expected_addr: DEFW 0
 
