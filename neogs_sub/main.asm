@@ -482,7 +482,11 @@ command_boot_bios:
         ld      hl, bios_boot_message
         call    neo_debug_send_string
         call    bios_rom_reset_state
+        ld      a, 1
+        ld      (x86_real_progress_enable), a
         call    x86_real_execute
+        xor     a
+        ld      (x86_real_progress_enable), a
         ; Compact stop trace: the host drains DBIT and mirrors it to port EF.
         ld      hl, bios_stop_prefix
         call    neo_debug_send_string
@@ -732,6 +736,58 @@ neo_debug_send_string:
         ret     z
         call    neo_send_data_byte
         jr      neo_debug_send_string
+
+; BIOS execution heartbeat, called from the page-68 interpreter and REP engine.
+; Preserves all guest-visible Z80 working registers; transport errors are
+; intentionally ignored so diagnostics can never change guest execution.
+; One record every 2048 instructions or REP elements:
+;   [BIOS] STEP CS:IP CX=hhhh
+bios_progress_emit:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, bios_progress_prefix
+        call    neo_debug_send_string
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, ':'
+        call    neo_send_data_byte
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      hl, (x86_reg_cx)
+        ld      a, ' '
+        call    neo_send_data_byte
+        ld      a, 'C'
+        call    neo_send_data_byte
+        ld      a, 'X'
+        call    neo_send_data_byte
+        ld      a, '='
+        call    neo_send_data_byte
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, 13
+        call    neo_send_data_byte
+        ld      a, 10
+        call    neo_send_data_byte
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+bios_progress_prefix:
+        defb    "[BIOS] STEP ", 0
+x86_real_progress_enable:
+        db      0
 
 ; IN: A = byte. Sends two uppercase hexadecimal digits.
 neo_debug_hex8:
