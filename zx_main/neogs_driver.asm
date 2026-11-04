@@ -9,6 +9,35 @@ IPC_BYTE_TIMEOUT EQU #FFFF
 IPC_CMD_TIMEOUT EQU #FFFF
 
 ; -------------------------------------------------------------------------
+; ATM paging compatibility around the native TR-DOS ROM API.
+; Project125's proven disk startup entered TR-DOS with #7FFD/BANKM=#10.
+; The ATM text console uses #18 to select physical video pages 7/3. Keep the
+; alternate screen active between disk calls, but use the exact legacy paging
+; byte while executing the TR-DOS dispatcher/FDC services.
+; Both helpers preserve AF and BC so the caller's TR-DOS ABI is unchanged.
+neo_fw_trdos_legacy_map:
+        push    af
+        push    bc
+        ld      a, #10
+        ld      bc, #7FFD
+        out     (c), a
+        ld      (#5C3B), a
+        pop     bc
+        pop     af
+        ret
+
+neo_fw_trdos_host_map:
+        push    af
+        push    bc
+        ld      a, #18
+        ld      bc, #7FFD
+        out     (c), a
+        ld      (#5C3B), a
+        pop     bc
+        pop     af
+        ret
+
+; -------------------------------------------------------------------------
 ; Open either standalone NeoGS file on TR-DOS and read its first sector to #C000.
 ; The same 256-byte buffer is reused for every following sector while the
 ; firmware is streamed to NeoGS. The complete file is NEVER staged in host RAM.
@@ -46,7 +75,22 @@ neo_fw_open_file:
         ; catalogue call. This helper preserves AF/BC/DE/HL and does not
         ; modify the TR-DOS workspace or paging registers.
         call    neo_diag_search_state
+
+        ; ATM's #7FFD bit 3 selects the alternate video page. The known-good
+        ; TR-DOS startup used exactly #10 (ROM2=1, screen bit=0). Temporarily
+        ; restore that paging state for every ROM API entry, then restore the
+        ; host's #18 alternate-screen state after the ROM call.
+        call    neo_fw_trdos_legacy_map
         call    #3D13
+        push    af
+        push    bc
+        push    de
+        push    hl
+        call    neo_fw_trdos_host_map
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
         ld      hl, trace_noload_02_search_return
         call    p125_trace_port
         ld      a, c
@@ -62,7 +106,17 @@ neo_fw_open_file:
         ld      c, 8
         ld      hl, trace_noload_03_descriptor_call
         call    p125_trace_port
+        call    neo_fw_trdos_legacy_map
         call    #3D13
+        push    af
+        push    bc
+        push    de
+        push    hl
+        call    neo_fw_trdos_host_map
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
         ld      hl, trace_noload_04_descriptor_return
         call    p125_trace_port
         ld      a, (#5D0F)
@@ -151,7 +205,17 @@ neo_fw_read_next_sector:
         ld      hl, trace_noload_07_trdos_read_call
         call    p125_trace_port
         pop     hl
+        call    neo_fw_trdos_legacy_map
         call    #3D13
+        push    af
+        push    bc
+        push    de
+        push    hl
+        call    neo_fw_trdos_host_map
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
         ld      hl, trace_noload_08_trdos_read_return
         call    p125_trace_port
         ld      a, (#5D0F)
@@ -1354,4 +1418,4 @@ trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
 trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
 trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A56 TRDOS SEARCH SNAPSHOT", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A57 LEGACY 7FFD DURING TRDOS", 13, 10, 0
