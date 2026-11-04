@@ -1174,3 +1174,12 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Собрать build_project125.bat и убедиться, что обновлённая прошивка NEOFW.C создана.
 - [ ] Runtime: проверить строку [BIOS] STOP OP=xx CS:IP=.... Если OP=EA, проверить соответствие собранной NEOFW.C исходнику и фактически загруженному файлу; если другой байт — исправлять конкретный opcode decoder.
 - **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+## A1.77 — отключение дампов NEOLOAD/NEOFW и трассы BIOS sector read (2026-11-04)
+
+- [x] В `zx_main/neogs_driver.asm` удалён вывод `[P125] DISK DUMP NEOLOAD.C` и `[P125] DISK DUMP NEOFW.C`, включая HEX первых 32 байт и диагностические метаданные.
+- [x] Загрузчики NEOLOAD.C и NEOFW.C по-прежнему открывают файлы и читают первый сектор в #C000; потоковая передача firmware не менялась.
+- [x] В `zx_main/bios_file_loader.asm` удалён вывод `[BIOS READ] TT/SS` перед каждым чтением сектора.
+- [x] Удалены только диагностические процедуры/строки и неиспользуемое поле адреса последнего буфера; TR-DOS C=#05, курсор 0..15, staging #C000..#DFFF, DMA, handshake и BIOS validation не изменялись.
+- [ ] Сборка `build_project125.bat` и runtime-проверка на ATM: в логе не должно быть `[P125] DISK DUMP`, `[BIOS READ]`; диагностические сообщения BIOS execution, включая `OP=xx`, сохраняются.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
