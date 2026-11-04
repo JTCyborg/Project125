@@ -28,13 +28,13 @@ ATM_KBD_RTC_PROBE::
         ld      a, #55
         in      a, (#FE)
         cp      #AA
-        jr      z, .controller_ready
+        jp      z, .controller_ready
 
         xor     a
         ld      (atm_kbd_rtc_available), a
         ld      hl, atm_kbd_rtc_not_found
         call    p125_trace_port
-        jr      .probe_done
+        jp      .probe_done
 
 .controller_ready:
         ld      a, 1
@@ -46,32 +46,32 @@ ATM_KBD_RTC_PROBE::
         ; hexadecimal first; this avoids assuming undocumented BCD encoding.
         ld      a, #10
         call    ATM_KBD_RTC_READ_COMMAND
-        jr      c, .command_error
+        jp      c, .command_error
         ld      (atm_kbd_rtc_seconds), a
 
         ld      a, #50
         call    ATM_KBD_RTC_READ_COMMAND
-        jr      c, .command_error
+        jp      c, .command_error
         ld      (atm_kbd_rtc_minutes), a
 
         ld      a, #90
         call    ATM_KBD_RTC_READ_COMMAND
-        jr      c, .command_error
+        jp      c, .command_error
         ld      (atm_kbd_rtc_hours), a
 
         ld      a, #12
         call    ATM_KBD_RTC_READ_COMMAND
-        jr      c, .command_error
+        jp      c, .command_error
         ld      (atm_kbd_rtc_day), a
 
         ld      a, #52
         call    ATM_KBD_RTC_READ_COMMAND
-        jr      c, .command_error
+        jp      c, .command_error
         ld      (atm_kbd_rtc_month), a
 
         ld      a, #92
         call    ATM_KBD_RTC_READ_COMMAND
-        jr      c, .command_error
+        jp      c, .command_error
         ld      (atm_kbd_rtc_year), a
 
         ld      hl, atm_kbd_rtc_time_text
@@ -103,7 +103,7 @@ ATM_KBD_RTC_PROBE::
         call    p125_trace_port
         ld      hl, atm_kbd_rtc_read_ok
         call    p125_trace_port
-        jr      .probe_done
+        jp      .probe_done
 
 .command_error:
         xor     a
@@ -132,7 +132,7 @@ READ_CURRENT_TIME::
 
         ld      a, (atm_kbd_rtc_available)
         or      a
-        jr      nz, .read_time
+        jp      nz, .read_time
 
         ld      a, '?'
         ld      (txt_hour), a
@@ -141,22 +141,22 @@ READ_CURRENT_TIME::
         ld      (txt_min+1), a
         ld      (txt_sec), a
         ld      (txt_sec+1), a
-        jr      .read_time_done
+        jp      .read_time_done
 
 .read_time:
         ld      a, #90
         call    ATM_KBD_RTC_READ_COMMAND
-        jr      c, .read_failed
+        jp      c, .read_failed
         ld      (atm_kbd_rtc_hours), a
 
         ld      a, #50
         call    ATM_KBD_RTC_READ_COMMAND
-        jr      c, .read_failed
+        jp      c, .read_failed
         ld      (atm_kbd_rtc_minutes), a
 
         ld      a, #10
         call    ATM_KBD_RTC_READ_COMMAND
-        jr      c, .read_failed
+        jp      c, .read_failed
         ld      (atm_kbd_rtc_seconds), a
 
         ; The controller reports integer register values. Convert 0..99
@@ -172,7 +172,7 @@ READ_CURRENT_TIME::
         ld      a, (atm_kbd_rtc_seconds)
         ld      hl, txt_sec
         call    ATM_KBD_RTC_TO_DECIMAL
-        jr      .read_time_done
+        jp      .read_time_done
 
 .read_failed:
         ld      a, '?'
@@ -201,7 +201,7 @@ ATM_KBD_RTC_READ_COMMAND:
         ld      a, #55
         in      a, (#FE)
         cp      #AA
-        jr      nz, .handshake_failed
+        jp      nz, .handshake_failed
         ld      a, b
         in      a, (#FE)
         pop     bc
@@ -218,10 +218,10 @@ ATM_KBD_RTC_TO_DECIMAL:
         ld      b, 0
 .tens_loop:
         cp      10
-        jr      c, .ones_digit
+        jp      c, .ones_digit
         sub     10
         inc     b
-        jr      .tens_loop
+        jp      .tens_loop
 .ones_digit:
         ld      d, a
         ld      a, b
@@ -249,7 +249,7 @@ ATM_KBD_RTC_PRINT_NIBBLE:
         and     #0F
         add     a, '0'
         cp      '9' + 1
-        jr      c, .digit_ready
+        jp      c, .digit_ready
         add     a, 7
 .digit_ready:
         jp      ATM_KBD_RTC_PRINT_CHAR
