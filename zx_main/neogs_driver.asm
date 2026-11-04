@@ -892,22 +892,28 @@ gs_boot_send_command_long:
 ; command-handler completion. Do not use DBIT as the command-complete flag.
 gs_boot_send_command:
         ld      (neo_fw_command_byte), a
+        ; A1.60 trace is emitted only for phase 5. Read the RTC before
+        ; publishing the command so timestamp rendering cannot delay IPC.
+        ld      a, (neo_fw_timeout_phase)
+        cp      5
+        jr      nz, .command_write
+        call    p125_log_prefix_if_needed
+.command_write:
         ld      a, (neo_fw_command_byte)
         out     (GSCOM), a
-        ; A1.60 trace: host command write requests CBIT assertion.
         ld      a, (neo_fw_timeout_phase)
         cp      5
         jr      nz, .command_trace_done
         ld      a, 'H'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, 'C'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, (neo_fw_command_byte)
         call    p125_print_hex8
         ld      a, 13
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, 10
-        out     (#EF), a
+        call    p125_emit_char
 .command_trace_done:
         ld      bc, FW_BYTE_TIMEOUT
 .command_wait:
@@ -926,16 +932,17 @@ gs_boot_send_command:
         ld      a, (neo_fw_timeout_phase)
         cp      5
         jr      nz, .command_done_no_trace
+        call    p125_log_prefix_if_needed
         ld      a, 'H'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, 'c'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, '-'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, 13
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, 10
-        out     (#EF), a
+        call    p125_emit_char
 .command_done_no_trace:
         or      a
         ret
@@ -986,23 +993,25 @@ gs_boot_send_data_byte:
         scf
         ret
 .data_slot_free:
-        ld      a, (neo_fw_tx_byte)
-        out     (GSDAT), a
-        ; Trace only the failing startup handshake, not the 15-KiB firmware stream.
+        ; Trace only the failing startup handshake, not the 15-KiB firmware
+        ; stream. Emit the timestamp before touching the shared DBIT slot.
         ld      a, (neo_fw_timeout_phase)
         cp      7
         jr      nz, .data_tx_trace_done
+        call    p125_log_prefix_if_needed
         ld      a, 'H'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, '+'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, (neo_fw_tx_byte)
         call    p125_print_hex8
         ld      a, 13
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, 10
-        out     (#EF), a
+        call    p125_emit_char
 .data_tx_trace_done:
+        ld      a, (neo_fw_tx_byte)
+        out     (GSDAT), a
         ld      a, 2
         ld      (neo_fw_tx_wait_state), a
         ld      bc, FW_BYTE_TIMEOUT
@@ -1053,16 +1062,17 @@ gs_boot_receive_data_byte:
         cp      7
         jr      nz, .receive_trace_done
 .receive_trace:
+        call    p125_log_prefix_if_needed
         ld      a, 'H'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, '-'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, (neo_fw_last_rx_byte)
         call    p125_print_hex8
         ld      a, 13
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, 10
-        out     (#EF), a
+        call    p125_emit_char
 .receive_trace_done:
         ld      a, (neo_fw_last_rx_byte)
         ; DBIT is shared by both directions. Give the NeoGS sender time to

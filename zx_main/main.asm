@@ -33,18 +33,16 @@ Init_Z80_System:
         ld      (P125_OLD_SP), sp
         ld      sp, HOST_STACK_TOP
 
-        ; Match the proven Project124 ATM/Pentagon host startup configuration.
-        ld      a, #10
-        ld      bc, #7FFD
-        out     (c), a
-        ld      (#5C3B), a
-        xor     a
-        ld      bc, #EFF7
-        out     (c), a
+        ; Open ATM shadow ports, select the alternate ATM text screen
+        ; (physical pages 7/3), and keep the host code pages 5/2 visible.
+        ; The ATM-native renderer lives in window 2 and maps video pages only
+        ; while drawing, so code at #6000 and TR-DOS staging at #C000 survive.
+        call    p125_atm_video_init
 
-        ; Initialize Project124-derived screen console and K512VI1 RTC.
+        ; Initialize the ATM 80x25 text workspace and the K512VI1 RTC.
         call    BIOS_DebugConsole_Clear
         call    CHECK_AND_INIT_CMOS
+        call    BIOS_DebugConsole_DrawInterface
         ld      a, 1
         ld      (p125_log_line_start), a
 
@@ -185,7 +183,7 @@ p125_halt:
         halt
         jr      .p125_halt_loop
 
-; Timestamped diagnostics mirrored to port #EF and the 42x12 screen.
+; Z80 logs are RTC-timestamped; NeoGS stream is raw; screen is ATM-native 80x25.
 p125_print_string:
         ld      a, (hl)
         or      a
@@ -219,21 +217,27 @@ p125_print_hex_nibble:
 .hex_digit:
         jp      p125_emit_char
 
-; Emit one character to port #EF and the on-screen 6x8 console.
+; Z80-originated log output: timestamp state is updated only here.
+; The raw emitter is shared with NeoGS, but NeoGS bytes never get RTC prefixes.
 p125_emit_char:
+        call    p125_emit_raw_char
+        cp      13
+        jr      z, .p125_mark_line_start
+        cp      10
+        ret     nz
+.p125_mark_line_start:
+        ld      a, 1
+        ld      (p125_log_line_start), a
+        ret
+
+; Raw byte output to port #EF and the ATM-native screen. Does not touch
+; the Z80 log-line timestamp state; NeoGS debug bytes use this path.
+p125_emit_raw_char:
         push    af
         push    bc
         ld      bc, #00EF
         out     (c), a
         call    BIOS_DebugConsole_PrintChar
-        cp      13
-        jr      z, .p125_mark_line_start
-        cp      10
-        jr      nz, .p125_emit_done
-.p125_mark_line_start:
-        ld      a, 1
-        ld      (p125_log_line_start), a
-.p125_emit_done:
         pop     bc
         pop     af
         ret
@@ -254,48 +258,40 @@ p125_print_timestamp:
         push    hl
         call    READ_CURRENT_TIME
         ld      a, '['
-        call    p125_emit_char
+        call    p125_emit_raw_char
         ld      a, (txt_hour)
-        call    p125_emit_char
+        call    p125_emit_raw_char
         ld      a, (txt_hour+1)
-        call    p125_emit_char
+        call    p125_emit_raw_char
         ld      a, ':'
-        call    p125_emit_char
+        call    p125_emit_raw_char
         ld      a, (txt_min)
-        call    p125_emit_char
+        call    p125_emit_raw_char
         ld      a, (txt_min+1)
-        call    p125_emit_char
+        call    p125_emit_raw_char
         ld      a, ':'
-        call    p125_emit_char
+        call    p125_emit_raw_char
         ld      a, (txt_sec)
-        call    p125_emit_char
+        call    p125_emit_raw_char
         ld      a, (txt_sec+1)
-        call    p125_emit_char
+        call    p125_emit_raw_char
         ld      a, ']'
-        call    p125_emit_char
+        call    p125_emit_raw_char
         ld      a, ' '
-        call    p125_emit_char
+        call    p125_emit_raw_char
         pop     hl
         pop     de
         pop     bc
         pop     af
         ret
 
-; Prefix each incoming NeoGS debug line independently.
+; NeoGS has no RTC: mirror its bytes verbatim, without a timestamp.
 p125_debug_stream_char:
-        push    af
-        cp      13
-        jr      z, .p125_debug_no_prefix
-        cp      10
-        jr      z, .p125_debug_no_prefix
-        call    p125_log_prefix_if_needed
-.p125_debug_no_prefix:
-        pop     af
-        jp      p125_emit_char
+        jp      p125_emit_raw_char
 
 msg_rtc_ready:        defb "[RTC] K512VI1 READY", 13, 10, 0
 msg_p125_start:       defb "[P125] ATM HOST START", 13, 10, 0
-msg_p125_build_id:    defb "[P125] BUILD 20261104-A12 RTC-SCREEN", 13, 10, 0
+msg_p125_build_id:    defb "[P125] BUILD 20261104-A13 ATM80 RTC-SPLIT", 13, 10, 0
 msg_fw_load:          defb "[P125] LOAD NEOGS FIRMWARE", 13, 10, 0
 msg_fw_file_error:    defb "[P125] ERROR: NEOLOAD.C FILE #", 0
 msg_fw_upload_error:  defb "[P125] ERROR: NEOGS FIRMWARE UPLOAD PHASE #", 0
@@ -320,15 +316,21 @@ msg_video_crc_ok:     defb "[P125] VIDEO CRC SELFTEST PASS", 13, 10, 0
 P125_OLD_SP: dw 0
 p125_log_line_start: db 1
 
-; Project124-derived RTC and screen console modules.
+; Project124-derived K512VI1 RTC driver.
         INCLUDE "rtc_driver.asm"
-        INCLUDE "p125_screen_console.asm"
 
 ; Host-side modules: firmware bootstrap, BIOS DMA transport and TR-DOS reader.
         INCLUDE "neogs_driver.asm"
         INCLUDE "bios_transfer.asm"
         INCLUDE "bios_file_loader.asm"
         INCLUDE "video_transfer.asm"
+
+; The ATM presenter must execute from window 2 (#8000-BFFF): during a draw
+; it temporarily maps video pages 7/3 into windows 1/3. The host program at
+; #6000 and the TR-DOS staging page are therefore never overwritten.
+        ASSERT $ <= #A000
+        ORG #A000
+        INCLUDE "p125_screen_console.asm"
 
 ; Keep the resident host image below the stack at AFFFh.
 ProgramEnd:
