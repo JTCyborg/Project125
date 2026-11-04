@@ -33,7 +33,7 @@ x86_real_string_instruction:
         ; Report progress independently of the architectural instruction budget.
         ld      a, l
         or      a
-        jr      nz, ..x86_string_no_progress
+        jr      nz, .x86_string_no_progress
         ld      a, h
         and     #07
         jr      nz, .x86_string_no_progress
