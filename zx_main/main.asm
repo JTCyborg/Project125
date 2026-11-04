@@ -350,19 +350,16 @@ p125_log_prefix_if_needed:
         ret
 
 p125_print_timestamp:
-        push    hl
-        ld      hl, trace_60_rtc_read_begin
-        call    p125_trace_port
-        pop     hl
+        ; Do not poll or print an unknown RTC timestamp before the DS12887
+        ; probe has completed. This keeps pre-UI startup logs clean.
+        ld      a, (ds12887_available)
+        or      a
+        ret     z
         push    af
         push    bc
         push    de
         push    hl
         call    READ_CURRENT_TIME
-        push    hl
-        ld      hl, trace_61_rtc_read_done
-        call    p125_trace_port
-        pop     hl
         ld      a, '['
         call    p125_emit_raw_char
         ld      a, (txt_hour)
@@ -404,8 +401,6 @@ trace_40_ui_draw_begin:       defb "[TRACE 40] UI DRAW BEGIN", 13, 10, 0
 trace_41_ui_draw_done:        defb "[TRACE 41] UI DRAW DONE", 13, 10, 0
 trace_50_first_timestamp_begin: defb "[TRACE 50] FIRST LOG/TIMESTAMP BEGIN", 13, 10, 0
 trace_51_first_log_done:      defb "[TRACE 51] FIRST LOG DONE", 13, 10, 0
-trace_60_rtc_read_begin:      defb "[TRACE 60] RTC READ BEGIN", 13, 10, 0
-trace_61_rtc_read_done:       defb "[TRACE 61] RTC READ DONE", 13, 10, 0
 trace_70_neoload_begin:       defb "[TRACE 70] NEOLOAD READ BEGIN", 13, 10, 0
 trace_71_neoload_done:        defb "[TRACE 71] NEOLOAD READ DONE", 13, 10, 0
 trace_80_fw_upload_begin:     defb "[TRACE 80] FW UPLOAD BEGIN", 13, 10, 0
@@ -418,7 +413,7 @@ trace_B0_bios_exec_begin:     defb "[TRACE B0] BIOS EXEC BEGIN", 13, 10, 0
 trace_B1_bios_exec_return:    defb "[TRACE B1] BIOS EXEC RETURN", 13, 10, 0
 
 msg_p125_start:       defb "[P125] ATM HOST START", 13, 10, 0
-msg_p125_build_id:    defb "[P125] BUILD 20261104-A46 QUIET INIT LOG", 13, 10, 0
+msg_p125_build_id:    defb "[P125] BUILD 20261104-A47 MOV-SREG RTC-QUIET", 13, 10, 0
 msg_fw_load:          defb "[P125] LOAD NEOGS FIRMWARE", 13, 10, 0
 msg_fw_file_error:    defb "[P125] ERROR: NEOLOAD.C FILE #", 0
 msg_fw_upload_error:  defb "[P125] ERROR: NEOGS FIRMWARE UPLOAD PHASE #", 0
