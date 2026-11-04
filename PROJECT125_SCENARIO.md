@@ -1492,3 +1492,18 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Status:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
 
 | 2026-11-04 | A1.14 / D1.01 RTC + ATM3 mapping diagnostics | SOURCE COMMITTED | Added DS12887 raw status and ATM3 TR-DOS map register diagnostics; build/runtime pending. |
+
+
+## A1.15 — ATM710-specific TR-DOS ROM mapping diagnostic (2026-11-04)
+
+- [x] Повторно проверен Unreal Speccy io.cpp: ATM710 обрабатывает запись в xx77 через set_atm_FF77, но не имеет ATM3 readback-портов #0CBE/#00BF; ATM3 диагностические чтения A44 для ATM710 неприменимы и возвращают FF.
+- [x] Проверен Unreal Speccy atm.cpp: set_atm_FF77 сохраняет полный адрес OUT-порта в comp.aFF77; для ATM710 бит 8 адреса включает ATM memory, бит 9 управляет CPM/TR-DOS mapping. memory.cpp формирует CF_TRDOS при нулевом бите 9.
+- [x] Подтверждено, что Project125 устанавливает FF77 через trampoline по адресу порта #0177 (ATM memory enabled, CPM bit clear), затем сохраняет BANKM при переключении #7FFD.
+- [x] Удалены невалидные ATM3 readback-пробы из neo_diag_search_state.
+- [x] Добавлен безопасный read-only dump первых 8 байт, реально видимых по адресу TR-DOS entry #3D13, непосредственно перед вызовом ROM. Это проверяет содержимое отображённого ROM без записи в ATM mapping ports.
+- [x] Driver marker обновлён до A45 ATM710 ROM MAP DIAG.
+- [ ] Build: выполнить build_project125.bat; проверить ошибки SjASMPlus и ProgramEnd <= #A800.
+- [ ] Runtime: проверить [NLOAD D] ... ATM710 ROM@3D13=...; сопоставить восемь байт с ROM TR-DOS, затем проверить появление [NLOAD 02] CATALOG SEARCH RETURN.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.15 ATM710 TR-DOS ROM mapping diagnostic | SOURCE COMMITTED | Replaced invalid ATM3-only port probes with a read-only dump of the bytes visible at the TR-DOS entry address #3D13. Build/runtime remain pending. |
