@@ -40,11 +40,12 @@ neogs_bootstrap_start:
         or      M_EXPAG                ; MPAG and MPAGEX independently select WIN2/WIN3
         out     (GSCFG0), a
 
-        ; Physical 16-KiB page map used by the 48-KiB firmware layout:
+        ; Temporary physical map while the V1 receiver is running:
         ; WIN0 $0000-$3FFF = fixed RAM page 0
-        ; WIN1 $4000-$7FFF = fixed RAM page 3 (includes untouched DMA $5000-$7FFF)
-        ; WIN2 $8000-$BFFF = RAM page 1; ROL8 encoding of page 1 is $80
-        ; WIN3 $C000-$FFFF = RAM page 2; ROL8 encoding of page 2 is $01
+        ; WIN1 $4000-$7FFF = fixed RAM page 3 (bootstrap / DMA reservation)
+        ; WIN2 $8000-$BFFF = temporary RAM page 1; ROR8(page 1) = $80
+        ; WIN3 $C000-$FFFF = temporary RAM page 2; ROR8(page 2) = $01
+        ; The receiver remaps WIN2 to pages 68 and 69 while writing overlays.
         ld      a, #80
         out     (MPAG), a
         ld      a, #01
