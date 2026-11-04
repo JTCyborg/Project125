@@ -81,15 +81,24 @@ neo_fw_open_file:
         ld      a, h
         or      l
         jp      z, .bad_length
-        ; Verify sector count = ceil(file_length / 256).
+        ; The TR-DOS descriptor sector-count byte is not authoritative for
+        ; appended SAVETRD files. The 48-KiB package is written in several
+        ; sector-aligned chunks and the exact byte length is finalized later.
+        ; Derive the number of sectors from the exact 16-bit file length.
+        ; Supported maximum: 0xC010 bytes = 193 sectors.
+        ld      hl, (neo_fw_file_length)
+        ld      de, #C010
+        or      a
+        sbc     hl, de
+        jp      nc, .bad_length
         ld      hl, (neo_fw_file_length)
         ld      de, 255
         add     hl, de
-        ld      a, (#5CEA)
-        cp      h
-        jp      nz, .bad_descriptor
+        ld      a, h
         or      a
         jp      z, .bad_descriptor
+        cp      #C2
+        jp      nc, .bad_length
         ld      (neo_fw_load_remaining), a
 
         ld      a, (#5CEB)
