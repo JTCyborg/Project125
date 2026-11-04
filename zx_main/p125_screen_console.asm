@@ -38,7 +38,23 @@ p125_atm_video_init::
         push    de
         push    hl
 
-        ; Open ATM shadow ports through the still-mapped TR-DOS ROM.
+        ; Reset the ATM paging/control latch BEFORE enabling permanent
+        ; DOSEN. On this board #EFF7 is part of the ATM paging control path;
+        ; resetting it after the #0177 shadow-port setup can undo the state
+        ; needed by the TR-DOS overlay.
+        xor     a
+        ld      bc, #EFF7
+        out     (c), a
+
+        ; ROM2=1 (D4) is required for TR-DOS overlay; D3 selects alternate
+        ; video pages 7/3. This is #18, matching the host display setup.
+        ld      a, #18
+        ld      bc, #7FFD
+        out     (c), a
+        ld      (#5C3B), a
+
+        ; Open shadow ports and hold DOSEN permanently (A9=0) using the
+        ; documented TR-DOS ROM trampoline. Do this AFTER the paging reset.
         ld      bc, p125_atm_ports_open_done
         push    bc
         ld      bc, #2A53
@@ -48,32 +64,14 @@ p125_atm_video_init::
         jp      #3D2F
 
 p125_atm_ports_open_done:
-        ; Match the known-working Project124/Project125-main startup:
-        ; force 128K ROM1 (bit 4 = 1, TR-DOS) and select the alternate screen
-        ; (bit 3 = 1). The old working host explicitly wrote #7FFD=#10 before
-        ; any TR-DOS file operation; merely preserving BANKM here was unsafe
-        ; because the inherited value may have bit 4 clear.
-        ; Low RAM-bank bits and paging lock are reset exactly as in that
-        ; proven startup, then the ATM window ports below establish the
-        ; host/video/staging pages independently.
-        ld      a, #18
-        ld      bc, #7FFD
-        out     (c), a
-        ld      (#5C3B), a
-
-        ; The known-working Project125 main/0 startup also cleared the ATM
-        ; paging/control latch before the first TR-DOS catalogue operation.
-        ; Reproduce that reset before programming the explicit ATM windows.
-        xor     a
-        ld      bc, #EFF7
+        ; Window 0 must use ROM with D7=1 so its ROM page selection is
+        ; coupled to ROM2/DOSEN. #BF selects the low ROM page with the
+        ; DOSEN-controlled low ROM select: BASIC-48 when DOSEN=0, TR-DOS
+        ; when DOSEN=1. This is the ATM2+ documented auto-TR-DOS mapping.
+        ld      a, #BF
+        ld      bc, #3FF7
         out     (c), a
 
-        ; Deliberately leave window 0 (#0000-#3FFF) under the native ATM
-        ; ROM/ROM2 decoder. The known-working Project125 main/0 startup did
-        ; not program #3FF7. Forcing a page through the memory manager here
-        ; changes the ROM page used by the #3Dxx TR-DOS overlay and can leave
-        ; CALL #3D13 executing the wrong ROM entry. Only the three RAM windows
-        ; needed by the host/video are programmed below.
 
         ; Map the alternate screen pages while the 32-byte mode trampoline
         ; is installed at #FFEC. Window 3 uses a fixed RAM page here; the
