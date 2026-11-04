@@ -511,6 +511,7 @@ command_boot_bios:
         ; Read and print the five bytes at the stopped CS:IP. This call was
         ; missing from the previous diagnostic commit, so MEM= never appeared.
         call    bios_stop_dump_bytes
+        call    bios_stop_dump_state
         ld      a, 13
         call    neo_send_data_byte
         ld      a, 10
@@ -578,6 +579,44 @@ bios_stop_mem_prefix:
         defb    " MEM=", 0
 bios_stop_dump_count:
         db      0
+
+; Report resident CPU state after x86_real_execute returns with carry.
+; These fields distinguish an unsupported opcode from a memory/bounds exit.
+bios_stop_dump_state:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, bios_stop_state_prefix
+        call    neo_debug_send_string
+        ld      a, (x86_exit_status)
+        call    neo_debug_hex8
+        ld      hl, bios_stop_bx_label
+        call    neo_debug_send_string
+        ld      hl, (x86_reg_bx)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      hl, bios_stop_flags_label
+        call    neo_debug_send_string
+        ld      hl, (x86_reg_flags)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+bios_stop_state_prefix:
+        defb    " STATUS=", 0
+bios_stop_bx_label:
+        defb    " BX=", 0
+bios_stop_flags_label:
+        defb    " FLAGS=", 0
 
 ; Dump physical page-75 bytes at image offset 1FF0 (guest FFFF0..FFFF4).
 ; This is deliberately performed after DMA is disabled and before validation.
