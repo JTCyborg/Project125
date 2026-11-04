@@ -25,80 +25,18 @@ load_neogs_firmware_file::
 
 ; HL points to an eight-character TR-DOS filename (extension is always C).
 neo_fw_open_file:
-        push    hl
-        ld      hl, trace_noload_00_entry
-        call    p125_trace_port
-        pop     hl
         ld      (neo_fw_requested_name_ptr), hl
         ld      hl, (neo_fw_requested_name_ptr)
         ; Search the requested exact 8.3 catalogue name.
         ld      de, #5CDD
         ld      bc, 8
         ldir
-        ; Preserve the exact post-LDIR HL value used by Project124's TR-DOS ABI.
-        ; Diagnostic helpers use HL for text pointers, so restore this value
-        ; immediately before the catalogue API call.
-        ld      (neo_fw_trdos_search_hl), hl
         ld      a, 'C'
         ld      (#5CE5), a
         ld      a, 9
         ld      (#5D06), a
         ld      c, 10
-        ld      hl, trace_noload_01_search_call
-        call    p125_trace_port
-        ; A1.13: capture the exact TR-DOS search environment immediately
-        ; before entering ROM. This routine writes only to diagnostic port #EF.
-        call    neo_diag_search_state
-        ; A1.27: repeat the documented ATM710 DOSEN gate activation immediately
-        ; before the catalogue API. #0177: A8=1 enables ATM memory; A9=0
-        ; keeps DOSEN active. #2A53 is the TR-DOS OUT (C),A; RET trampoline.
-        ld      hl, trace_noload_gate_begin
-        call    p125_trace_port
-        ld      bc, .search_gate_ready
-        push    bc
-        ld      bc, #2A53
-        push    bc
-        ld      bc, #0177
-        ld      a, #C3
-        jp      #3D2F
-.search_gate_ready:
-        ld      hl, trace_noload_gate_done
-        call    p125_trace_port
-; A1.32: initialize the TR-DOS runtime environment as documented by
-        ; Deja Vu #09 dv093d13.txt before invoking filesystem services.
-        ; #5CF9 = DOS mode/system flag, #5D10 = DOS error code,
-        ; #5D06 = 9-character 8.3 name length, #5C5D = ERR_SP.
-        ; Keep the current resident stack as the error-return stack.
-        xor     a
-        ld      (#5CF9), a
-        ld      (#5D10), a
-        ld      a, 9
-        ld      (#5D06), a
-        ld      (#5C3D), sp
-        ld      hl, trace_noload_dosenv_ready
-        call    p125_trace_port
-        ; A1.31: first call a non-disk TR-DOS service (C=#14). It copies
-        ; the current 16-byte file descriptor from #5CDD to this scratch
-        ; buffer. A return proves #3D13 dispatch/return works independently
-        ; of the catalogue search and FDC path.
-        ld      hl, trace_noload_api_probe_begin
-        call    p125_trace_port
-        ld      hl, neo_fw_trdos_probe_buffer
-        ld      bc, #0014
         call    #3D13
-        ld      hl, trace_noload_api_probe_return
-        call    p125_trace_port
-        ; The DOSEN trampoline leaves BC=#0177 (B=1). The TR-DOS
-        ; catalogue API expects the original Project124 entry context with
-        ; BC=#000A; setting only C would accidentally pass B=1.
-        ld      a, 9
-        ld      bc, 10
-        ld      hl, (neo_fw_trdos_search_hl)
-        call    #3D13
-        ; Preserve the API's returned HL across the trace and descriptor setup.
-        ld      (neo_fw_trdos_search_hl), hl
-        ld      hl, trace_noload_02_search_return
-        call    p125_trace_port
         ld      a, c
         cp      #FF
         jp      z, .file_not_found
@@ -110,13 +48,7 @@ neo_fw_open_file:
         ld      (#5D10), a
         pop     af
         ld      c, 8
-        ld      hl, trace_noload_03_descriptor_call
-        call    p125_trace_port
-        ; Project124 changes only C here: preserve B and returned HL.
-        ld      hl, (neo_fw_trdos_search_hl)
         call    #3D13
-        ld      hl, trace_noload_04_descriptor_return
-        call    p125_trace_port
         ld      a, (#5D0F)
         ld      b, a
         ld      a, (#5D10)
@@ -151,12 +83,8 @@ neo_fw_open_file:
 
         ; Read only the first sector now. Later sectors are fetched on demand
         ; by the active transfer after the preceding buffer bytes have been sent.
-        ld      hl, trace_noload_05_sector_call
-        call    p125_trace_port
         call    neo_fw_read_next_sector
         jp      c, .sector_read_failed
-        ld      hl, trace_noload_06_sector_return
-        call    p125_trace_port
         xor     a
         ret
 
@@ -181,6 +109,7 @@ neo_fw_open_file:
 ; Uses neo_fw_load_track/sector/remaining. Advances the cursor only after a
 ; successful read. OUT: carry clear; carry set on disk error/exhaustion.
 ; Clobbers AF, BC, DE, HL.
+
 neo_fw_read_next_sector:
         ld      a, (neo_fw_load_remaining)
         or      a
@@ -1405,4 +1334,4 @@ trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
 trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
 trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A53 ERR_SP ADDRESS FIX", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A54 LEGACY TRDOS OPEN", 13, 10, 0
