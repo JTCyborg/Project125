@@ -2627,6 +2627,9 @@ x86_real_group_f7_unsupported:
 ; AF/CF are consumed as inputs; PF/ZF/SF are recalculated. OF is undefined
 ; on the 8086 and is preserved here rather than assigned an arbitrary value.
 x86_real_daa:
+        xor     a
+        ld      (x86_daa_new_cf), a
+        ld      (x86_daa_new_af), a
         ld      a, (x86_reg_ax)
         ld      (x86_daa_original), a
         ld      (x86_daa_result), a
