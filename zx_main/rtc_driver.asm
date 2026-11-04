@@ -11,33 +11,71 @@ txt_sec::           DEFB "00"
 ; =========================================================================
 ; ИНТЕЛЛЕКТУАЛЬНАЯ БЕЗОПАСНАЯ НАСТРОЙКА CMOS ЧАСОВ
 ; =========================================================================
-CHECK_AND_INIT_CMOS::                   
+CHECK_AND_INIT_CMOS::
         PUSH    AF: PUSH BC
+
+        LD      HL, rtc_trace_01_open_begin
+        CALL    p125_trace_port
         CALL    open_cmos
-        
-        ; Проверяем сигнатуру наличия часов в ячейке #11
+        LD      HL, rtc_trace_02_open_done
+        CALL    p125_trace_port
+
+        ; Проверяем сигнатуру наличия часов в ячейке #11.
+        LD      HL, rtc_trace_03_signature_read_begin
+        CALL    p125_trace_port
         LD      A, #11
         CALL    read_byte_raw
+        LD      HL, rtc_trace_04_signature_read_done
+        CALL    p125_trace_port
         CP      #AA
-        JR      Z, .already_active      
-        
-        ; Холодный старт: записываем обязательные системные константы
+        JR      Z, .already_active
+
+        ; Холодный старт: записываем обязательные системные константы.
+        LD      HL, rtc_trace_05_signature_write_begin
+        CALL    p125_trace_port
         LD      A, #11
         LD      L, #AA
-        CALL    write_byte_raw         ; Маркер готовности системы
-        
+        CALL    write_byte_raw
+        LD      HL, rtc_trace_06_signature_write_done
+        CALL    p125_trace_port
+
+        LD      HL, rtc_trace_07_reg_a_write_begin
+        CALL    p125_trace_port
         LD      A, #0A
         LD      L, #20
-        CALL    write_byte_raw         ; Регистр А: Включение кварца 32кГц
-        
+        CALL    write_byte_raw
+        LD      HL, rtc_trace_08_reg_a_write_done
+        CALL    p125_trace_port
+
+        LD      HL, rtc_trace_09_reg_b_write_begin
+        CALL    p125_trace_port
         LD      A, #0B
         LD      L, #02
-        CALL    write_byte_raw         ; Регистр B: 24-часовой BCD формат
+        CALL    write_byte_raw
+        LD      HL, rtc_trace_0A_reg_b_write_done
+        CALL    p125_trace_port
 
 .already_active
+        LD      HL, rtc_trace_0B_close_begin
+        CALL    p125_trace_port
         CALL    close_cmos
+        LD      HL, rtc_trace_0C_close_done
+        CALL    p125_trace_port
         POP     BC: POP     AF
         RET
+
+rtc_trace_01_open_begin:          DEFB "[RTC 01] OPEN BEGIN", 13, 10, 0
+rtc_trace_02_open_done:           DEFB "[RTC 02] OPEN DONE", 13, 10, 0
+rtc_trace_03_signature_read_begin: DEFB "[RTC 03] SIGNATURE READ BEGIN", 13, 10, 0
+rtc_trace_04_signature_read_done: DEFB "[RTC 04] SIGNATURE READ DONE", 13, 10, 0
+rtc_trace_05_signature_write_begin: DEFB "[RTC 05] SIGNATURE WRITE BEGIN", 13, 10, 0
+rtc_trace_06_signature_write_done: DEFB "[RTC 06] SIGNATURE WRITE DONE", 13, 10, 0
+rtc_trace_07_reg_a_write_begin:   DEFB "[RTC 07] REG A WRITE BEGIN", 13, 10, 0
+rtc_trace_08_reg_a_write_done:    DEFB "[RTC 08] REG A WRITE DONE", 13, 10, 0
+rtc_trace_09_reg_b_write_begin:   DEFB "[RTC 09] REG B WRITE BEGIN", 13, 10, 0
+rtc_trace_0A_reg_b_write_done:    DEFB "[RTC 0A] REG B WRITE DONE", 13, 10, 0
+rtc_trace_0B_close_begin:         DEFB "[RTC 0B] CLOSE BEGIN", 13, 10, 0
+rtc_trace_0C_close_done:          DEFB "[RTC 0C] CLOSE DONE", 13, 10, 0
 
 ; =========================================================================
 ; ПРОЦЕДУРА ЧТЕНИЯ ТЕКУЩЕГО ВРЕМЕНИ ИЗ ЧИПА RTC
