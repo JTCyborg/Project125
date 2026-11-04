@@ -1219,3 +1219,110 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Runtime: verify K512VI1 time and `[HH:MM:SS]` on Z80-originated log lines; verify NeoGS lines have no inserted timestamp.
 - [ ] Regression: confirm NeoGS firmware upload, BIOS.C staging/DMA, IPC handshake and 8086 execution remain unchanged.
 - **Status:** SOURCE COMMITTED / BUILD NOT VERIFIED / ATM RUNTIME NOT VERIFIED. A1.79 supersedes the Spectrum bitmap backend introduced in A1.78; do not mark the ATM presenter complete until build and runtime checks pass.
+
+## A1.80 — startup trace markers on port #EF (2026-11-04)
+
+- [x] Added a dedicated `p125_trace_port` routine in `zx_main/main.asm`. It writes zero-terminated ASCII strings directly to port `#EF`, without RTC access, screen rendering, or the normal timestamped logger.
+- [x] Added checkpoints for Z80 entry, ATM video initialization, screen clear, RTC initialization, static UI drawing, and the first timestamped log line.
+- [x] Added checkpoints immediately before and after `READ_CURRENT_TIME` to identify an RTC read stall.
+- [x] Added checkpoints around NEOLOAD.C reading, NeoGS firmware upload, video CRC self-test, BIOS.C loading, and BIOS execution/return.
+- [x] Diagnostic markers are emitted only by the Z80 host. NeoGS debug-stream bytes and the normal log protocol are unchanged.
+- [ ] Build with `build_project125.bat`; verify assembler syntax and resident image size (`ProgramEnd <= #A800`).
+- [ ] Runtime: capture the port `#EF` log from `[TRACE 00]` onward. The last emitted marker identifies the call that did not return; report the complete log without trimming.
+- **Status:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+
+## A1.81 — трассировка внутренних этапов RTC K512VI1 (2026-11-04)
+
+- [x] Runtime A1.80: последовательность проходит [TRACE 00], инициализацию ATM-видео и очистку экрана; последняя отметка — [TRACE 30] RTC INIT BEGIN, [TRACE 31] отсутствует.
+- [x] Сбой локализован внутри вызова CHECK_AND_INIT_CMOS; видеорежим и экранный presenter на данном этапе не менять.
+- [x] В zx_main/rtc_driver.asm добавлены контрольные отметки непосредственно вокруг открытия CMOS, чтения сигнатуры регистра #11, трёх возможных записей регистров #11/#0A/#0B и закрытия CMOS.
+- [x] Маркеры RTC используют существующий независимый вывод p125_trace_port в порт #EF; диагностические вызовы сохраняют AF/BC/HL и не меняют прочитанное значение A.
+- [ ] Сборка build_project125.bat: проверить синтаксис и лимит resident host image.
+- [ ] Runtime: прислать полный лог от [TRACE 00] до последней строки [RTC xx]. Последняя RTC-метка укажет конкретный низкоуровневый шаг.
+- **Статус:** RTC TRACE SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.81 K512VI1 initialization substage trace | SOURCE COMMITTED | Added markers around CMOS open, signature read, cold-start register writes and close; no hardware behavior changed intentionally. |
+
+
+## A1.82 — разделение двух OUT в записи RTC (2026-11-04)
+
+- [x] Runtime A1.81: CMOS open и чтение сигнатуры #11 завершаются; последняя отметка — [RTC 05] SIGNATURE WRITE BEGIN. Первая запись регистра #11/#AA не подтверждена.
+- [x] В write_byte_raw добавлены отдельные маркеры до/после OUT (C),A в порт #DFF7 и до/после OUT (C),L в порт #BFF7.
+- [x] Между операциями диагностика сохраняет AF/BC/HL; исходные A (номер регистра) и L (записываемое значение) сохраняются.
+- [ ] Сборка build_project125.bat и проверка ограничения ProgramEnd <= #A800.
+- [ ] Runtime: прислать строки от [RTC 05] до последней [RTC xx]. Если последняя [RTC 0D], остановка до/на записи индекса; если [RTC 0E] — после записи индекса; если [RTC 0F] — при/после подготовки записи данных; если [RTC 10] — оба OUT завершились.
+- **Статус:** PORT-CYCLE TRACE SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.82 trace individual RTC port writes | SOURCE COMMITTED | Added checkpoints around the index and data OUT instructions; no register values or port addresses intentionally changed. |
+
+
+## A1.83 — контроль возврата из write_byte_raw (2026-11-04)
+
+- [x] Runtime A1.82: обе операции OUT завершились; последняя отметка — [RTC 10] DATA OUT DONE. Отметка вызывающей процедуры [RTC 06] отсутствует.
+- [x] В конец write_byte_raw добавлена контрольная отметка [RTC 11] WRITE RET непосредственно перед RET.
+- [ ] Сборка build_project125.bat; проверить синтаксис и лимит resident host image.
+- [ ] Runtime: если [RTC 11] отсутствует, остановка находится между завершением второго trace helper и последней контрольной точкой; если [RTC 11] есть, но [RTC 06] отсутствует — проверять RET, адрес возврата и стек.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.83 RTC write return checkpoint | SOURCE COMMITTED | Added a marker immediately before RET in write_byte_raw; no RTC port values or register settings changed. |
+
+
+## A1.84 — проверка адреса возврата RTC (2026-11-04)
+
+- [x] Runtime A1.83: [RTC 11] WRITE RET выведен; [RTC 06] SIGNATURE WRITE DONE отсутствует.
+- [x] После CALL write_byte_raw введена метка точного адреса продолжения rtc_signature_write_return.
+- [x] Перед RET вычисляется адрес вершины стека через HL=SP и сравнивается с rtc_signature_write_return.
+- [x] Добавлены исходы [RTC 12] RETURN ADDRESS OK и [RTC 13] RETURN ADDRESS BAD.
+- [ ] Сборка build_project125.bat и проверка размера host image.
+- [ ] Runtime: сообщить, какая из отметок RTC 12/13 появляется и есть ли затем RTC 06.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.84 RTC return-address validation | SOURCE COMMITTED | Added stack-top return-address comparison before RET; no RTC I/O protocol changes. |
+
+
+## A1.85 — исправление ошибок сборки RTC-диагностики (2026-11-04)
+
+- [x] Получена ошибка SjASMPlus: `CHECK_AND_INIT_CMOS.already_active` не найден; переход `JR` также выдавал недопустимое смещение из-за неразрешённой локальной метки.
+- [x] Локальная метка ветки уже активной RTC заменена на глобальную `rtc_already_active`; условный переход заменён на `JP Z`, чтобы исключить ограничение относительного диапазона.
+- [x] Исправлена логическая ошибка A1.84: `HL=SP` давало адрес вершины стека, а не адрес возврата. Теперь слово возврата временно снимается `POP DE`, немедленно возвращается `PUSH DE` и сравнивается с `rtc_signature_write_return`; исходный стек для RET сохраняется.
+- [ ] Повторить сборку через `build_project125.bat`; проверить синтаксис RTC и общий лимит resident host image.
+- [ ] Runtime: прислать полный лог RTC. Ожидаемые диагностические исходы — `[RTC 12] RETURN ADDRESS OK` либо `[RTC 13] RETURN ADDRESS BAD`, затем проверить появление `[RTC 06] SIGNATURE WRITE DONE`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.85 RTC assembler and stack-check correction | SOURCE COMMITTED | Fixed unresolved local branch/range error and corrected stack return-address comparison; build and runtime remain unverified. |
+
+
+## A1.86 — изоляция возврата из RTC trace helper (2026-11-04)
+
+- [x] Runtime A1.85: лог обрывается после `[RTC 10] DATA OUT DONE`; `[RTC 11] WRITE RET` не наблюдается.
+- [x] Из исходника подтверждено: после вывода RTC 10 следующий шаг — новый вызов `p125_trace_port` для RTC 11; проверка адреса возврата A1.85 находится позже и пока не достигается/не подтверждена.
+- [x] Добавлены прямые одиночные маркеры в порт `#00EF`, не использующие `p125_trace_port`: `>` перед вызовом RTC 11 и `<` после него. Они разделяют возврат из предыдущего trace helper и выполнение следующего вызова.
+- [ ] Сборка `build_project125.bat`; проверить размер host image.
+- [ ] Runtime: если нет `>`, остановка внутри/на возврате из вызова, который печатает RTC 10; если `>` есть, но RTC 11 и `<` отсутствуют — проблема в следующем вызове trace helper; если видны RTC 11 и `<`, выполнение прошло оба вызова, продолжить к сравнению адреса возврата.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.86 isolate RTC trace-helper return path | SOURCE COMMITTED | Added raw port markers around the RTC 11 trace-helper call; no RTC register values or I/O addresses changed. |
+
+
+## A1.87 — идентификатор версии RTC-драйвера в runtime-логе (2026-11-04)
+
+- [x] В начало `CHECK_AND_INIT_CMOS` добавлен вывод строки `[RTC DRIVER A1.87]` через независимый `p125_trace_port` в порт `#EF`.
+- [x] Идентификатор выводится до `[RTC 01] OPEN BEGIN`, поэтому версия драйвера видна даже при остановке на любом последующем этапе RTC-инициализации.
+- [x] Диагностические маркеры A1.86 (`>`, `[RTC 11]`, `<`) и проверка адреса возврата сохранены.
+- [ ] Сборка `build_project125.bat`; проверить синтаксис SjASMPlus и ограничение размера host image.
+- [ ] Runtime: подтвердить первой строкой RTC-диагностики `[RTC DRIVER A1.87]`, затем прислать полный лог.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING. Версия в логе подтверждает исходник драйвера, но сама по себе не подтверждает, что собранный бинарник был обновлён.
+
+| 2026-11-04 | A1.87 RTC driver revision in runtime log | SOURCE COMMITTED | Added an unmistakable `[RTC DRIVER A1.87]` banner before RTC initialization checkpoints; build/runtime remain unverified. |
+
+
+## A1.88 — вывод фактического и ожидаемого адреса возврата RTC (2026-11-04)
+
+- [x] Runtime A1.87: маркеры `>` и `<` присутствуют; `p125_trace_port` завершает оба вызова; сравнение вершины стека выдаёт `[RTC 13] RETURN ADDRESS BAD`.
+- [x] В ветке несовпадения добавлен вывод `ACTUAL=xxxx EXPECTED=xxxx` в порт `#EF`, шестнадцатерично, без изменения RTC I/O и без записи в стек вызывающего кода.
+- [ ] Сборка `build_project125.bat`; проверить синтаксис SjASMPlus и лимит host image.
+- [ ] Runtime: зафиксировать оба адреса; по их разнице определить источник смещения стека/неверного адреса продолжения.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.88 print RTC return-address mismatch values | SOURCE COMMITTED | Added ACTUAL/EXPECTED hexadecimal address output on mismatch; build and runtime remain unverified. |
