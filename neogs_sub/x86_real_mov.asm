@@ -84,7 +84,7 @@ x86_real_mov_segment:
         jr      z, .store_ss
         cp      3
         jr      z, .store_ds
-        jp      x86_real_mov_segment_invalid
+        jp      x86_real_mov_immediate_invalid
 .store_es:
         ld      hl, (x86_reg_es)
         jr      .store_rm
@@ -109,37 +109,24 @@ x86_real_mov_segment:
         jr      z, .load_ss
         cp      3
         jr      z, .load_ds
-        jp      x86_real_mov_segment_invalid
+        jp      x86_real_mov_immediate_invalid
 .load_es:
         call    x86_real_mov_read_rm
         ret     c
         ld      (x86_mov_value), hl
         call    x86_real_trace_es_load
-        ld      hl, (x86_mov_value)
         ld      (x86_reg_es), hl
         jp      x86_real_next
 .load_ss:
         call    x86_real_mov_read_rm
         ret     c
-        ld      (x86_mov_value), hl
-        ld      hl, (x86_mov_value)
         ld      (x86_reg_ss), hl
         jp      x86_real_next
 .load_ds:
         call    x86_real_mov_read_rm
         ret     c
-        ld      (x86_mov_value), hl
-        ld      hl, (x86_mov_value)
         ld      (x86_reg_ds), hl
         jp      x86_real_next
-
-x86_real_mov_segment_invalid:
-        ld      a, (x86_mov_opcode)
-        ld      (x86_real_unsupported_opcode), a
-        ld      a, 2
-        ld      (x86_exit_status), a
-        scf
-        ret
 
 ; 8D LEA r16,m — return the effective offset without reading memory.
 x86_real_lea:
