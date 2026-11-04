@@ -70,7 +70,7 @@ rtc_already_active:
         POP     BC: POP     AF
         RET
 
-rtc_driver_version:              DEFB "[RTC DRIVER A1.92]", 13, 10, 0
+rtc_driver_version:              DEFB "[RTC DRIVER A1.93]", 13, 10, 0
 rtc_trace_01_open_begin:          DEFB "[RTC 01] OPEN BEGIN", 13, 10, 0
 rtc_trace_02_open_done:           DEFB "[RTC 02] OPEN DONE", 13, 10, 0
 rtc_trace_03_signature_read_begin: DEFB "[RTC 03] SIGNATURE READ BEGIN", 13, 10, 0
@@ -170,8 +170,25 @@ write_byte_raw
         LD      BC, #BFF7
         OUT     (C), L
         LD      (rtc_write_index), A
+        ; A1.93: emit RTC 10 inline. This deliberately bypasses
+        ; p125_trace_port at the exact boundary where A1.92 stopped.
+        ; Preserve the live register set and keep the stack balanced.
+        PUSH    AF
+        PUSH    BC
+        PUSH    HL
         LD      HL, rtc_trace_10_data_out_done
-        CALL    p125_trace_port
+        LD      BC, #00EF
+.rtc10_inline_loop:
+        LD      A, (HL)
+        INC     HL
+        OR      A
+        JR      Z, .rtc10_inline_done
+        OUT     (C), A
+        JR      .rtc10_inline_loop
+.rtc10_inline_done:
+        POP     HL
+        POP     BC
+        POP     AF
 
         LD      BC, #00EF
         LD      A, '>'
