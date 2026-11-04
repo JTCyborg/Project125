@@ -149,12 +149,12 @@ BIOS_DebugConsole_Clear::
         ld      hl, #E1C0
         ld      de, #E1C1
         ld      (hl), #4F
-        ld      bc, #02FF
+        ld      bc, #0300
         ldir
         ld      hl, #C1C1
         ld      de, #C1C2
         ld      (hl), #4F
-        ld      bc, #02FF
+        ld      bc, #0300
         ldir
 
         ; Lower log area: black background, green foreground.
@@ -249,8 +249,10 @@ BIOS_DebugConsole_PrintAt::
         jr      z, .p125_print_at_done
         inc     hl
         ld      (bios_dbg_text_ptr), hl
-        ld      d, (bios_dbg_print_row)
-        ld      e, (bios_dbg_print_col)
+        ld      a, (bios_dbg_print_row)
+        ld      d, a
+        ld      a, (bios_dbg_print_col)
+        ld      e, a
         call    p125_screen_write_char
         ld      a, (bios_dbg_print_col)
         inc     a
@@ -329,8 +331,10 @@ BIOS_DebugConsole_PrintChar::
         jr      z, .p125_console_done
         dec     a
         ld      (bios_dbg_col), a
-        ld      d, BIOS_DEBUG_TOP
-        add     a, 0
+        ld      a, (bios_dbg_row)
+        add     a, BIOS_DEBUG_TOP
+        ld      d, a
+        ld      a, (bios_dbg_col)
         ld      e, a
         ld      a, 32
         call    p125_screen_write_char
@@ -508,22 +512,22 @@ P125_ScrollConsoleUp::
         ; Even character plane: page 7, window #4000.
         ld      hl, #4500
         ld      de, #44C0
-        ld      bc, #02FF
+        ld      bc, #0300
         ldir
         ; Odd character plane: page 7, window #6000.
         ld      hl, #6500
         ld      de, #64C0
-        ld      bc, #02FF
+        ld      bc, #0300
         ldir
         ; Even attributes: page 3, window #E000.
         ld      hl, #E500
         ld      de, #E4C0
-        ld      bc, #02FF
+        ld      bc, #0300
         ldir
         ; Odd attributes: page 3, window #C000, odd-byte skew +1.
         ld      hl, #C501
         ld      de, #C4C1
-        ld      bc, #02FF
+        ld      bc, #0300
         ldir
 
         ; Clear the new bottom row.
