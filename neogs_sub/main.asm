@@ -1031,19 +1031,60 @@ neo_timer_isr:
 ; these routines directly while its overlay remains mapped.
 ; -------------------------------------------------------------------------
 x86_io_tick:
-        ; The XT keyboard controller is polled independently of guest IF.
-        ; When PB6 is enabled, move one queued scan byte into the PA latch
-        ; and assert IRQ1; the BIOS acknowledges it through PB7.
         call    x86_kbd_load_latch
         ld      a, (x86_pit_enabled)
         or      a
         jr      z, .check_irq
+        push    bc
+        ld      hl, (neo_timer_ticks)
+        ld      de, (x86_pit_last_tick)
+        ld      (x86_pit_last_tick), hl
+        or      a
+        sbc     hl, de
+        ld      b, h
+        ld      c, l
+        ld      a, b
+        or      c
+        jr      z, .pit_elapsed_done
+.pit_elapsed_loop:
+        ld      hl, (x86_pit_fraction)
+        ld      de, 30682
+        add     hl, de
+        jr      c, .pit_fraction_carry
+        ld      de, 37500
+        or      a
+        sbc     hl, de
+        jr      c, .pit_fraction_31
+        ld      (x86_pit_fraction), hl
+        ld      de, 32
+        jr      .pit_apply
+.pit_fraction_carry:
+        ld      de, 28036
+        add     hl, de
+        ld      (x86_pit_fraction), hl
+        ld      de, 32
+        jr      .pit_apply
+.pit_fraction_31:
+        add     hl, de
+        ld      (x86_pit_fraction), hl
+        ld      de, 31
+.pit_apply:
         ld      hl, (x86_pit_countdown)
-        dec     hl
-        ld      (x86_pit_countdown), hl
         ld      a, h
         or      l
-        jr      nz, .check_irq
+        jr      z, .pit_count_65536
+        or      a
+        sbc     hl, de
+        jr      c, .pit_terminal
+        jr      z, .pit_terminal
+        ld      (x86_pit_countdown), hl
+        jr      .pit_elapsed_next
+.pit_count_65536:
+        xor     a
+        sbc     hl, de
+        ld      (x86_pit_countdown), hl
+        jr      .pit_elapsed_next
+.pit_terminal:
         ld      hl, (x86_pit_reload)
         ld      (x86_pit_countdown), hl
         ld      a, (x86_pic_pending)
@@ -1051,9 +1092,17 @@ x86_io_tick:
         ld      (x86_pic_pending), a
         ld      a, (x86_pit_mode)
         cp      0
-        jr      nz, .check_irq
+        jr      nz, .pit_elapsed_next
         xor     a
         ld      (x86_pit_enabled), a
+        jr      .pit_elapsed_done
+.pit_elapsed_next:
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .pit_elapsed_loop
+.pit_elapsed_done:
+        pop     bc
 .check_irq:
         ld      a, (x86_reg_flags+1)
         bit     1, a
