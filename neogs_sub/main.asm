@@ -1034,7 +1034,16 @@ x86_io_tick:
         call    x86_kbd_load_latch
         ld      a, (x86_pit_enabled)
         or      a
-        jr      z, .check_irq
+        jr      nz, .pit_active
+        ; Keep the baseline current while PIT is stopped, so a new count
+        ; starts at the instant the guest enables the counter.
+        ld      hl, (neo_timer_ticks)
+        ld      (x86_pit_last_tick), hl
+        xor     a
+        ld      (x86_pit_fraction), a
+        ld      (x86_pit_fraction+1), a
+        jr      .check_irq
+.pit_active:
         push    bc
         ld      hl, (neo_timer_ticks)
         ld      de, (x86_pit_last_tick)
