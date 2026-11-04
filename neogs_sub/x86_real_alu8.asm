@@ -519,7 +519,6 @@ x86_real_logic16_accumulator_immediate:
         ld      h, a
         ld      (x86_logic_result), hl
         call    x86_real_logic_update_flags
-        ld      (x86_reg_ax), hl
         ; Re-read the computed result: the flag helper may use HL internally.
         ld      hl, (x86_logic_result)
         ld      (x86_reg_ax), hl
