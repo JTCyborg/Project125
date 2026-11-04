@@ -463,6 +463,54 @@ x86_mem_trace_f6_address:
 x86_mem_f6_prefix:
         db      "[F6EA] ", 0
 
+; Resident helper: trace the source of MOV Sreg,r/m16 loading ES.
+; Kept outside overlay 68 to preserve its strict 16 KiB bank limit.
+x86_real_trace_es_load:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_mem_es_prefix
+        call    x86_mem_watch_string
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_reg_es)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, '>'
+        out     (#EF), a
+        ld      hl, (x86_mov_value)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_mem_es_prefix:
+        db      "[ES<-] ", 0
+
 ; -------------------------------------------------------------------------
 ; Segment:offset -> physical address.
 ; Uses x86_mem_segment and x86_mem_offset_work; result in x86_mem_addr.
