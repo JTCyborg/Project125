@@ -668,3 +668,5 @@ x86_pit_read_phase:     db 0
 x86_pit_enabled:        db 0
 x86_pit_reload:         dw 0
 x86_pit_countdown:      dw 0
+x86_pit_last_tick:     dw 0
+x86_pit_fraction:      dw 0
