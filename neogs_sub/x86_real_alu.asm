@@ -30,6 +30,119 @@ x86_real_alu_accumulator_immediate:
         ld      (x86_alu_carry_in), a
         jp      x86_real_alu_execute
 
+; -------------------------------------------------------------------------
+; Group-1 word immediate: 81/83 r/m16,imm.
+; Register-direct forms implement ADD/OR/ADC/SBB/AND/SUB/XOR/CMP.
+; Opcode 83 sign-extends its imm8 operand exactly as the 8086 specifies.
+; -------------------------------------------------------------------------
+x86_real_group1_word_immediate:
+        ld      (x86_real_opcode), a
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_group1_word_modrm), a
+        and     #C0
+        cp      #C0
+        jp      nz, x86_real_group1_word_unsupported
+
+        ld      a, (x86_group1_word_modrm)
+        and     #38
+        ld      (x86_alu_mode), a
+        ld      a, (x86_group1_word_modrm)
+        and     7
+        ld      (x86_alu_dst_reg), a
+        call    x86_alu_read_reg16
+        ld      (x86_alu_dst), hl
+
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_alu_src), a
+        ld      a, (x86_real_opcode)
+        cp      #83
+        jr      nz, .word_immediate_high
+        ld      a, (x86_alu_src)
+        bit     7, a
+        ld      a, 0
+        jr      z, .word_immediate_sign_ready
+        dec     a
+.word_immediate_sign_ready:
+        ld      (x86_alu_src+1), a
+        jr      .word_operands_ready
+.word_immediate_high:
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_alu_src+1), a
+.word_operands_ready:
+        xor     a
+        ld      (x86_alu_dst_is_mem), a
+        ld      (x86_alu_carry_in), a
+
+        ld      a, (x86_alu_mode)
+        cp      #08
+        jp      z, x86_real_group1_word_logic
+        cp      #20
+        jp      z, x86_real_group1_word_logic
+        cp      #30
+        jp      z, x86_real_group1_word_logic
+        cp      #10
+        jr      z, .word_capture_carry
+        cp      #18
+        jr      nz, x86_real_alu_execute
+.word_capture_carry:
+        ld      a, (x86_reg_flags)
+        and     1
+        ld      (x86_alu_carry_in), a
+        jp      x86_real_alu_execute
+
+x86_real_group1_word_logic:
+        ld      hl, (x86_alu_dst)
+        ld      de, (x86_alu_src)
+        ld      a, (x86_alu_mode)
+        cp      #08
+        jr      z, .word_or
+        cp      #20
+        jr      z, .word_and
+        ld      a, l
+        xor     e
+        ld      l, a
+        ld      a, h
+        xor     d
+        ld      h, a
+        jr      .word_logic_done
+.word_or:
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      a, h
+        or      d
+        ld      h, a
+        jr      .word_logic_done
+.word_and:
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      a, h
+        and     d
+        ld      h, a
+.word_logic_done:
+        ld      (x86_logic_result), hl
+        ld      a, 2
+        ld      (x86_logic_width), a
+        call    x86_real_logic_update_flags
+        ld      a, (x86_alu_dst_reg)
+        ld      hl, (x86_logic_result)
+        call    x86_alu_write_reg16
+        jp      x86_real_next
+
+x86_real_group1_word_unsupported:
+        ld      a, (x86_real_opcode)
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
+x86_group1_word_modrm: dw 0
+
 x86_real_alu_modrm16:
         ld      (x86_real_opcode), a
         call    x86_real_fetch8
