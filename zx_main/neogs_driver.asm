@@ -407,7 +407,7 @@ upload_firmware::
         jr      c, .firmware_file_length_ok
         jp      nz, .upload_failed
         ld      a, l
-        cp      #0B
+        cp      #11
         jp      nc, .upload_failed
 .firmware_file_length_ok:
         ld      hl, (neo_fw_file_length)
