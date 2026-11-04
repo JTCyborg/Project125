@@ -68,6 +68,7 @@ bios_rom_reset_state:
         ld      a, 1
         ld      (bios_keyboard_pending), a
         xor     a
+        ld      (bios_video_stream_errors), a
         ld      (x86_real_bounds_enable), a
         ld      (x86_exit_status), a
         ret
