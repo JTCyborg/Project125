@@ -99,10 +99,10 @@ neogs_bootstrap_start:
         ld      a, d
         cp      #C0
         jr      c, bootstrap_length_valid
-        jr      nz, bootstrap_error
+        jp     nz, bootstrap_error
         ld      a, e
         cp      #11
-        jr      nc, bootstrap_error
+        jp     nc, bootstrap_error
 
 bootstrap_length_valid:
         ld      (bootstrap_total_length), de
@@ -114,16 +114,16 @@ bootstrap_length_valid:
         ; Manifest: "P125", three WORD lengths, then three WORD CRC-16/CCITT values.
         call    bootstrap_receive_data_byte
         cp      'P'
-        jr      nz, bootstrap_error
+        jp     nz, bootstrap_error
         call    bootstrap_receive_data_byte
         cp      '1'
-        jr      nz, bootstrap_error
+        jp     nz, bootstrap_error
         call    bootstrap_receive_data_byte
         cp      '2'
-        jr      nz, bootstrap_error
+        jp     nz, bootstrap_error
         call    bootstrap_receive_data_byte
         cp      '5'
-        jr      nz, bootstrap_error
+        jp     nz, bootstrap_error
 
         call    bootstrap_read_word
         ld      (bootstrap_resident_length), hl
@@ -143,22 +143,22 @@ bootstrap_length_valid:
         ld      a, h
         cp      #40
         jr      c, .resident_nonzero
-        jr      nz, bootstrap_error
+        jp     nz, bootstrap_error
         ld      a, l
         or      a
-        jr      nz, bootstrap_error
+        jp     nz, bootstrap_error
 .resident_nonzero:
         ld      a, h
         or      l
-        jr      z, bootstrap_error
+        jp     z, bootstrap_error
 
         ; Each overlay may be empty, but neither may exceed one 16-KiB page.
         ld      hl, (bootstrap_overlay68_length)
         call    bootstrap_validate_page_length
-        jr      c, bootstrap_error
+        jp     c, bootstrap_error
         ld      hl, (bootstrap_overlay69_length)
         call    bootstrap_validate_page_length
-        jr      c, bootstrap_error
+        jp     c, bootstrap_error
 
         ; The three section lengths must account for the exact package size.
         ld      hl, (bootstrap_resident_length)
@@ -171,7 +171,7 @@ bootstrap_length_valid:
         ld      de, (bootstrap_total_length)
         or      a
         sbc     hl, de
-        jr      nz, bootstrap_error
+        jp     nz, bootstrap_error
 
         ; Resident firmware -> WIN0 / physical page 0.
         ld      hl, 0
@@ -184,7 +184,7 @@ bootstrap_length_valid:
         ld      hl, 0
         ld      de, (bootstrap_resident_length)
         call    bootstrap_copy_segment
-        jr      c, bootstrap_error
+        jp     c, bootstrap_error
 
         ; Overlay 1 -> WIN2 / physical page 68.
         ld      a, #22                    ; ROR8(68)
@@ -199,7 +199,7 @@ bootstrap_length_valid:
         ld      hl, #8000
         ld      de, (bootstrap_overlay68_length)
         call    bootstrap_copy_segment
-        jr      c, bootstrap_error
+        jp     c, bootstrap_error
 
         ; Overlay 2 -> WIN2 / physical page 69.
         ld      a, #A2                    ; ROR8(69)
@@ -214,7 +214,7 @@ bootstrap_length_valid:
         ld      hl, #8000
         ld      de, (bootstrap_overlay69_length)
         call    bootstrap_copy_segment
-        jr      c, bootstrap_error
+        jp     c, bootstrap_error
 
         ; Resident firmware expects page 68 to be the default WIN2 mapping.
         ld      a, #22
