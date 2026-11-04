@@ -203,71 +203,160 @@ x86_io_write8:
         jp      x86_io_trace_write8
 
 ; Master 8259, single-controller PC/XT subset. IRQ0 is fully serviced.
+; Intel 8259A master PIC (single-controller PC/XT configuration).
+; Supports ICW1-4, OCW1-3, IRR/ISR reads, fixed/cyclic priority,
+; specific/nonspecific EOI, automatic EOI and priority rotation.
+; The external PC/XT wiring exposes IRQ0..IRQ7; this firmware currently
+; generates IRQ0 (PIT) and IRQ1 (keyboard), while all eight inputs are
+; independently latchable by the device models.
+
 x86_pic_write_command:
         ld      a, (x86_io_value)
         bit     4, a
-        jr      nz, .icw1
+        jp      nz, .icw1
         bit     3, a
-        jr      nz, .ocw3
-        ; OCW2: nonspecific EOI clears the highest-priority active IRQ;
-        ; specific EOI supports IRQ0 and IRQ1.
-        bit     5, a
-        ret     z
+        jp      nz, .ocw3
+        ; OCW2 command is bits 7..5.
+        ld      a, (x86_io_value)
+        and     #E0
+        cp      #20                     ; 001: nonspecific EOI
+        jr      z, .eoi_nonspecific
+        cp      #60                     ; 011: specific EOI
+        jr      z, .eoi_specific
+        cp      #A0                     ; 101: rotate on nonspecific EOI
+        jr      z, .eoi_rotate
+        cp      #C0                     ; 110: set lowest priority
+        jr      z, .set_priority
+        cp      #E0                     ; 111: rotate on specific EOI
+        jr      z, .eoi_rotate_specific
+        cp      #80                     ; 100: clear priority rotation
+        ret     nz
+        xor     a
+        ld      (x86_pic_priority_base), a
+        ret
+
+.eoi_nonspecific:
+        call    x86_pic_find_highest_isr
+        ret     c
+        call    x86_pic_clear_isr_a
+        ret
+.eoi_rotate:
+        call    x86_pic_find_highest_isr
+        ret     c
+        call    x86_pic_clear_isr_a
+        ld      a, (x86_pic_eoi_irq)
+        inc     a
+        and     7
+        ld      (x86_pic_priority_base), a
+        ret
+.eoi_specific:
         ld      a, (x86_io_value)
         and     7
-        jr      nz, .specific_eoi
-        ld      a, (x86_pic_in_service)
-        bit     0, a
-        jr      nz, .clear_irq0
-        bit     1, a
-        ret     z
-        res     1, a
-        ld      (x86_pic_in_service), a
+        call    x86_pic_clear_isr_a
         ret
-.specific_eoi:
-        cp      1
-        ret     nz
-        ld      a, (x86_pic_in_service)
-        res     1, a
-        ld      (x86_pic_in_service), a
+.eoi_rotate_specific:
+        ld      a, (x86_io_value)
+        and     7
+        call    x86_pic_clear_isr_a
+        ld      a, (x86_io_value)
+        and     7
+        inc     a
+        and     7
+        ld      (x86_pic_priority_base), a
         ret
-.clear_irq0:
-        res     0, a
-        ld      (x86_pic_in_service), a
+.set_priority:
+        ld      a, (x86_io_value)
+        and     7
+        inc     a
+        and     7
+        ld      (x86_pic_priority_base), a
         ret
+
 .ocw3:
         ld      a, (x86_io_value)
-        bit     1, a
+        bit     2, a                    ; poll command is not used by PC/XT BIOS
+        ret     nz
+        bit     1, a                    ; RR=1 selects the register
         ret     z
         ld      a, (x86_io_value)
-        and     1
+        and     1                       ; RIS: 0=IRR, 1=ISR
         ld      (x86_pic_read_isr), a
         ret
+
 .icw1:
         xor     a
         ld      (x86_pic_pending), a
         ld      (x86_pic_in_service), a
         ld      (x86_pic_mask), a
         ld      (x86_pic_read_isr), a
+        ld      (x86_pic_priority_base), a
+        ld      (x86_pic_auto_eoi), a
+        ld      (x86_pic_icw3), a
         ld      a, (x86_io_value)
         bit     0, a
-        jr      z, .no_icw4
+        jr      z, .icw1_no_icw4
         ld      a, 1
         ld      (x86_pic_need_icw4), a
-        jr      .single_mode
-.no_icw4:
+        jr      .icw1_single
+.icw1_no_icw4:
         xor     a
         ld      (x86_pic_need_icw4), a
-.single_mode:
+.icw1_single:
         ld      a, (x86_io_value)
-        bit     1, a
-        jr      nz, .skip_icw3
+        bit     1, a                    ; SNGL=1 skips ICW3
+        jr      nz, .icw1_skip_icw3
         ld      a, 2
         ld      (x86_pic_icw_step), a
         ret
-.skip_icw3:
+.icw1_skip_icw3:
         ld      a, 1
         ld      (x86_pic_icw_step), a
+        ret
+
+; Find highest-priority in-service IRQ using the current priority base.
+; OUT: A=IRQ, carry clear; carry set if ISR is empty.
+x86_pic_find_highest_isr:
+        ld      a, (x86_pic_priority_base)
+        ld      c, a
+        ld      b, 8
+.find_isr_loop:
+        ld      a, c
+        call    x86_pic_get_bit
+        ld      d, a
+        ld      a, (x86_pic_in_service)
+        and     d
+        jr      nz, .find_isr_found
+        inc     c
+        ld      a, c
+        and     7
+        ld      c, a
+        djnz    .find_isr_loop
+        scf
+        ret
+.find_isr_found:
+        ld      a, c
+        ld      (x86_pic_eoi_irq), a
+        or      a
+        ret
+
+; A=IRQ number -> A=single-bit mask.
+x86_pic_get_bit:
+        and     7
+        ld      e, a
+        ld      d, 0
+        ld      hl, x86_pic_bit_table
+        add     hl, de
+        ld      a, (hl)
+        ret
+
+; A=IRQ number. Clear the corresponding ISR bit.
+x86_pic_clear_isr_a:
+        call    x86_pic_get_bit
+        cpl
+        ld      b, a
+        ld      a, (x86_pic_in_service)
+        and     b
+        ld      (x86_pic_in_service), a
         ret
 
 x86_pic_write_data:
@@ -278,7 +367,7 @@ x86_pic_write_data:
         jr      z, .icw2
         cp      2
         jr      z, .icw3
-        ; ICW4
+        ; ICW4. SFNM and buffered mode are not wired on the XT master PIC.
         ld      a, (x86_io_value)
         bit     1, a
         jr      z, .no_auto_eoi
@@ -298,18 +387,24 @@ x86_pic_write_data:
         ld      (x86_pic_vector), a
         ld      a, (x86_pic_need_icw4)
         or      a
-        jr      z, .icw_done
-        ld      a, 3
+        jr      z, .icw2_done
+        ld      a, 4
+        ld      (x86_pic_icw_step), a
+        ret
+.icw2_done:
+        xor     a
         ld      (x86_pic_icw_step), a
         ret
 .icw3:
+        ld      a, (x86_io_value)
+        ld      (x86_pic_icw3), a
         ld      a, (x86_pic_need_icw4)
         or      a
-        jr      z, .icw_done
+        jr      z, .icw3_done
         ld      a, 3
         ld      (x86_pic_icw_step), a
         ret
-.icw_done:
+.icw3_done:
         xor     a
         ld      (x86_pic_icw_step), a
         ret
@@ -654,12 +749,16 @@ x86_io_guest_dx_unmapped_end:
 ; PC/XT device state (overlay bank 68).
 x86_pic_icw_step:       db 0
 x86_pic_need_icw4:      db 0
+x86_pic_icw3:           db 0
 x86_pic_vector:         db 8
 x86_pic_mask:           db #FF
 x86_pic_pending:        db 0
 x86_pic_in_service:     db 0
 x86_pic_auto_eoi:       db 0
 x86_pic_read_isr:       db 0
+x86_pic_priority_base:  db 0
+x86_pic_eoi_irq:        db 0
+x86_pic_bit_table:      db 1,2,4,8,16,32,64,128
 x86_io_irq_delivered:   db 0
 x86_pit_access:         db 3
 x86_pit_mode:           db 3
