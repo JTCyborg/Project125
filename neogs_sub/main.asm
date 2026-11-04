@@ -508,6 +508,9 @@ command_boot_bios:
         call    neo_debug_hex8
         ld      a, l
         call    neo_debug_hex8
+        ; Read and print the five bytes at the stopped CS:IP. This call was
+        ; missing from the previous diagnostic commit, so MEM= never appeared.
+        call    bios_stop_dump_bytes
         ld      a, 13
         call    neo_send_data_byte
         ld      a, 10
