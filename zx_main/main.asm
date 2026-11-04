@@ -75,7 +75,7 @@ Init_Z80_System:
         ; byte-count cross-check have both succeeded.
         ld      hl, trace_81_fw_upload_done
         call    p125_trace_port
-        jr      .firmware_ready
+        jp      .firmware_ready
 
 .firmware_upload_error:
         ld      hl, msg_fw_upload_error
