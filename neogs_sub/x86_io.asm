@@ -417,14 +417,16 @@ x86_pit_read_selected:
         dec     hl
         ; HL points at count word (+2).
 .read_byte:
+        ld      a, (x86_pit_access)
+        cp      2
+        jr      z, .read_msb_only
+        cp      1
+        jr      z, .read_lsb_only
         ld      a, (x86_pit_read_phase)
         or      a
         jr      nz, .read_high
         ld      a, (hl)
         ld      b, a
-        ld      a, (x86_pit_access)
-        cp      2
-        jr      z, .read_done
         ld      a, 1
         ld      (x86_pit_read_phase), a
         ld      a, b
@@ -435,10 +437,12 @@ x86_pit_read_selected:
         xor     a
         ld      (x86_pit_read_phase), a
         ret
-.read_done:
-        xor     a
-        ld      (x86_pit_read_phase), a
-        ld      a, b
+.read_lsb_only:
+        ld      a, (hl)
+        ret
+.read_msb_only:
+        inc     hl
+        ld      a, (hl)
         ret
 
 x86_pit_write_selected:
