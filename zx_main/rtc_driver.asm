@@ -118,52 +118,10 @@ rtc_trace_signature_ok:          DEFB "[RTC] SIGNATURE WRITE VERIFIED", 13, 10, 
 rtc_trace_signature_bad:         DEFB "[RTC] SIGNATURE WRITE MISMATCH", 13, 10, 0
 rtc_trace_line_end:              DEFB 13, 10, 0
 
-; =========================================================================
-; ПРОЦЕДУРА ЧТЕНИЯ ТЕКУЩЕГО ВРЕМЕНИ ИЗ ЧИПА RTC
-; =========================================================================
-READ_CURRENT_TIME::                     
-        PUSH    AF: PUSH BC: PUSH HL
-        LD      A, I
-        PUSH    AF
-        DI
-        CALL    open_cmos
-
-.wait_rtc
-        ; Контролируем флаг обновления UIP (битовая маска #80 в регистре #0A)
-        LD      A, #0A
-        CALL    read_byte_raw
-        RLA                             
-        JR      C, .wait_rtc            
-
-        ; Вычитываем BCD данные с атомарным сохранением в текстовые буферы
-        ; 1. Секунды (Ячейка #00)
-        LD      A, #00
-        CALL    read_byte_raw
-        CALL    split_bcd
-        LD      A, H: LD (txt_sec+0), A
-        LD      A, L: LD (txt_sec+1), A
-
-        ; 2. Минуты (Ячейка #02)
-        LD      A, #02
-        CALL    read_byte_raw
-        CALL    split_bcd
-        LD      A, H: LD (txt_min+0), A
-        LD      A, L: LD (txt_min+1), A
-
-        ; 3. Часы (Ячейка #04)
-        LD      A, #04
-        CALL    read_byte_raw
-        CALL    split_bcd
-        LD      A, H: LD (txt_hour+0), A
-        LD      A, L: LD (txt_hour+1), A
-
-        CALL    close_cmos
-        POP     AF
-        JP      PO, .interrupts_were_disabled
-        EI
-.interrupts_were_disabled:
-        POP     HL: POP BC: POP AF
-        RET
+; READ_CURRENT_TIME is implemented by atm_kbd_rtc.asm for Project125.
+; The K512VI1 CMOS initialization and low-level routines below remain
+; available for the Pentagon/Project124 hardware path, but are not called
+; by the ATM Turbo 2+ startup sequence.
 
 ; --- Атомарное низкоуровневое чтение байта из К512ВИ1 ---
 read_byte_raw
