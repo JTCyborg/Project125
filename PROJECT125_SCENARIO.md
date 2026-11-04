@@ -1361,3 +1361,15 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.91 RTC entry/exit stack snapshots | SOURCE COMMITTED | Captures stack pointer and return word before the first trace call and immediately before RET; build/runtime remain unverified. |
+
+
+## A1.92 — восстановление отсутствующих RTC diagnostic labels (2026-11-04)
+
+- [x] Исправлена ошибка сборки A1.91: процедуры обращались к диагностическим переменным, объявления которых отсутствовали в `rtc_driver.asm`.
+- [x] Добавлены все восемь требуемых символов: `rtc_saved_hl`, `rtc_saved_de`, `rtc_entry_sp`, `rtc_entry_ret`, `rtc_write_index`, `rtc_exit_sp`, `rtc_exit_ret` и `rtc_expected_addr`.
+- [x] Runtime banner обновлён до `[RTC DRIVER A1.92]`, чтобы отличать исправленный исходник от A1.91.
+- [ ] Сборка через `build_project125.bat`; проверить синтаксис и `ProgramEnd <= #A800`.
+- [ ] Runtime: получить полный лог A1.92 и проверить значения `ENTRY_SP`, `ENTRY_RET`, `EXIT_SP`, `EXIT_RET` и `EXPECTED`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.92 restore missing RTC diagnostic workspace | SOURCE COMMITTED | Added the missing RAM labels referenced by the A1.91 stack-snapshot instrumentation; build/runtime remain unverified. |
