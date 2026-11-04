@@ -29,6 +29,18 @@ x86_real_string_instruction:
         or      l
         jp      z, x86_real_next
 
+        ; REP can perform thousands of memory operations inside one opcode.
+        ; Report progress independently of the architectural instruction budget.
+        ld      a, l
+        or      a
+        jr      nz, .x86_string_no_progress
+        ld      a, h
+        and     #07
+        jr      nz, .x86_string_no_progress
+        ld      a, (x86_real_progress_enable)
+        or      a
+        call    nz, bios_progress_emit
+.x86_string_no_progress:
         ; F2/F3 test ZF only for CMPS and SCAS; other string forms repeat
         ; unconditionally. F3 continues while ZF=1, F2 while ZF=0.
         ld      a, (x86_string_opcode)
@@ -50,12 +62,9 @@ x86_real_string_instruction:
         bit     6, a
         jp      z, x86_real_next
 .repeat:
-        ld      hl, (x86_real_steps)
-        ld      a, h
-        or      l
-        jp      z, x86_real_budget_fail
-        dec     hl
-        ld      (x86_real_steps), hl
+        ; REP is one architectural instruction, not one instruction per
+        ; element. CX is the iteration bound; do not consume the CPU opcode
+        ; budget here. BIOS POST uses REP STOSW for many 16 KiB memory sweeps.
         call    x86_string_iteration
         ret     c
         jr      .after_iteration

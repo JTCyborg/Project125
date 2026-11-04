@@ -62,6 +62,11 @@ bios_rom_reset_state:
         ld      (x86_reg_cs), hl
         ld      hl, #0002
         ld      (x86_reg_flags), hl
+        ; The ATM host keyboard is not wired into the guest PC/XT yet.
+        ; Queue one deterministic Enter key so BIOS setup/menu waits can
+        ; complete instead of polling an absent 8255/keyboard controller.
+        ld      a, 1
+        ld      (bios_keyboard_pending), a
         xor     a
         ld      (x86_real_bounds_enable), a
         ld      (x86_exit_status), a
@@ -428,3 +433,71 @@ bios_work_value:      db 0
 
         ASSERT BIOS_IVT_BASE + BIOS_IVT_SIZE = BIOS_BDA_BASE
         ASSERT BIOS_BDA_BASE + BIOS_BDA_SIZE = BIOS_LOW_MEMORY_END
+
+
+; -------------------------------------------------------------------------
+; BIOS INT 16h keyboard services.
+; The physical Spectrum/ATM keyboard bridge is not implemented yet. During
+; BIOS startup, expose one synthetic Enter key (scan 1Ch, ASCII 0Dh).
+; AH=00/10 read it; AH=01/11 report it without consuming it. Once consumed,
+; a blocking read returns NUL rather than hanging the entire NeoGS command.
+; AH=02 returns zero keyboard shift flags.
+; -------------------------------------------------------------------------
+bios_int16_dispatch:
+        ld      a, (x86_reg_ax+1)
+        cp      #00
+        jr      z, bios_int16_read_key
+        cp      #10
+        jr      z, bios_int16_read_key
+        cp      #01
+        jr      z, bios_int16_check_key
+        cp      #11
+        jr      z, bios_int16_check_key
+        cp      #02
+        jr      z, bios_int16_shift_flags
+        ; Unsupported INT 16h functions return a neutral result.
+        xor     a
+        ld      (x86_reg_ax), a
+        or      a
+        ret
+
+bios_int16_read_key:
+        ld      a, (bios_keyboard_pending)
+        or      a
+        jr      z, bios_int16_no_key
+        xor     a
+        ld      (bios_keyboard_pending), a
+        ld      hl, #1C0D
+        ld      (x86_reg_ax), hl
+        or      a
+        ret
+bios_int16_no_key:
+        ld      hl, 0
+        ld      (x86_reg_ax), hl
+        or      a
+        ret
+
+bios_int16_check_key:
+        ld      a, (bios_keyboard_pending)
+        or      a
+        jr      z, bios_int16_no_pending
+        ld      hl, #1C0D
+        ld      (x86_reg_ax), hl
+        ld      hl, x86_reg_flags
+        res     6, (hl)              ; ZF=0: key available
+        or      a
+        ret
+bios_int16_no_pending:
+        ld      hl, x86_reg_flags
+        set     6, (hl)              ; ZF=1: no key available
+        or      a
+        ret
+
+bios_int16_shift_flags:
+        xor     a
+        ld      (x86_reg_ax), a      ; AL=0; preserve AH=02
+        or      a
+        ret
+
+bios_keyboard_pending:
+        db      0

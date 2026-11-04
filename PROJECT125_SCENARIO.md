@@ -1961,3 +1961,42 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Status:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
 
 | 2026-11-04 | A1.54 MOV immediate to r/m | SOURCE COMMITTED | Implement 8086 C6/C7 immediate MOV through existing ModR/M decoder. Build/runtime pending. |
+
+## A1.55 — 8086 CLI/STI (2026-11-04)
+
+- Runtime A47/A64 after A1.54: BIOS passes the previous C7 stop and advances to opcode FA at F000:E067.
+- FA is CLI (Clear Interrupt Flag). Added dispatch and execution for FA and its paired FB (STI). Both update only FLAGS.IF (bit 9); all other FLAGS bits are preserved.
+- No changes to BIOS image, TR-DOS 5.03 loading order, NeoGS transport, RTC, or UI.
+- [ ] Build: SjASMPlus firmware and host; check assembly and resident image size.
+- [ ] Runtime: confirm BIOS passes FA and capture the next stop/instruction.
+- **Status:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+## A1.56/A1.57 — broad 8086 base-instruction expansion (2026-11-04)
+
+Reference: Project124/PCem PCem/808x.c, PCem/x86.h (I_FLAG=0200h) and the XT BIOS opcode audit. Project124 remains read-only; only Project125 is modified.
+
+Added active decode/execute paths in neogs_sub/x86_real_mode.asm and x86_real_mov.asm for:
+- 06h/07h, 0Eh/0Fh, 16h/17h, 1Eh/1Fh: PUSH/POP ES, CS, SS, DS.
+- 91h..97h: XCHG AX,r16 (90h remains NOP).
+- 98h/99h: CBW/CWD.
+- 9Bh: WAIT as a no-op because no 8087 device is attached.
+- 9Dh: POPF through the SS:SP memory backend.
+- 9Eh/9Fh: SAHF/LAHF.
+- A0h..A3h: accumulator/moffs byte and word MOV, including segment overrides.
+- C2h/CAh: near/far RET with immediate stack adjustment.
+- CEh: INTO when OF is set; D7h: XLAT with DS/segment override.
+- F0h LOCK accepted as a single-CPU bus-lock hint; F5h CMC; F8h..FDh CLC/STC/CLI/STI/CLD/STD.
+- 8Dh: LEA r16,m using the existing effective-address decoder.
+
+Existing support retained: segment MOV 8C/8E, immediate MOV C6/C7, string/REP, ALU/logical ModR/M, near/far control transfer, interrupts, I/O, memory and video/RTC services.
+
+Implementation notes:
+- XCHG and flag operations do not alter unrelated FLAGS bits.
+- moffs accesses use the existing x86 physical-memory backend, not Z80 physical I/O.
+- RET immediate forms use the existing checked guest SS:SP stack path.
+- No changes to TR-DOS 5.03 loading order, NeoGS DMA/IPC, RTC, UI/video ABI or Project124.
+
+- [ ] SjASMPlus build and resident firmware-size ASSERT.
+- [ ] Regression tests for every newly routed instruction family.
+- [ ] BIOS runtime: capture next CS:IP after current FA stop.
+- **Status:** SOURCE COMMITTED AND POST-WRITE FETCH VERIFIED; BUILD/RUNTIME NOT VERIFIED.

@@ -17,6 +17,8 @@
 
         ORG     $0000
 
+NGS_FW_BANK68_MPAG        EQU #22
+NGS_FW_BANK69_MPAG        EQU #A2
 ROM_RETURN_TRAMPOLINE_ADDR EQU $4000
 X86_DMA_HEADER_ADDR        EQU $5000
 X86_RAM_RUN_ADDR           EQU $5002
@@ -42,6 +44,10 @@ start_neoprogram:
         ; At this point the bootstrap stack is still in WIN3 at #FFFE.
         ld      a, #03
         call    neo_set_pg1
+        ; WIN2 defaults to firmware overlay page 68. Bank gateways switch
+        ; temporarily to page 69 and always restore this resident default.
+        ld      a, NGS_FW_BANK68_MPAG
+        out     (MPAG), a
         ld      sp, Z80_STACK_TOP     ; WIN1/page #03; DMA begins at #5000
         ; Fill the stack region with a canary before the first normal CALL/PUSH.
         ; The lower 128 bytes remain a guard; normal stack use grows down from #4FFE.
@@ -253,7 +259,7 @@ execute_neogs_x86_real:
         ld      hl, X86_RAM_RUN_ADDR
         ld      de, #5002
         ld      bc, (X86_DMA_HEADER_ADDR)
-        call    x86_real_copy_image
+        call    bank_call_x86_real_copy_image
         jp      c, .real_copy_failed
 
         ; Reset the guest register file to a deterministic real-mode entry.
@@ -279,7 +285,7 @@ execute_neogs_x86_real:
 
         ld      a, 1
         ld      (x86_real_bounds_enable), a
-        call    x86_real_execute
+        call    bank_call_x86_real_execute
         push    af
         ld      hl, (x86_reg_ax)
         ld      (saved_x86_ax), hl
@@ -323,21 +329,21 @@ command_bios_post:
 
 ; Stage 2A: validate 8086 INT/IRET stack-frame semantics.
 command_int_test:
-        call    x86_int_self_test
+        call    bank_call_x86_int_self_test
         xor     a
         out     (CLRCBIT), a
         jp      main_loop
 
 ; Stage 2B: execute a guest INT handler through CS:IP and return with IRET.
 command_int_guest_test:
-        call    x86_real_mode_test
+        call    bank_call_x86_real_mode_test
         xor     a
         out     (CLRCBIT), a
         jp      main_loop
 
 ; Stage 3A: guest INT 10h video BIOS service test.
 command_bios_video_test:
-        call    bios_int10_video_test
+        call    bank_call_bios_int10_video_test
         xor     a
         out     (CLRCBIT), a
         jp      main_loop
@@ -476,7 +482,11 @@ command_boot_bios:
         ld      hl, bios_boot_message
         call    neo_debug_send_string
         call    bios_rom_reset_state
+        ld      a, 1
+        ld      (x86_real_progress_enable), a
         call    x86_real_execute
+        xor     a
+        ld      (x86_real_progress_enable), a
         ; Compact stop trace: the host drains DBIT and mirrors it to port EF.
         ld      hl, bios_stop_prefix
         call    neo_debug_send_string
@@ -502,6 +512,10 @@ command_boot_bios:
         call    neo_debug_hex8
         ld      a, l
         call    neo_debug_hex8
+        ; Read and print the five bytes at the stopped CS:IP. This call was
+        ; missing from the previous diagnostic commit, so MEM= never appeared.
+        call    bios_stop_dump_bytes
+        call    bios_stop_dump_state
         ld      a, 13
         call    neo_send_data_byte
         ld      a, 10
@@ -520,6 +534,93 @@ command_boot_bios:
         xor     a
         out     (CLRCBIT), a
         jp      main_loop
+
+; Dump five bytes at the stopped guest CS:IP through the same physical
+; memory mapper used by instruction fetch. This distinguishes a bad BIOS image
+; from a page-mapping/fetch problem without changing guest registers.
+bios_stop_dump_bytes:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, bios_stop_mem_prefix
+        call    neo_debug_send_string
+        ld      hl, (x86_reg_cs)
+        ld      (x86_mem_segment), hl
+        ld      hl, (x86_reg_ip)
+        ld      (x86_mem_offset_work), hl
+        ld      a, 5
+        ld      (bios_stop_dump_count), a
+.loop:
+        ld      hl, (x86_mem_offset_work)
+        call    x86_mem_calc_phys
+        call    x86_mem_read8
+        jr      c, .bad_byte
+        call    neo_debug_hex8
+        jr      .next
+.bad_byte:
+        ld      a, '?'
+        call    neo_send_data_byte
+        ld      a, '?'
+        call    neo_send_data_byte
+.next:
+        ld      a, ' '
+        call    neo_send_data_byte
+        ld      hl, (x86_mem_offset_work)
+        inc     hl
+        ld      (x86_mem_offset_work), hl
+        ld      a, (bios_stop_dump_count)
+        dec     a
+        ld      (bios_stop_dump_count), a
+        jr      nz, .loop
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+bios_stop_mem_prefix:
+        defb    " MEM=", 0
+bios_stop_dump_count:
+        db      0
+
+; Report resident CPU state after x86_real_execute returns with carry.
+; These fields distinguish an unsupported opcode from a memory/bounds exit.
+bios_stop_dump_state:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, bios_stop_state_prefix
+        call    neo_debug_send_string
+        ld      a, (x86_exit_status)
+        call    neo_debug_hex8
+        ld      hl, bios_stop_bx_label
+        call    neo_debug_send_string
+        ld      hl, (x86_reg_bx)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      hl, bios_stop_flags_label
+        call    neo_debug_send_string
+        ld      hl, (x86_reg_flags)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+bios_stop_state_prefix:
+        defb    " STATUS=", 0
+bios_stop_bx_label:
+        defb    " BX=", 0
+bios_stop_flags_label:
+        defb    " FLAGS=", 0
 
 ; Dump physical page-75 bytes at image offset 1FF0 (guest FFFF0..FFFF4).
 ; This is deliberately performed after DMA is disabled and before validation.
@@ -636,6 +737,58 @@ neo_debug_send_string:
         call    neo_send_data_byte
         jr      neo_debug_send_string
 
+; BIOS execution heartbeat, called from the page-68 interpreter and REP engine.
+; Preserves all guest-visible Z80 working registers; transport errors are
+; intentionally ignored so diagnostics can never change guest execution.
+; One record every 2048 instructions or REP elements:
+;   [BIOS] STEP CS:IP CX=hhhh
+bios_progress_emit:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, bios_progress_prefix
+        call    neo_debug_send_string
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, ':'
+        call    neo_send_data_byte
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      hl, (x86_reg_cx)
+        ld      a, ' '
+        call    neo_send_data_byte
+        ld      a, 'C'
+        call    neo_send_data_byte
+        ld      a, 'X'
+        call    neo_send_data_byte
+        ld      a, '='
+        call    neo_send_data_byte
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, 13
+        call    neo_send_data_byte
+        ld      a, 10
+        call    neo_send_data_byte
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+bios_progress_prefix:
+        defb    "[BIOS] STEP ", 0
+x86_real_progress_enable:
+        db      0
+
 ; IN: A = byte. Sends two uppercase hexadecimal digits.
 neo_debug_hex8:
         push    af
@@ -728,8 +881,40 @@ rom_return_trampoline_code:
         jp      0
 rom_return_trampoline_end:
 
+        ; Fixed resident services and shared architectural state.
         INCLUDE "x86_memory.asm"
         INCLUDE "bios/bios_core.asm"
+        INCLUDE "../shared/video_crc16.asm"
+        INCLUDE "bank_gateways.asm"
+
+; 8086 register file is resident so BIOS and banked CPU code share one state.
+x86_reg_ax:    dw 0
+x86_reg_cx:    dw 0
+x86_reg_dx:    dw 0
+x86_reg_bx:    dw 0
+x86_reg_sp:    dw 0
+x86_reg_bp:    dw 0
+x86_reg_si:    dw 0
+x86_reg_di:    dw 0
+x86_reg_es:    dw 0
+x86_reg_cs:    dw 0
+x86_reg_ss:    dw 0
+x86_reg_ds:    dw 0
+x86_reg_ip:    dw 0
+x86_reg_flags: dw 0
+
+; Shared bounds/diagnostic state accessed by resident BIOS and overlay CPU.
+x86_real_unsupported_opcode: db 0
+x86_real_bounds_enable:      db 0
+x86_real_task_end:           dw 0
+
+neogs_resident_end:
+
+; Overlay bank 68: complete 8086 interpreter and instruction implementation.
+; All intra-engine calls remain direct because this complete group is resident
+; in one physical bank while executing. WIN2 is mapped at logical $8000.
+        ORG     $8000
+neogs_overlay68_start:
         INCLUDE "x86_modrm.asm"
         INCLUDE "x86_interrupt.asm"
         INCLUDE "x86_real_mode.asm"
@@ -738,8 +923,14 @@ rom_return_trampoline_end:
         INCLUDE "x86_real_mov.asm"
         INCLUDE "x86_io.asm"
         INCLUDE "x86_strings.asm"
+neogs_overlay68_end:
+
+; Overlay bank 69: BIOS INT 10h service implementation and its test harness.
+; Cross-bank calls go through resident gateways in bank_gateways.asm.
+        ORG     $8000
+neogs_overlay69_start:
         INCLUDE "bios/bios_video.asm"
-        INCLUDE "../shared/video_crc16.asm"
+neogs_overlay69_end:
 
 ; WIN1 layout: trampoline $4000-$400F, guard $4800-$487F, stack grows
 ; down from $4FFE, and the DMA frame starts at $5000.
@@ -751,4 +942,4 @@ rom_return_trampoline_end:
         ASSERT neogs_dma_handler_end <= #5000
         ASSERT X86_RAM_RUN_ADDR + NGS_X86_MAX_CODE_SIZE = #8000
 
-neogs_firmware_end:
+; Firmware sections are exported independently by build_firmware.asm.

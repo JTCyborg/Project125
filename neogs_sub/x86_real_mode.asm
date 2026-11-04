@@ -1,13 +1,14 @@
 ; =========================================================================
-; PROJECT 124 — 8086 real-mode fetch/execute core, Stage 2B
+; PROJECT 125 — 8086 real-mode fetch/execute core.
 ;
-; This bounded executable slice runs guest instructions through CS:IP and
-; the physical-memory backend. Supported: IN/OUT byte/word, NOP, register-direct 8/16-bit
-; arithmetic and logical subsets, PUSHF, INC/DEC r16, PUSH/POP r16,
-; near/far CALL and RET, far JMP, MOV r8/r16,imm, MOV r/m8/r/m16 register-memory forms,
-; short Jcc, LOOP/JCXZ, JMP rel8, HLT, INT imm8, INT3, IRET.
-; Arithmetic and 8/16-bit logical memory ModR/M operands support segment overrides.
-; It is intentionally not a general 8086 emulator.
+; Bounded guest execution through CS:IP and the NeoGS physical-memory backend.
+; Implemented groups include: register/immediate and ModR/M MOV, segment MOV,
+; moffs, LEA, XCHG, byte/word ALU and logic, INC/DEC, stack and segment-stack,
+; PUSHF/POPF, LAHF/SAHF, CBW/CWD, flag control, near/far CALL/RET/JMP,
+; short Jcc/LOOP, software interrupts/IRET/INTO, string operations with REP,
+; byte/word IN/OUT, XLAT, WAIT and LOCK-prefix handling.
+; Unsupported instructions still stop with the opcode and CS:IP for diagnosis;
+; this is an expanding 8086-compatible core, not yet a complete PC/XT machine.
 ;
 ; x86_real_mode_test installs a guest program at 0000:5002 and an interrupt
 ; handler at 0000:5100. The guest loads all eight general registers with
@@ -299,10 +300,28 @@ x86_real_dispatch:
         ld      hl, (x86_real_steps)
         ld      a, h
         or      l
-        jp      z, x86_real_budget_fail
+        jp      z, x86_real_budget_exhausted
         dec     hl
         ld      (x86_real_steps), hl
 
+        ; Live BIOS progress: emit CS:IP/CX every 2048 guest instructions.
+        ; The host drains DBIT concurrently while CMD_BOOT_BIOS holds CBIT.
+        ld      a, l
+        or      a
+        jr      nz, x86_real_dispatch_no_progress
+        ld      a, h
+        and     #07
+        jr      nz, x86_real_dispatch_no_progress
+        ld      a, (x86_real_progress_enable)
+        or      a
+        call    nz, bios_progress_emit
+x86_real_dispatch_no_progress:
+        call    x86_io_tick
+        ret     c
+        ; The IRQ-delivery marker is only consumed by the HLT wait loop.
+        ; Clear it here after ordinary instruction-boundary polling.
+        xor     a
+        ld      (x86_io_irq_delivered), a
         call    x86_real_fetch8
         ret     c
 
@@ -316,13 +335,105 @@ x86_real_dispatch:
         jp      z, x86_real_prefix_ss
         cp      #3E
         jp      z, x86_real_prefix_ds
+        cp      #F0
+        jp      z, x86_real_prefix_lock
         cp      #F2
         jp      z, x86_real_prefix_repne
         cp      #F3
         jp      z, x86_real_prefix_repe
 
+        cp      #06
+        jp      z, x86_real_push_segment
+        cp      #07
+        jp      z, x86_real_pop_segment
+        cp      #0E
+        jp      z, x86_real_push_segment
+        cp      #0F
+        jp      z, x86_real_pop_segment
+        cp      #16
+        jp      z, x86_real_push_segment
+        cp      #17
+        jp      z, x86_real_pop_segment
+        cp      #1E
+        jp      z, x86_real_push_segment
+        cp      #1F
+        jp      z, x86_real_pop_segment
         cp      #90
         jp      z, x86_real_nop
+        cp      #91
+        jp      c, .not_xchg_ax
+        cp      #98
+        jp      c, x86_real_xchg_ax
+.not_xchg_ax:
+        cp      #98
+        jp      z, x86_real_cbw
+        cp      #99
+        jp      z, x86_real_cwd
+        cp      #9B
+        jp      z, x86_real_wait
+        cp      #9D
+        jp      z, x86_real_popf
+        cp      #9E
+        jp      z, x86_real_sahf
+        cp      #9F
+        jp      z, x86_real_lahf
+        cp      #CE
+        jp      z, x86_real_into
+        cp      #D7
+        jp      z, x86_real_xlat
+        cp      #A0
+        jp      c, .not_moffs
+        cp      #A4
+        jp      c, x86_real_moffs
+.not_moffs:
+        cp      #A8
+        jp      z, x86_real_test_al_immediate
+        cp      #27
+        jp      z, x86_real_daa
+        cp      #D0
+        jp      z, x86_real_shift_byte_one
+        cp      #D1
+        jp      z, x86_real_shift_word_one
+        cp      #D2
+        jp      z, x86_real_shift_byte_cl
+        cp      #D3
+        jp      z, x86_real_shift_word_cl
+        cp      #F6
+        jp      z, x86_real_group_f6
+        cp      #FE
+        jp      z, x86_real_incdec_r8
+        cp      #80
+        jp      z, x86_real_group1_byte_immediate
+        cp      #82
+        jp      z, x86_real_group1_byte_immediate
+        cp      #81
+        jp      z, x86_real_group1_word_immediate
+        cp      #83
+        jp      z, x86_real_group1_word_immediate
+        cp      #F7
+        jp      z, x86_real_group_f7
+        cp      #0C
+        jp      z, x86_real_logic8_accumulator_immediate
+        cp      #24
+        jp      z, x86_real_logic8_accumulator_immediate
+        cp      #34
+        jp      z, x86_real_logic8_accumulator_immediate
+        cp      #35
+        jp      z, x86_real_logic16_accumulator_immediate
+        cp      #14
+        jp      z, x86_real_alu8_accumulator_immediate
+        cp      #04
+        jp      z, x86_real_alu8_accumulator_immediate
+        cp      #05
+        jp      z, x86_real_alu_accumulator_immediate
+        cp      #2C
+        jp      z, x86_real_alu8_accumulator_immediate
+        cp      #3C
+        jp      z, x86_real_alu8_accumulator_immediate
+        cp      #2D
+        jp      z, x86_real_alu_accumulator_immediate
+        cp      #3D
+        jp      z, x86_real_alu_accumulator_immediate
         cp      #00
         jp      z, x86_real_alu8_modrm
         cp      #02
@@ -394,6 +505,8 @@ x86_real_dispatch:
         ; Segment-register MOV forms are separate from 88h..8Bh.
         cp      #8C
         jp      z, x86_real_mov_segment
+        cp      #8D
+        jp      z, x86_real_lea
         cp      #8E
         jp      z, x86_real_mov_segment
         cp      #C6
@@ -500,6 +613,24 @@ x86_real_dispatch:
         jp      z, x86_real_int3
         cp      #CF
         jp      z, x86_real_iret
+        cp      #F5
+        jp      z, x86_real_cmc
+        cp      #F8
+        jp      z, x86_real_clc
+        cp      #F9
+        jp      z, x86_real_stc
+        cp      #FA
+        jp      z, x86_real_cli
+        cp      #FB
+        jp      z, x86_real_sti
+        cp      #FC
+        jp      z, x86_real_cld
+        cp      #FD
+        jp      z, x86_real_std
+        cp      #C2
+        jp      z, x86_real_ret_near_imm
+        cp      #CA
+        jp      z, x86_real_ret_far_imm
 
         ld      (x86_real_unsupported_opcode), a
         ld      a, 2
@@ -526,6 +657,10 @@ x86_real_prefix_set:
         jp      x86_real_dispatch
 
 ; F2=REPNE, F3=REPE/REP. The string opcode decides whether ZF is tested.
+; LOCK is accepted as a bus-lock hint; the guest has no competing bus master.
+x86_real_prefix_lock:
+        jp      x86_real_dispatch
+
 x86_real_prefix_repne:
         ld      a, 2
         jr      x86_real_prefix_rep_set
@@ -544,6 +679,42 @@ x86_real_nop:
 ; the original 8086 behavior. POP SP increments internally, then replaces
 ; SP with the popped word. Neither instruction modifies guest FLAGS.
 ; -------------------------------------------------------------------------
+
+; 06/0E/16/1E PUSH ES/CS/SS/DS and 07/0F/17/1F POP equivalents.
+; Segment registers are contiguous in the architectural register file.
+x86_real_push_segment:
+        ld      (x86_real_opcode), a
+        and     #18
+        srl     a
+        srl     a
+        ld      e, a
+        ld      d, 0
+        ld      hl, x86_reg_es
+        add     hl, de
+        ld      e, (hl)
+        inc     hl
+        ld      d, (hl)
+        call    x86_real_stack_push
+        ret     c
+        jp      x86_real_next
+
+x86_real_pop_segment:
+        ld      (x86_real_opcode), a
+        call    x86_real_stack_pop
+        ret     c
+        ld      a, (x86_real_opcode)
+        and     #18
+        srl     a
+        srl     a
+        ld      e, a
+        ld      d, 0
+        ld      hl, x86_reg_es
+        add     hl, de
+        ld      de, (x86_real_stack_value)
+        ld      (hl), e
+        inc     hl
+        ld      (hl), d
+        jp      x86_real_next
 
 x86_real_push_r16:
         ld      (x86_real_opcode), a
@@ -761,6 +932,21 @@ x86_real_loop_short:
         cp      #E3
         jr      z, x86_real_jcxz
 
+        ; Fast-forward the BIOS' pure LOOP $-2 delay idiom (E2 FE).
+        ; It has no memory/I/O side effects: regardless of the initial CX,
+        ; 1..65536 iterations leave CX=0, IP at the fall-through address,
+        ; and FLAGS unchanged. The interpreter has no cycle-accurate timing,
+        ; so executing every delay iteration only burns the global step budget.
+        cp      #E2
+        jr      nz, .loop_normal
+        ld      a, (x86_real_imm_byte)
+        cp      #FE
+        jr      nz, .loop_normal
+        ld      hl, 0
+        ld      (x86_reg_cx), hl
+        jp      x86_real_next
+
+.loop_normal:
         ; LOOP family decrements CX without changing any guest FLAGS bit.
         ld      hl, (x86_reg_cx)
         dec     hl
@@ -1185,8 +1371,22 @@ x86_real_int_imm8:
         ret     c
         ld      a, (x86_real_int_vector)
         cp      #10
-        jp      nz, x86_real_next
+        jp      z, x86_real_int10_service
+        cp      #16
+        jp      z, x86_real_int16_service
+        jp      x86_real_next
+
+x86_real_int10_service:
         call    bios_int10_dispatch
+        ret     c
+        call    x86_iret_return
+        ret     c
+        jp      x86_real_next
+
+; BIOS keyboard INT 16h is trapped in the same way as INT 10h. The service
+; updates the guest register/FLAGS frame, then the normal IRET restores CS:IP.
+x86_real_int16_service:
+        call    bios_int16_dispatch
         ret     c
         call    x86_iret_return
         ret     c
@@ -1203,11 +1403,259 @@ x86_real_iret:
         ret     c
         jp      x86_real_next
 
-x86_real_hlt:
-        xor     a
-        ld      (x86_exit_status), a
+; FA CLI and FB STI modify only IF (FLAGS bit 9). Other status,
+; control and reserved bits are preserved exactly.
+x86_real_cli:
+        ld      hl, x86_reg_flags+1
+        res     1, (hl)
+        jp      x86_real_next
+
+x86_real_sti:
+        ld      hl, x86_reg_flags+1
+        set     1, (hl)
+        jp      x86_real_next
+
+; 8086 status/control flag instructions. Only the documented flag bit changes.
+x86_real_cmc:
+        ld      hl, x86_reg_flags
+        ld      a, (hl)
+        xor     1
+        ld      (hl), a
+        jp      x86_real_next
+
+x86_real_clc:
+        ld      hl, x86_reg_flags
+        res     0, (hl)
+        jp      x86_real_next
+
+x86_real_stc:
+        ld      hl, x86_reg_flags
+        set     0, (hl)
+        jp      x86_real_next
+
+x86_real_cld:
+        ld      hl, x86_reg_flags+1
+        res     2, (hl)
+        jp      x86_real_next
+
+x86_real_std:
+        ld      hl, x86_reg_flags+1
+        set     2, (hl)
+        jp      x86_real_next
+
+; 91-97 XCHG AX,r16. 90 is handled as NOP above.
+x86_real_xchg_ax:
+        sub     #90
+        add     a, a
+        ld      e, a
+        ld      d, 0
+        ld      hl, x86_reg_ax
+        add     hl, de
+        ld      a, (x86_reg_ax)
+        ld      b, a
+        ld      a, (hl)
+        ld      (x86_reg_ax), a
+        ld      a, b
+        ld      (hl), a
+        inc     hl
+        ld      a, (x86_reg_ax+1)
+        ld      b, a
+        ld      a, (hl)
+        ld      (x86_reg_ax+1), a
+        ld      a, b
+        ld      (hl), a
+        jp      x86_real_next
+
+; CE INTO invokes vector 4 only when OF is set.
+x86_real_into:
+        ld      a, (x86_reg_flags+1)
+        bit     3, a
+        jp      z, x86_real_next
+        ld      a, 4
+        call    x86_int_enter
+        ret     c
+        jp      x86_real_next
+
+; D7 XLAT: AL <- byte at segment:[BX+AL].
+x86_real_xlat:
+        ld      hl, (x86_reg_bx)
+        ld      a, (x86_reg_ax)
+        ld      e, a
+        ld      d, 0
+        add     hl, de
+        ld      (x86_mem_offset), hl
+        ld      (x86_mem_offset_work), hl
+        ld      hl, (x86_reg_ds)
+        ld      a, (x86_real_seg_override_active)
         or      a
-        ret
+        jr      z, .xlat_segment_ready
+        ld      hl, (x86_real_seg_override)
+.xlat_segment_ready:
+        ld      (x86_mem_segment), hl
+        call    x86_mem_calc_phys
+        call    x86_mem_read8
+        ret     c
+        ld      (x86_reg_ax), a
+        jp      x86_real_next
+
+; 98 CBW and 99 CWD.
+x86_real_cbw:
+        ld      a, (x86_reg_ax)
+        rlca
+        ld      a, 0
+        jr      nc, .cbw_store
+        dec     a
+.cbw_store:
+        ld      (x86_reg_ax+1), a
+        jp      x86_real_next
+
+x86_real_cwd:
+        ld      a, (x86_reg_ax+1)
+        rlca
+        ld      hl, 0
+        jr      nc, .cwd_store
+        dec     hl
+.cwd_store:
+        ld      (x86_reg_dx), hl
+        jp      x86_real_next
+
+; WAIT has no external 8087 device attached; it is a timing-neutral no-op.
+x86_real_wait:
+        jp      x86_real_next
+
+; 9D POPF uses the same SS:SP word stack path as RET/IRET.
+x86_real_popf:
+        call    x86_real_stack_pop
+        ret     c
+        ld      hl, (x86_real_stack_value)
+        ld      (x86_reg_flags), hl
+        jp      x86_real_next
+
+; 9E SAHF: AH -> SF,ZF,AF,PF,CF; reserved bits remain unchanged.
+x86_real_sahf:
+        ld      a, (x86_reg_flags)
+        and     #2A
+        ld      b, a
+        ld      a, (x86_reg_ax+1)
+        and     #D5
+        or      b
+        or      #02
+        ld      (x86_reg_flags), a
+        jp      x86_real_next
+
+; 9F LAHF: AH <- SF,ZF,AF,PF,CF with bit 1 set.
+x86_real_lahf:
+        ld      a, (x86_reg_flags)
+        and     #D5
+        or      #02
+        ld      (x86_reg_ax+1), a
+        jp      x86_real_next
+
+; A0-A3 MOV accumulator <-> DS:[moffs16], with segment override support.
+x86_real_moffs:
+        ld      (x86_real_opcode), a
+        call    x86_real_mov_fetch16
+        ret     c
+        ld      (x86_mem_offset), hl
+        ld      (x86_mem_offset_work), hl
+        ld      hl, (x86_reg_ds)
+        ld      a, (x86_real_seg_override_active)
+        or      a
+        jr      z, .moffs_segment_ready
+        ld      hl, (x86_real_seg_override)
+.moffs_segment_ready:
+        ld      (x86_mem_segment), hl
+        ld      a, (x86_real_opcode)
+        cp      #A0
+        jr      z, .moffs_read_byte
+        cp      #A1
+        jr      z, .moffs_read_word
+        cp      #A2
+        jr      z, .moffs_write_byte
+        ; A3 MOV moffs16,AX
+        ld      hl, (x86_reg_ax)
+        ld      (x86_mem_word_value), hl
+        call    x86_mem_write16
+        ret     c
+        jp      x86_real_next
+.moffs_read_byte:
+        call    x86_mem_calc_phys
+        call    x86_mem_read8
+        ret     c
+        ld      (x86_reg_ax), a
+        jp      x86_real_next
+.moffs_read_word:
+        call    x86_mem_read16
+        ret     c
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+.moffs_write_byte:
+        call    x86_mem_calc_phys
+        ld      a, (x86_reg_ax)
+        ld      (x86_mem_value), a
+        call    x86_mem_write8
+        ret     c
+        jp      x86_real_next
+
+; C2 RET near,imm16 and CA RETF,imm16.
+x86_real_ret_near_imm:
+        call    x86_real_mov_fetch16
+        ret     c
+        ld      (x86_real_imm_word), hl
+        call    x86_real_stack_pop
+        ret     c
+        ld      hl, (x86_real_stack_value)
+        ld      (x86_reg_ip), hl
+        ld      hl, (x86_reg_sp)
+        ld      de, (x86_real_imm_word)
+        add     hl, de
+        ld      (x86_reg_sp), hl
+        jp      x86_real_next
+
+x86_real_ret_far_imm:
+        call    x86_real_mov_fetch16
+        ret     c
+        ld      (x86_real_imm_word), hl
+        call    x86_real_stack_pop
+        ret     c
+        ld      hl, (x86_real_stack_value)
+        ld      (x86_real_far_ip), hl
+        call    x86_real_stack_pop
+        ret     c
+        ld      hl, (x86_real_stack_value)
+        ld      (x86_reg_cs), hl
+        ld      hl, (x86_real_far_ip)
+        ld      (x86_reg_ip), hl
+        ld      hl, (x86_reg_sp)
+        ld      de, (x86_real_imm_word)
+        add     hl, de
+        ld      (x86_reg_sp), hl
+        jp      x86_real_next
+
+x86_real_hlt:
+        ; HLT suspends guest execution until a maskable interrupt is accepted.
+        ; The deterministic PIT clock continues while halted.
+.hlt_wait:
+        call    x86_io_tick
+        ret     c
+        ld      a, (x86_io_irq_delivered)
+        or      a
+        jr      z, .hlt_wait
+        xor     a
+        ld      (x86_io_irq_delivered), a
+        jp      x86_real_dispatch
+
+x86_real_budget_exhausted:
+        ; BIOS POST can legitimately execute more than 65535 architectural
+        ; instructions. Keep the bounded default for normal guest jobs, but
+        ; replenish the 16-bit quantum while the host BIOS runner is active.
+        ; This avoids counter wrap and keeps progress/IPC servicing alive.
+        ld      a, (x86_real_progress_enable)
+        or      a
+        jp      z, x86_real_budget_fail
+        ld      hl, X86_REAL_STEP_LIMIT
+        ld      (x86_real_steps), hl
+        jp      x86_real_dispatch
 
 x86_real_budget_fail:
         ld      a, 1
@@ -1271,6 +1719,7 @@ x86_real_test_fail:
         ret
 
 x86_real_steps:       dw 0
+x86_real_imm_word:   dw 0
 x86_real_stack_value: dw 0
 x86_real_old_sp:      dw 0
 x86_real_copy_source: dw 0
@@ -1280,7 +1729,6 @@ x86_real_imm_low:    db 0
 x86_real_imm_high:   db 0
 x86_real_int_vector: db 0
 x86_real_opcode: db 0
-x86_real_unsupported_opcode: db 0
 x86_real_imm_byte: db 0
 x86_real_incdec_mode: db 0
 x86_real_old_low: db 0
@@ -1288,8 +1736,6 @@ x86_real_old_high: db 0
 x86_real_new_flags: dw 0
 x86_real_reg_ptr: dw 0
 x86_real_result: dw 0
-x86_real_bounds_enable: db 0
-x86_real_task_end: dw 0
 x86_real_seg_override_active: db 0
 x86_real_seg_override: dw 0
 x86_real_rep_mode: db 0
@@ -1415,3 +1861,951 @@ x86_guest_handler_image:
         db #B8,#34,#12,#CF
 x86_guest_handler_image_end:
 
+
+
+; D0 C8: SHR AL,1. BIOS interface-card scan uses this exact form.
+; Other D0 ModR/M encodings remain explicit unsupported-opcode stops.
+x86_real_shift_byte_one:
+        call    x86_real_fetch8
+        ret     c
+        cp      #C8
+        jp      nz, x86_real_shift_byte_one_unsupported
+
+        ld      a, (x86_reg_ax)
+        ld      (x86_shift_original), a
+        srl     a
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+
+        ; CF receives original AL bit 0.
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shr1_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.shr1_parity:
+        ld      a, (x86_shift_result)
+        and     a
+        jp      pe, .shr1_set_pf
+        jr      .shr1_zero
+.shr1_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.shr1_zero:
+        ld      a, (x86_shift_result)
+        or      a
+        jr      nz, .shr1_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.shr1_sign:
+        ld      a, (x86_shift_result)
+        bit     7, a
+        jr      z, .shr1_overflow
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.shr1_overflow:
+        ; For SHR count=1, OF is the original most significant bit.
+        ld      a, (x86_shift_original)
+        bit     7, a
+        jr      z, .shr1_merge
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+.shr1_merge:
+        ; Clear CF/PF/ZF/SF/OF; preserve AF and non-status FLAGS.
+        ld      hl, (x86_reg_flags)
+        ld      de, #F73A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+
+        ; Replace AL while preserving AH.
+        ld      a, (x86_reg_ax+1)
+        ld      h, a
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
+x86_real_shift_byte_one_unsupported:
+        ld      a, #D0
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
+; D1 E0: SHL AX,1. First BIOS shift form observed at F000:E083.
+; Other D1 ModR/M encodings remain explicit unsupported-opcode stops.
+x86_real_shift_word_one:
+        call    x86_real_fetch8
+        ret     c
+        cp      #E0
+        jp      nz, x86_real_shift_unsupported
+
+        ld      hl, (x86_reg_ax)
+        add     hl, hl
+        ld      (x86_shift_result), hl
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+
+        ; CF = old bit 15.
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shl_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+
+.shl_parity:
+        ; PF is even parity of the low result byte.
+        ld      hl, (x86_shift_result)
+        ld      a, l
+        and     a
+        jp      pe, .shl_set_pf
+        jr      .shl_zero
+.shl_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+
+.shl_zero:
+        ld      hl, (x86_shift_result)
+        ld      a, h
+        or      l
+        jr      nz, .shl_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+
+.shl_sign:
+        ld      hl, (x86_shift_result)
+        bit     7, h
+        jr      z, .shl_overflow
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+
+.shl_overflow:
+        ; For SHL count=1, OF = result bit 15 XOR CF.
+        ld      hl, (x86_shift_result)
+        ld      a, h
+        and     #80
+        ld      b, a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shl_overflow_cf_zero
+        ld      a, b
+        xor     #80
+        jr      .shl_overflow_test
+.shl_overflow_cf_zero:
+        ld      a, b
+.shl_overflow_test:
+        or      a
+        jr      z, .shl_merge
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+
+.shl_merge:
+        ; Preserve all FLAGS except CF, PF, ZF, SF and OF. AF is undefined
+        ; by 8086 SHL and is intentionally left unchanged.
+        ld      hl, (x86_reg_flags)
+        ld      de, #F73A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        ld      hl, (x86_shift_result)
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
+; D2 E0: SHL AL,CL. The 8086 uses the full CL count.
+; Count zero leaves AL and FLAGS unchanged. Only register-direct AL is
+; currently required by the BIOS path; other ModR/M forms stop explicitly.
+x86_real_shift_byte_cl:
+        call    x86_real_fetch8
+        ret     c
+        cp      #C8
+        jp      z, x86_real_shift_byte_ror_cl
+        cp      #E0
+        jp      nz, x86_real_shift_byte_cl_unsupported
+        ld      a, (x86_reg_cx)
+        or      a
+        jp      z, x86_real_next
+        ld      (x86_shift_count), a
+        ld      (x86_shift_original_count), a
+        ld      a, (x86_reg_ax)
+        ld      (x86_shift_original), a
+        ld      (x86_shift_result), a
+        xor     a
+        ld      (x86_shift_result+1), a
+.shift_byte_loop:
+        ld      a, (x86_shift_result)
+        ld      l, a
+        sla     l
+        ld      a, l
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+        ld      a, (x86_shift_count)
+        dec     a
+        ld      (x86_shift_count), a
+        jr      nz, .shift_byte_loop
+
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shlb_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.shlb_parity:
+        ld      a, (x86_shift_result)
+        and     a
+        jp      pe, .shlb_set_pf
+        jr      .shlb_zero
+.shlb_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.shlb_zero:
+        ld      a, (x86_shift_result)
+        or      a
+        jr      nz, .shlb_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.shlb_sign:
+        ld      a, (x86_shift_result)
+        bit     7, a
+        jr      z, .shlb_overflow
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.shlb_overflow:
+        ld      a, (x86_shift_original_count)
+        cp      1
+        jr      nz, .shlb_merge_preserve_of
+        ld      a, (x86_shift_result)
+        and     #80
+        ld      b, a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shlb_overflow_cf_zero
+        ld      a, b
+        xor     #80
+        jr      .shlb_overflow_test
+.shlb_overflow_cf_zero:
+        ld      a, b
+.shlb_overflow_test:
+        or      a
+        jr      z, .shlb_merge
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+.shlb_merge:
+        ld      de, #F73A
+        jr      .shlb_merge_apply
+.shlb_merge_preserve_of:
+        ld      de, #FF3A
+.shlb_merge_apply:
+        ld      hl, (x86_reg_flags)
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        ld      a, (x86_reg_ax+1)
+        ld      h, a
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
+; D2 C8: ROR AL,CL. The 8086 applies the complete CL count.
+; ROR changes CF and (for count=1) OF only; PF/ZF/SF/AF are preserved.
+; A zero count leaves both AL and FLAGS unchanged.
+x86_real_shift_byte_ror_cl:
+        ld      a, (x86_reg_cx)
+        or      a
+        jp      z, x86_real_next
+        ld      (x86_shift_count), a
+        ld      (x86_shift_original_count), a
+        ld      a, (x86_reg_ax)
+        ld      (x86_shift_result), a
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+.ror_byte_loop:
+        ld      a, (x86_shift_result)
+        ld      l, a
+        srl     l
+        ld      a, l
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .ror_no_wrap
+        ld      a, (x86_shift_result)
+        or      #80
+        ld      (x86_shift_result), a
+.ror_no_wrap:
+        ld      a, (x86_shift_count)
+        dec     a
+        ld      (x86_shift_count), a
+        jr      nz, .ror_byte_loop
+
+        ; CF is the final bit rotated out. OF is defined for count=1:
+        ; OF = result bit 7 XOR result bit 6. For larger counts preserve OF.
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .ror_cf_clear
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.ror_cf_clear:
+        ld      a, (x86_shift_original_count)
+        cp      1
+        jr      nz, .ror_preserve_of
+        ; Build OF explicitly from result bits 7 and 6.
+        ld      a, (x86_shift_result)
+        and     #C0
+        cp      #40
+        jr      z, .ror_set_of
+        cp      #80
+        jr      z, .ror_set_of
+        jr      .ror_merge
+.ror_set_of:
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+        jr      .ror_merge
+.ror_preserve_of:
+        ; Preserve the incoming OF when the rotate count is not one.
+        ld      de, #FFFE
+        jr      .ror_merge_apply
+.ror_merge:
+        ld      de, #F7FE
+.ror_merge_apply:
+        ld      hl, (x86_reg_flags)
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        ld      a, (x86_reg_ax+1)
+        ld      h, a
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
+x86_real_shift_byte_cl_unsupported:
+        ld      a, #D2
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
+x86_real_shift_unsupported:
+        ld      a, #D1
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
+x86_shift_result:     dw 0
+x86_shift_new_flags:  dw 0
+x86_shift_carry:      db 0
+x86_shift_count:      db 0
+x86_shift_original_count: db 0
+x86_shift_original:   dw 0
+
+; D3 E8: SHR AX,CL. The 8086 uses the full CL count (no 5-bit mask).
+; The BIOS POST uses CL=6. Count zero leaves operand and FLAGS unchanged.
+x86_real_shift_word_cl:
+        call    x86_real_fetch8
+        ret     c
+        cp      #E8
+        jp      nz, x86_real_shift_cl_unsupported
+        ld      a, (x86_reg_cx)
+        or      a
+        jp      z, x86_real_next
+        ld      (x86_shift_count), a
+        ld      (x86_shift_original_count), a
+        ld      hl, (x86_reg_ax)
+        ld      (x86_shift_original), hl
+        ld      (x86_shift_result), hl
+.shift_loop:
+        ld      hl, (x86_shift_result)
+        srl     h
+        rr      l
+        ld      (x86_shift_result), hl
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+        ld      a, (x86_shift_count)
+        dec     a
+        ld      (x86_shift_count), a
+        jr      nz, .shift_loop
+
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+
+        ; CF is the final bit shifted out.
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shr_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.shr_parity:
+        ld      hl, (x86_shift_result)
+        ld      a, l
+        and     a
+        jp      pe, .shr_set_pf
+        jr      .shr_zero
+.shr_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.shr_zero:
+        ld      hl, (x86_shift_result)
+        ld      a, h
+        or      l
+        jr      nz, .shr_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.shr_sign:
+        ld      hl, (x86_shift_result)
+        bit     7, h
+        jr      z, .shr_overflow
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.shr_overflow:
+        ; OF is defined only for count=1: it receives the original MSB.
+        ld      a, (x86_shift_count)
+        ; The loop has reduced count to zero; the original CL is retained
+        ; separately so this test is independent of the loop counter.
+        ld      a, (x86_shift_original_count)
+        cp      1
+        jr      nz, .shr_merge_preserve_of
+        ld      hl, (x86_shift_original)
+        bit     7, h
+        jr      z, .shr_merge
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+.shr_merge:
+        ld      de, #F73A              ; clear CF/PF/ZF/SF/OF; preserve AF
+        jr      .shr_merge_apply
+.shr_merge_preserve_of:
+        ld      de, #FF3A              ; preserve undefined OF and AF
+.shr_merge_apply:
+        ld      hl, (x86_reg_flags)
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        ld      hl, (x86_shift_result)
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
+x86_real_shift_cl_unsupported:
+        ld      a, #D3
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
+; F6 /0 TEST r/m8,imm8 and F6 D0 NOT AL.
+; BIOS paths observed here use direct [disp16] and register-direct operands.
+x86_real_group_f6:
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_f6_modrm), a
+        cp      #D0
+        jp      z, x86_real_f6_not_al
+        ld      a, (x86_f6_modrm)
+        and     #38
+        jp      nz, x86_real_group_f6_unsupported ; only /0 TEST is implemented
+
+        ld      a, (x86_f6_modrm)
+        and     #C0
+        cp      #C0
+        jp      z, x86_real_f6_test_register
+        or      a
+        jp      nz, x86_real_group_f6_unsupported
+        ld      a, (x86_f6_modrm)
+        and     7
+        cp      6
+        jp      nz, x86_real_group_f6_unsupported
+        call    x86_real_mov_fetch16
+        ret     c
+        ld      (x86_mem_offset), hl
+        ld      (x86_mem_offset_work), hl
+        ld      hl, (x86_reg_ds)
+        ld      a, (x86_real_seg_override_active)
+        or      a
+        jr      z, .f6_segment_ready
+        ld      hl, (x86_real_seg_override)
+.f6_segment_ready:
+        ld      (x86_mem_segment), hl
+        call    x86_mem_calc_phys
+        call    x86_mem_read8
+        ret     c
+        ld      (x86_f6_operand), a
+        jp      x86_real_f6_test_immediate
+
+x86_real_f6_test_register:
+        ld      a, (x86_f6_modrm)
+        and     7
+        call    x86_alu8_read_reg
+        ld      (x86_f6_operand), a
+
+x86_real_f6_test_immediate:
+        call    x86_real_fetch8
+        ret     c
+        ld      b, a
+        ld      a, (x86_f6_operand)
+        and     b
+        ld      (x86_shift_result), a
+        call    x86_real_test8_update_flags
+        jp      x86_real_next
+
+x86_real_f6_not_al:
+        ld      a, (x86_reg_ax)
+        cpl
+        ld      (x86_reg_ax), a
+        jp      x86_real_next
+
+x86_f6_modrm: db 0
+x86_f6_operand: db 0
+
+x86_real_group_f6_unsupported:
+        ld      a, #F6
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
+; FE /0,/1 register-direct byte INC/DEC. Only status FLAGS are updated;
+; CF and all control/reserved bits are preserved as required by 8086.
+x86_real_incdec_r8:
+        ld      (x86_real_opcode), a
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_incdec8_modrm), a
+        and     #C0
+        cp      #C0
+        jp      nz, x86_real_incdec_r8_unsupported
+        ld      a, (x86_incdec8_modrm)
+        and     #38
+        cp      #00
+        jr      z, .incdec8_inc
+        cp      #08
+        jp      nz, x86_real_incdec_r8_unsupported
+        ld      a, 1
+        ld      (x86_incdec8_mode), a
+        jr      .incdec8_select_reg
+.incdec8_inc:
+        xor     a
+        ld      (x86_incdec8_mode), a
+.incdec8_select_reg:
+        ld      a, (x86_incdec8_modrm)
+        and     7
+        ld      (x86_incdec8_reg), a
+        call    x86_alu8_read_reg
+        ld      (x86_incdec8_old), a
+        ld      a, (x86_incdec8_mode)
+        or      a
+        ld      a, (x86_incdec8_old)
+        jr      nz, .incdec8_do_dec
+        inc     a
+        jr      .incdec8_store
+.incdec8_do_dec:
+        dec     a
+.incdec8_store:
+        ld      (x86_incdec8_result), a
+        call    x86_real_incdec_r8_flags
+        ; The shared byte-register writer consumes x86_alu8_result.
+        ; Store the INC/DEC result there before selecting the destination.
+        ld      a, (x86_incdec8_result)
+        ld      (x86_alu8_result), a
+        ld      a, (x86_incdec8_reg)
+        call    x86_alu8_write_reg
+        jp      x86_real_next
+
+x86_real_incdec_r8_flags:
+        xor     a
+        ld      (x86_incdec8_new_flags), a
+        ld      (x86_incdec8_new_flags+1), a
+        ld      a, (x86_incdec8_result)
+        and     a
+        jp      pe, .incdec8_pf
+        jr      .incdec8_zero
+.incdec8_pf:
+        ld      hl, x86_incdec8_new_flags
+        set     2, (hl)
+.incdec8_zero:
+        ld      a, (x86_incdec8_result)
+        or      a
+        jr      nz, .incdec8_sign
+        ld      hl, x86_incdec8_new_flags
+        set     6, (hl)
+.incdec8_sign:
+        ld      a, (x86_incdec8_result)
+        bit     7, a
+        jr      z, .incdec8_aux
+        ld      hl, x86_incdec8_new_flags
+        set     7, (hl)
+.incdec8_aux:
+        ld      a, (x86_incdec8_old)
+        and     #0F
+        ld      b, a
+        ld      a, (x86_incdec8_mode)
+        or      a
+        jr      nz, .incdec8_dec_aux
+        ld      a, b
+        cp      #0F
+        jr      nz, .incdec8_overflow
+        jr      .incdec8_set_af
+.incdec8_dec_aux:
+        ld      a, b
+        or      a
+        jr      nz, .incdec8_overflow
+.incdec8_set_af:
+        ld      hl, x86_incdec8_new_flags
+        set     4, (hl)
+.incdec8_overflow:
+        ld      a, (x86_incdec8_mode)
+        or      a
+        jr      nz, .incdec8_dec_overflow
+        ld      a, (x86_incdec8_old)
+        cp      #7F
+        jr      nz, .incdec8_merge
+        jr      .incdec8_set_of
+.incdec8_dec_overflow:
+        ld      a, (x86_incdec8_old)
+        cp      #80
+        jr      nz, .incdec8_merge
+.incdec8_set_of:
+        ld      hl, x86_incdec8_new_flags+1
+        set     3, (hl)
+.incdec8_merge:
+        ld      hl, (x86_reg_flags)
+        ld      de, #772B              ; preserve CF and non-status FLAGS
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_incdec8_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        ret
+
+x86_real_incdec_r8_unsupported:
+        ld      a, #FE
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
+x86_incdec8_modrm:    db 0
+x86_incdec8_mode:     db 0
+x86_incdec8_reg:      db 0
+x86_incdec8_old:      db 0
+x86_incdec8_result:   db 0
+x86_incdec8_new_flags: dw 0
+
+; F7 D0: NOT AX. NOT changes no guest FLAGS bits.
+; Other F7 group-3 encodings remain explicit unsupported-opcode stops until
+; their exact operand forms are implemented.
+x86_real_group_f7:
+        call    x86_real_fetch8
+        ret     c
+        cp      #D0
+        jp      nz, x86_real_group_f7_unsupported
+        ld      hl, (x86_reg_ax)
+        ld      a, l
+        cpl
+        ld      l, a
+        ld      a, h
+        cpl
+        ld      h, a
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
+; A8 ib — TEST AL,imm8. The result is discarded; CF/OF are cleared,
+; SF/ZF/PF reflect AL AND immediate, while AF is left unchanged (undefined
+; by the original 8086 instruction).
+x86_real_test_al_immediate:
+        call    x86_real_fetch8
+        ret     c
+        ld      b, a
+        ld      a, (x86_reg_ax)
+        and     b
+        ld      (x86_shift_result), a
+
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, (x86_shift_result)
+        and     a
+        jp      pe, .test_al_pf
+        jr      .test_al_zero
+.test_al_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.test_al_zero:
+        ld      a, (x86_shift_result)
+        or      a
+        jr      nz, .test_al_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.test_al_sign:
+        ld      a, (x86_shift_result)
+        bit     7, a
+        jr      z, .test_al_merge
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.test_al_merge:
+        call    x86_real_test8_merge_flags
+        jp      x86_real_next
+
+; Shared TEST r/m8 flag calculation. Input: x86_shift_result.
+x86_real_test8_update_flags:
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, (x86_shift_result)
+        and     a
+        jp      pe, .test8_pf
+        jr      .test8_zero
+.test8_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.test8_zero:
+        ld      a, (x86_shift_result)
+        or      a
+        jr      nz, .test8_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.test8_sign:
+        ld      a, (x86_shift_result)
+        bit     7, a
+        jr      z, x86_real_test8_merge_flags
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+        jp      x86_real_test8_merge_flags
+
+; Clear CF/OF, replace PF/ZF/SF, preserve AF and all other FLAGS bits.
+x86_real_test8_merge_flags:
+        ld      hl, (x86_reg_flags)
+        ld      de, #F73A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        ret
+
+x86_real_group_f7_unsupported:
+        ld      a, #F7
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
+
+; 27 — DAA. Decimal-adjust AL after an ADD.
+; AF/CF are consumed as inputs; PF/ZF/SF are recalculated. OF is undefined
+; on the 8086 and is preserved here rather than assigned an arbitrary value.
+x86_real_daa:
+        xor     a
+        ld      (x86_daa_new_cf), a
+        ld      (x86_daa_new_af), a
+        ld      a, (x86_reg_ax)
+        ld      (x86_daa_original), a
+        ld      (x86_daa_result), a
+
+        ld      hl, (x86_reg_flags)
+        ld      a, l
+        and     #01
+        ld      (x86_daa_old_cf), a
+        ld      a, l
+        and     #10
+        ld      (x86_daa_old_af), a
+
+        ; Low-nibble correction: add 06 when AL[3:0] > 9 or AF was set.
+        ld      a, (x86_daa_original)
+        and     #0F
+        cp      #0A
+        jp      nc, .daa_low_adjust
+        ld      a, (x86_daa_old_af)
+        or      a
+        jp      z, .daa_high_test
+.daa_low_adjust:
+        ld      a, (x86_daa_result)
+        add     a, #06
+        ld      (x86_daa_result), a
+        ld      a, 1
+        ld      (x86_daa_new_af), a
+        jp      .daa_high_test
+.daa_high_test:
+        ; High correction uses the ORIGINAL AL and incoming CF.
+        ld      a, (x86_daa_original)
+        cp      #9A
+        jp      nc, .daa_high_adjust
+        ld      a, (x86_daa_old_cf)
+        or      a
+        jp      z, .daa_flags
+.daa_high_adjust:
+        ld      a, (x86_daa_result)
+        add     a, #60
+        ld      (x86_daa_result), a
+        ld      a, 1
+        ld      (x86_daa_new_cf), a
+
+.daa_flags:
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+
+        ld      a, (x86_daa_new_cf)
+        or      a
+        jp      z, .daa_pf
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.daa_pf:
+        ld      a, (x86_daa_new_af)
+        or      a
+        jp      z, .daa_parity
+        ld      hl, x86_shift_new_flags
+        set     4, (hl)
+.daa_parity:
+        ld      a, (x86_daa_result)
+        and     a
+        jp      pe, .daa_set_pf
+        jp      .daa_zero
+.daa_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.daa_zero:
+        ld      a, (x86_daa_result)
+        or      a
+        jp      nz, .daa_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.daa_sign:
+        ld      a, (x86_daa_result)
+        bit     7, a
+        jp      z, .daa_merge
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.daa_merge:
+        ; Replace CF/PF/AF/ZF/SF, preserve OF and control/reserved flags.
+        ld      hl, (x86_reg_flags)
+        ld      de, #FF2A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+
+        ; Store adjusted AL and preserve AH.
+        ld      a, (x86_reg_ax+1)
+        ld      h, a
+        ld      a, (x86_daa_result)
+        ld      l, a
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
+x86_daa_original: db 0
+x86_daa_result:   db 0
+x86_daa_old_cf:   db 0
+x86_daa_old_af:   db 0
+x86_daa_new_cf:   db 0
+x86_daa_new_af:   db 0
