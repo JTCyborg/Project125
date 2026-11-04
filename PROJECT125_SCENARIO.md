@@ -1802,3 +1802,18 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Это проверка конкретного отличия от рабочего startup, а не заявление об исправлении.
 
 | 2026-11-04 | A1.41 Legacy #7FFD state around TR-DOS calls | SOURCE COMMITTED | Temporarily use the proven #10 ROM2/BANKM state for C=10/C=8/C=5 TR-DOS API calls, then restore #18 for the alternate text screen. Build/runtime pending. |
+
+
+## A1.42 — недисковая проверка TR-DOS dispatcher перед поиском каталога (2026-11-04)
+
+- Runtime A37/A57: после [NLOAD 01] CATALOG SEARCH CALL нет [NLOAD 02]; временное переключение #7FFD/BANKM на #10 не устранило зависание.
+- Перед каталоговым поиском C=#0A добавлен контрольный недисковый вызов TR-DOS C=#14 под той же картой #7FFD/BANKM=#10.
+- C=#14 направляет 16-байтовый descriptor в отдельный буфер neo_fw_trdos_probe_buffer; входные AF/BC/DE/HL запроса C=#0A сохраняются и восстанавливаются полностью.
+- Новые метки: [NLOAD T0] TRDOS NON-DISK API BEGIN и [NLOAD T1] TRDOS NON-DISK API RETURN. Если T0 есть, T1 нет — проблема до/в dispatcher; если T1 есть, но NLOAD 02 нет — dispatcher возвращается, зависание локализуется внутри каталожного поиска/дискового пути.
+- Driver A58; host build A38.
+- RTC, экранный интерфейс, NeoGS protocol и параметры исходного поиска C=#0A не менялись.
+- [ ] Build: SjASMPlus и ASSERT ProgramEnd <= #A800.
+- [ ] Runtime: проверить T0/T1, затем NLOAD 02 и последующие descriptor/sector markers.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME PENDING.
+
+| 2026-11-04 | A1.42 TR-DOS dispatcher preflight | SOURCE COMMITTED | Run non-disk C=#14 under the same legacy mapping before catalogue C=#0A, preserving the exact original search registers. Build/runtime pending. |
