@@ -9,9 +9,6 @@
 ; Every gateway restores the caller's bank before returning.
 ; =========================================================================
 
-NGS_FW_BANK68_MPAG EQU #22
-NGS_FW_BANK69_MPAG EQU #A2
-
 ; Resident -> interpreter overlay (page 68).
 bank_call_x86_real_copy_image:
         push    af
