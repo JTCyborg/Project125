@@ -70,7 +70,7 @@ rtc_already_active:
         POP     BC: POP     AF
         RET
 
-rtc_driver_version:              DEFB "[RTC DRIVER A1.88]", 13, 10, 0
+rtc_driver_version:              DEFB "[RTC DRIVER A1.89]", 13, 10, 0
 rtc_trace_01_open_begin:          DEFB "[RTC 01] OPEN BEGIN", 13, 10, 0
 rtc_trace_02_open_done:           DEFB "[RTC 02] OPEN DONE", 13, 10, 0
 rtc_trace_03_signature_read_begin: DEFB "[RTC 03] SIGNATURE READ BEGIN", 13, 10, 0
@@ -215,17 +215,28 @@ rtc_trace_hex_nl:              DEFB 13, 10, 0
 ; Emit actual DE and expected HL as four hexadecimal digits each.
 ; This routine preserves all caller registers and does not touch the stack
 ; contents below its own return address.
+rtc_actual_addr:   DEFW 0
+rtc_expected_addr: DEFW 0
+
+; Emit actual DE and expected HL as four hexadecimal digits each.
+; Values are copied to writable RAM before any trace helper can clobber HL.
 rtc_trace_return_addresses:
+        ; Entry: DE=actual stack word, HL=expected continuation.
+        PUSH    HL
+        PUSH    DE
+        POP     HL
+        LD      (rtc_actual_addr), HL
+        POP     HL
+        LD      (rtc_expected_addr), HL
+
         PUSH    AF
         PUSH    BC
         PUSH    DE
         PUSH    HL
 
-        ; On entry DE=actual stack word, HL=expected continuation.
-        ; Exchange them so HL carries the actual value for formatting.
-        EX      DE, HL
         LD      HL, rtc_trace_actual_prefix
         CALL    p125_trace_port
+        LD      HL, (rtc_actual_addr)
         LD      A, H
         CALL    rtc_trace_hex8
         LD      A, L
@@ -233,7 +244,7 @@ rtc_trace_return_addresses:
 
         LD      HL, rtc_trace_expected_prefix
         CALL    p125_trace_port
-        EX      DE, HL
+        LD      HL, (rtc_expected_addr)
         LD      A, H
         CALL    rtc_trace_hex8
         LD      A, L
