@@ -106,8 +106,9 @@ x86_mem_read8:
         or      a
         ret
 
-; Trace every BIOS read of the conventional-memory-size and equipment/error
-; bytes. This is deliberately independent of the write-watch budget.
+; Trace BIOS reads of the equipment word and conventional-memory/error
+; bytes (00410h-00415h). This distinguishes the ROM's floppy/configuration
+; branch from its RAM-test/error path. It is independent of the write budget.
 ; The helper preserves AF/BC/DE/HL and therefore the guest read result.
 x86_mem_watch_low_read:
         push    af
@@ -121,7 +122,7 @@ x86_mem_watch_low_read:
         cp      #04
         jr      nz, .done
         ld      a, (x86_mem_addr)
-        cp      #13
+        cp      #10
         jr      c, .done
         cp      #16
         jr      nc, .done
