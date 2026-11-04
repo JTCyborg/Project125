@@ -397,6 +397,39 @@ x86_mem_trace_f6_address:
         push    hl
         ld      hl, x86_mem_f6_prefix
         call    x86_mem_watch_string
+        ; Report guest CS:IP and the segment registers used to select EA.
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_reg_ds)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, '/'
+        out     (#EF), a
+        ld      hl, (x86_reg_es)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, (x86_real_seg_override_active)
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
         ld      hl, (x86_mem_segment)
         ld      a, h
         call    x86_mem_watch_hex8
