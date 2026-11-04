@@ -277,7 +277,7 @@ bios_int10_video_test_impl:
         ld      hl, x86_bios_video_test_image
         ld      de, #5002
         ld      bc, x86_bios_video_test_image_end - x86_bios_video_test_image
-        call bank69_call_x86_real_copy_image
+        call bank69_copy_image_to_guest
         jp      c, bios_video_test_fail_1
 
         ; Verify POST installed IVT[10h] -> 0000:5200.
