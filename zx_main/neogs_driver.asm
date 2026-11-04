@@ -411,7 +411,7 @@ upload_firmware::
         ld      a, h
         or      l
         jp      z, .upload_failed
-        ; P125 segmented image: up to 48 KiB payload plus 10-byte header.
+        ; P125 segmented image: up to 48 KiB payload plus 16-byte manifest.
         ; The original V1 #14/#13 and DBIT transport is unchanged.
         ld      a, h
         cp      #C0
