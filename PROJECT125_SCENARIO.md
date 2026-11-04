@@ -1722,3 +1722,17 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Это восстановление известной рабочей последовательности, а не заявление о подтверждённом runtime.
 
 | 2026-11-04 | A1.34 Legacy TR-DOS open restore | SOURCE COMMITTED | Restore the exact archived Project124 TR-DOS open sequence in the active driver; remove added pre-call probes/trampoline/environment writes from this critical path. Build/runtime pending. |
+
+
+## A1.35 — трассировка границ TR-DOS open без изменения ABI (2026-11-04)
+
+- Runtime A31/A54: вывод доходит до `[TRACE 70] NEOLOAD READ BEGIN`, но не появляется `[TRACE 71]`; по этому логу нельзя определить, зависает ли каталог, descriptor или чтение первого сектора.
+- Добавлены только контрольные сообщения вокруг прежних вызовов: OPEN ENTRY, перед/после `C=10), перед/после `C=8), перед/после чтения первого сектора.
+- `p125_trace_port` сохраняет AF/BC/HL и не меняет DE; контрольные вызовы размещены так, чтобы значения регистров TR-DOS ABI перед ROM-вызовами оставались прежними.
+- Сама последовательность API инициализации, параметры `#5CDD/#5CE5/#5D06), вызовы `C=10)/`C=8`, sector read и NeoGS transfer не изменялись.
+- Driver A55; host build A32.
+- [ ] Build: проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: последний появившийся маркер однозначно локализует проблемный участок.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.35 TR-DOS open boundary trace | SOURCE COMMITTED | Add register-preserving markers around the archived TR-DOS calls to localize the stall without changing their inputs. |
