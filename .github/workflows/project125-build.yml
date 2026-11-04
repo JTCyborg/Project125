@@ -13,21 +13,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare build directory
+      - name: Build complete Project125 disk image
         shell: powershell
-        run: New-Item -ItemType Directory -Force build | Out-Null
-
-      - name: Assemble NeoGS resident firmware, overlays and V1 bootstrap
-        shell: powershell
-        run: .\tools\sjasmplus.exe neogs_sub\build_firmware.asm
-
-      - name: Package segmented 48 KiB firmware
-        shell: powershell
-        run: .\tools\pack_neogs_project125.ps1
-
-      - name: Assemble ATM host and TR-DOS disk image
-        shell: powershell
-        run: .\tools\sjasmplus.exe zx_main\main.asm
+        run: .\tools\build_project125.ps1
 
       - name: Publish build artifacts
         uses: actions/upload-artifact@v4
