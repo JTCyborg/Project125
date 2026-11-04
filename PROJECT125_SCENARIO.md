@@ -1414,3 +1414,19 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
 
 | 2026-11-04 | A1.94 K512VI1 signature readback | SOURCE COMMITTED | Logs the CMOS signature value and verifies the cold-start signature write by reading register #11 back; build/runtime remain unverified. |
+
+
+## A1.10 — native ATM Turbo 2+ 8031 RTC driver (2026-11-04)
+
+- [x] Проверена документация ATM Turbo 2+ плат 7.00–7.10: протокол контроллера — `#55 -> #AA`, затем команда чтения через `IN A,(#FE)`.
+- [x] Подтверждены команды времени `#10/#50/#90` (секунды/минуты/часы) и даты `#12/#52/#92` (число/месяц/год).
+- [x] Исправлена прежняя ошибка в трактовке команд: `#D0` — счётчик дней RTC, а не дата месяца; дата читается командами `#12/#52/#92`.
+- [x] `atm_kbd_rtc.asm` заменён полноценным read-only драйвером A1.10: независимый handshake перед каждой командой, чтение времени/даты, диагностический вывод сырых байтов.
+- [x] Реализован API `READ_CURRENT_TIME` для существующего timestamp logger; значения преобразуются в десятичные ASCII-цифры.
+- [x] Startup Project125 больше не вызывает K512VI1 CMOS initialization на ATM; CMOS-драйвер `rtc_driver.asm` оставлен в проекте, его API чтения времени на ATM не используется.
+- [x] Не выполняются команды записи времени/даты; видеорежим, ATM shadow ports, клавиатурный режим и CMOS I/O не меняются.
+- [ ] Сборка через `build_project125.bat`; проверить SjASMPlus syntax и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить `[ATM RTC A1.10] 8031 RTC DRIVER`, `CONTROLLER ACK #AA`, строку TIME/DATE и появление корректных timestamp `[HH:MM:SS]`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
+
+| 2026-11-04 | A1.10 native ATM 8031 RTC | SOURCE COMMITTED | Replaced the non-invasive probe with a read-only RTC driver and routed the logger timestamp API to ATM's native controller. Build and runtime remain unverified. |
