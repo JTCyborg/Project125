@@ -64,6 +64,19 @@ neo_fw_open_file:
 .search_gate_ready:
         ld      hl, trace_noload_gate_done
         call    p125_trace_port
+; A1.32: initialize the TR-DOS runtime environment as documented by
+        ; Deja Vu #09 dv093d13.txt before invoking filesystem services.
+        ; #5CF9 = DOS mode/system flag, #5D10 = DOS error code,
+        ; #5D06 = 9-character 8.3 name length, #5C5D = ERR_SP.
+        ; Keep the current resident stack as the error-return stack.
+        xor     a
+        ld      (#5CF9), a
+        ld      (#5D10), a
+        ld      a, 9
+        ld      (#5D06), a
+        ld      (#5C5D), sp
+        ld      hl, trace_noload_dosenv_ready
+        call    p125_trace_port
         ; A1.31: first call a non-disk TR-DOS service (C=#14). It copies
         ; the current 16-byte file descriptor from #5CDD to this scratch
         ; buffer. A return proves #3D13 dispatch/return works independently
@@ -1382,6 +1395,7 @@ trace_noload_00_entry:             defb "[NLOAD 00] OPEN ENTRY", 13, 10, 0
 trace_noload_01_search_call:       defb "[NLOAD 01] CATALOG SEARCH CALL", 13, 10, 0
 trace_noload_gate_begin:           defb "[NLOAD D1] DOSEN REARM BEGIN", 13, 10, 0
 trace_noload_gate_done:            defb "[NLOAD D2] DOSEN REARM DONE", 13, 10, 0
+trace_noload_dosenv_ready: defb "[NLOAD E1] TRDOS DOSENV READY",13,10,0
 trace_noload_api_probe_begin:      defb "[NLOAD T0] TRDOS NON-DISK API BEGIN", 13, 10, 0
 trace_noload_api_probe_return:     defb "[NLOAD T1] TRDOS NON-DISK API RETURN", 13, 10, 0
 trace_noload_02_search_return:     defb "[NLOAD 02] CATALOG SEARCH RETURN", 13, 10, 0
@@ -1391,4 +1405,4 @@ trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
 trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
 trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A51 TRDOS DISPATCH PROBE", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A52 TRDOS DOSENV INIT", 13, 10, 0
