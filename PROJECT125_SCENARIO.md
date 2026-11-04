@@ -1920,3 +1920,17 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Исправление обосновано точным вычислением адреса и runtime-дампом, но запуск BIOS после него ещё не проверен.
 
 | 2026-11-04 | A1.51 Fix physical address low byte for FFFF:0000 | SOURCE COMMITTED | Mask segment low nibble before shifting into physical address byte 0; correct FFFF:0000 from FFFFFh to FFFF0h. Build/runtime pending. |
+
+
+## A1.52 — сокращение дискового и RTC startup-лога (2026-11-04)
+
+- [x] Runtime после A1.51: BIOS reset vector теперь проходит дальше; лог показывает `STOP ... OP=8E F000:E05F`, то есть следующая остановка происходит на opcode 8Eh после far JMP. Исправление адресации физического адреса дало ожидаемый переход; поддержка opcode 8Eh — отдельная задача.
+- [x] В `zx_main/neogs_driver.asm` удалены только повторяющиеся сообщения `[NLOAD 07] TRDOS SECTOR READ CALL` и `[NLOAD 08] TRDOS SECTOR READ RETURN` из общего sector-read пути. Сам вызов TR-DOS `C=#05`, проверка ошибок и перемещение курсора секторов не менялись. Маркеры первого сектора `[NLOAD 05]/[NLOAD 06]` сохранены.
+- [x] В `zx_main/ds12887_rtc.asm` отключён вывод диагностических сообщений DS12887_PROBE (GLUK/SMUC, статусы D/A/B, VRT, raw time и ошибки probe). Выбор backend, проверка VRT, доступ к DS12887 и READ_CURRENT_TIME сохранены.
+- [x] В `zx_main/main.asm` удалены `[TRACE 30]/[TRACE 31]` и сообщение `[RTC] DALLAS DS12887 PROBE COMPLETE`. Обычные временные метки в последующих сообщениях сохраняются; маркеры `[TRACE 60]/[TRACE 61]` чтения времени пока оставлены, поскольку это runtime read tracing, а не инициализация.
+- [x] Build identifiers: host A46, driver A64.
+- [ ] Build: SjASMPlus / build_project125.bat; проверить отсутствие ошибок и ASSERT ProgramEnd <= #A800.
+- [ ] Runtime: подтвердить отсутствие повторяющихся NLOAD 07/08 и любых DS12887/RTC INIT диагностик, при этом обычные timestamps должны остаться рабочими.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.52 Quiet sector-read and RTC probe logs | SOURCE COMMITTED | Remove repetitive C=#05 trace messages and DS12887 startup diagnostics while preserving disk I/O, RTC probe, and timestamp functionality. |
