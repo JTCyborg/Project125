@@ -1557,10 +1557,23 @@ A1.50–A1.53 признаны неудачными экспериментами
 
 - [x] По исходнику Unreal Speccy `config.cpp` подтверждено, что `SMUC` читается через `GetPrivateProfileInt("MISC", "SMUC", 0, ...)`.
 - [x] Значение `SMUC=enable` не является допустимым числовым включением: Win32 `GetPrivateProfileInt` возвращает значение по умолчанию 0, поэтому `conf.smuc` остаётся выключенным.
-- [x] Правильная настройка для конфигурации эмулятора: секция `[MISC]`, параметр `SMUC=1`. `CMOS=DALLAS` остаётся строковым параметром и распознаётся отдельно.
-- [x] Runtime D1.06 зафиксирован: GLUK D/A/B=`FF FF FF`, SMUC D/A/B=`FF FF FF`, `#5FBE=FF`; результат согласуется с выключенным `conf.smuc`, а не доказывает неисправность DS12887.
-- [ ] После исправления `unreal.ini` перезапустить Unreal Speccy и проверить `SMUC ID #5FBE=57`.
-- [ ] При `#5FBE=57` проверить Status D/A/B и получить RAW H:M:S; только затем считать RTC доступным.
-- **Статус:** ROOT CAUSE IDENTIFIED / CONFIG CHANGE NOT YET RUNTIME VERIFIED.
+- [x] Правильная настройка эмулятора: секция `[MISC]`, параметр `SMUC=1`. `CMOS=DALLAS` остаётся строковым параметром и распознаётся отдельно.
+- [x] Runtime D1.06 после изменения конфигурации подтверждён: GLUK D/A/B=`FF FF FF`, SMUC D/A/B=`80 20 02`, SMUC ID `#5FBE=57`.
+- [x] DS12887 Status D bit 7 (VRT) установлен; драйвер выбрал SMUC backend и вывел `RAW H:M:S=10:59:21`.
+- [x] Временные метки RTC успешно появились в журнале Project125.
+- **Статус:** RTC PASS — CONFIGURATION + READ-ONLY CLOCK ACCESS RUNTIME VERIFIED. GLUK path is unavailable in this ATM710 setup; SMUC path is working.
 
-| 2026-11-04 | A1.21 SMUC numeric configuration | ROOT CAUSE IDENTIFIED | Unreal Speccy reads MISC/SMUC as an integer; `SMUC=enable` evaluates to the default 0. Use `[MISC]` and `SMUC=1`; runtime verification pending. |
+| 2026-11-04 | A1.21 SMUC numeric configuration | RTC PASS | `SMUC=1` activates the emulator SMUC decoder; signature #5FBE=57, Status D/A/B=80/20/02, VRT OK and DS12887 time 10:59:21 confirmed at runtime. |
+
+
+## A1.22 — TR-DOS NEOLOAD.C open/search boundary (2026-11-04)
+
+- [x] RTC work is closed as runtime PASS; subsequent work is isolated to TR-DOS/NeoGS loading.
+- [x] Runtime reaches `[NLOAD 00] OPEN ENTRY`, `[NLOAD 01] CATALOG SEARCH CALL`, and prints the exact search context: `BANKM=DC EXT=43 MODE=09`, visible bytes at `#3D13` = `00 18 E7 00 C3 69 2F CD`, filename `NEOLOAD `.
+- [ ] Confirm whether the supplied runtime log is complete: the current excerpt ends before `[NLOAD 02] CATALOG SEARCH RETURN`; do not classify this as a TR-DOS call failure until the continuation/terminal state is known.
+- [ ] Compare the eight bytes visible at `#3D13` against the exact ATM710 TR-DOS ROM image and verify the selected ROM mapping, not merely the BANKM/EXT values.
+- [ ] If the call does return, inspect returned C and TR-DOS error bytes `#5D0F/#5D10`, then proceed to descriptor and first-sector read.
+- [ ] Do not modify ATM video initialization, RTC, or the NeoGS upload protocol during this isolated loader diagnosis.
+- **Статус:** DIAGNOSTIC SOURCE PRESENT / RUNTIME BOUNDARY OBSERVED / ROOT CAUSE NOT YET ESTABLISHED.
+
+| 2026-11-04 | A1.22 NEOLOAD.C search boundary | DIAGNOSTIC | The captured excerpt reaches the pre-call ROM/name dump; the return trace is not present in the supplied excerpt, so the TR-DOS search outcome remains undetermined. |
