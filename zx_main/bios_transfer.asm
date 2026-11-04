@@ -407,9 +407,32 @@ atm_keyboard_poll_and_send:
         inc     hl
         inc     de
         djnz    .atm_kbd_compare
-        jr      .atm_kbd_done
+        ; Send one initial idle snapshot as a transport probe. Later snapshots
+        ; are sent only when the physical matrix changes.
+        ld      a, (atm_keyboard_initialized)
+        or      a
+        jr      nz, .atm_kbd_done
 
 .atm_kbd_changed:
+        ; Report the actual host-side matrix before attempting the DMA transfer.
+        ; This distinguishes a keyboard-port scan failure from a NeoGS receiver
+        ; or virtual XT keyboard failure without using the legacy DBIT payload.
+        ld      hl, msg_kbd_matrix
+        call    p125_print_string
+        ld      hl, atm_keyboard_matrix
+        ld      b, NGS_KBD_MATRIX_SIZE
+.atm_kbd_log_matrix:
+        ld      a, (hl)
+        inc     hl
+        call    p125_print_hex8
+        ld      a, ' '
+        call    p125_emit_char
+        djnz    .atm_kbd_log_matrix
+        ld      a, 13
+        call    p125_emit_char
+        ld      a, 10
+        call    p125_emit_char
+
         ; Replace the current BIOS command with a short keyboard DMA request.
         ; NeoGS notices it at an instruction boundary and clears CBIT when
         ; its DMA receiver is armed.
@@ -467,6 +490,10 @@ atm_keyboard_poll_and_send:
         ld      de, atm_keyboard_previous
         ld      bc, NGS_KBD_MATRIX_SIZE
         ldir
+        ld      a, 1
+        ld      (atm_keyboard_initialized), a
+        ld      hl, msg_kbd_dma_ok
+        call    p125_print_string
         jr      .atm_kbd_done
 
 .atm_kbd_timeout:
@@ -474,6 +501,8 @@ atm_keyboard_poll_and_send:
         ; pointing at the keyboard service.
         ld      a, CMD_BOOT_BIOS
         out     (GSCOM), a
+        ld      hl, msg_kbd_dma_timeout
+        call    p125_print_string
 
 .atm_kbd_done:
         pop     hl
@@ -486,6 +515,15 @@ atm_keyboard_matrix:
         defs    NGS_KBD_MATRIX_SIZE, #1F
 atm_keyboard_previous:
         defs    NGS_KBD_MATRIX_SIZE, #1F
+atm_keyboard_initialized:
+        db      0
+
+msg_kbd_matrix:
+        defb    "[KBD] MATRIX ", 0
+msg_kbd_dma_ok:
+        defb    "[KBD] DMA OK", 13, 10, 0
+msg_kbd_dma_timeout:
+        defb    "[KBD] DMA TIMEOUT", 13, 10, 0
 
 bios_host_tail_data:
         defs    5, 0
