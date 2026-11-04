@@ -73,19 +73,17 @@ neo_fw_open_file:
         ; catalogue search (8-byte name plus extension) immediately before
         ; the ROM call. This is outside the API call and preserves all regs.
         call    neo_fw_trace_search_name
-        ; A1.48 read-only boundary dump: BANKM, extension, DOS mode, SP,
-        ; bytes currently visible at #3D13, and the raw 8-byte catalogue name.
-        ; This helper preserves AF/BC/DE/HL and performs no paging writes.
-        call    neo_diag_search_state
+        ; Keep the C=#0A call path otherwise identical to Project124.
+        ; Select the legacy #7FFD/BANKM value used by Project124 first.
+        call    neo_fw_trdos_legacy_map
         ld      hl, trace_noload_01_search_call
         call    p125_trace_port
-        ; Keep the C=#0A call path otherwise identical to Project124.
-        ; C=#14 preflight returned, but it is not part of the known-good open
-        ; sequence and may alter undocumented TR-DOS internal state. Likewise,
-        ; do not inspect ROM/workspace between filename setup and this call.
-        ; Only page #7FFD/BANKM to the known legacy #10 value, then dispatch
-        ; the original C=#0A catalogue request without an intervening API call.
-        call    neo_fw_trdos_legacy_map
+        ; A1.49: sample the ROM only AFTER legacy paging is selected.
+        ; The bytes printed are those visible at #3D13 immediately before
+        ; the actual C=#0A dispatcher call, not the ATM UI mapping.
+        ; This helper preserves AF/BC/DE/HL and performs no paging writes.
+        call    neo_diag_search_state
+        ; No paging writes or other TR-DOS calls between probe and dispatch.
         call    #3D13
         push    af
         push    bc
@@ -1479,4 +1477,4 @@ trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
 trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
 trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A61 TRDOS ROM BOUNDARY DIAG", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A62 POST-MAP ROM DIAG", 13, 10, 0
