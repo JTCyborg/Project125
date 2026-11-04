@@ -68,7 +68,6 @@ bios_rom_reset_state:
         ld      a, 1
         ld      (bios_keyboard_pending), a
         xor     a
-        ld      (x86_io_trace_count), a
         ld      (x86_real_bounds_enable), a
         ld      (x86_exit_status), a
         ret
