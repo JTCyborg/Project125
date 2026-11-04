@@ -371,11 +371,18 @@ p125_dma_reverse_selftest:
         ret
 
 .dma_reverse_ready:
-        ; DMA overlays reads in the host window. Read exactly 256 bytes.
+        ; NeoGS ZX DMA documentation: the first ROM-window read is a
+        ; pipeline/dummy byte. It starts the DMA read cycle but is invalid.
+        ; The NEXT read returns the byte at the programmed HAD/MAD/LAD address.
+        ; Keep the dummy read separate from the 256-byte payload.
+        ld      hl, 0
+        di
+        ld      a, (hl)                 ; mandatory dummy read; discard result
+
+        ; Read the complete block beginning at the exact programmed DMA address.
         ld      hl, 0
         ld      de, NGS_DMA_TEST_HOST_ADDR
         ld      bc, NGS_DMA_TEST_LENGTH
-        di
         ldir
 
         ; End marker is control only; the 256-byte payload travelled via DMA.
