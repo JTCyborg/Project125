@@ -495,6 +495,36 @@ x86_real_alu8_update_flags:
         ld      (x86_reg_flags), hl
         ret
 
+; XOR AX,imm16 (35). Logical FLAGS: CF/AF/OF cleared, PF/ZF/SF set.
+x86_real_logic16_accumulator_immediate:
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_logic_src), a
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_logic_src+1), a
+        ld      hl, (x86_reg_ax)
+        ld      (x86_logic_dst), hl
+        ld      a, #30
+        ld      (x86_logic_mode), a
+        ld      a, 2
+        ld      (x86_logic_width), a
+        ld      hl, (x86_logic_dst)
+        ld      de, (x86_logic_src)
+        ld      a, l
+        xor     e
+        ld      l, a
+        ld      a, h
+        xor     d
+        ld      h, a
+        ld      (x86_logic_result), hl
+        call    x86_real_logic_update_flags
+        ld      (x86_reg_ax), hl
+        ; Re-read the computed result: the flag helper may use HL internally.
+        ld      hl, (x86_logic_result)
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
 ; -------------------------------------------------------------------------
 ; 16-bit register-direct OR/AND/XOR/TEST forms.
 ; -------------------------------------------------------------------------
