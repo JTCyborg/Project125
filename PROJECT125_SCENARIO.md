@@ -1340,3 +1340,12 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Runtime: прислать полный лог начиная с `[RTC DRIVER A1.89]`. При mismatch ожидается строка `ACTUAL=xxxx EXPECTED=xxxx`; при совпадении — `[RTC 12] RETURN ADDRESS OK`, затем `[RTC 06] SIGNATURE WRITE DONE`.
 - [ ] После получения адресов установить причину расхождения; CMOS hardware initialization пока не объявляется подтверждённой.
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING. A1.88 runtime не подтверждён; его formatter заменён исправлением A1.89.
+## A1.90 — диагностика SP без изменения стека (2026-11-04)
+
+- [x] Runtime A1.89 получен: `ACTUAL=0000 EXPECTED=67C0`; mismatch подтверждён корректным шестнадцатеричным форматтером.
+- [x] Диагностическое чтение вершины стека заменено на вычисление адреса `SP` и чтение двух байтов по `(SP)` без `POP/PUSH`.
+- [x] Добавлен вывод `SP=xxxx` перед `ACTUAL` и `EXPECTED`.
+- [x] Сравнение по-прежнему выполняется только для первой записи сигнатуры CMOS #11.
+- [ ] Сборка через `build_project125.bat`; проверить SjASMPlus syntax и размер resident host image.
+- [ ] Runtime: прислать строку `[RTC DRIVER A1.90]` и диагностическую строку `SP=xxxx ACTUAL=xxxx EXPECTED=67C0`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
