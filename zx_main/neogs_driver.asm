@@ -73,6 +73,10 @@ neo_fw_open_file:
         ; catalogue search (8-byte name plus extension) immediately before
         ; the ROM call. This is outside the API call and preserves all regs.
         call    neo_fw_trace_search_name
+        ; A1.48 read-only boundary dump: BANKM, extension, DOS mode, SP,
+        ; bytes currently visible at #3D13, and the raw 8-byte catalogue name.
+        ; This helper preserves AF/BC/DE/HL and performs no paging writes.
+        call    neo_diag_search_state
         ld      hl, trace_noload_01_search_call
         call    p125_trace_port
         ; Keep the C=#0A call path otherwise identical to Project124.
