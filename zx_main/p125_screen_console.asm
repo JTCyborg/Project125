@@ -20,7 +20,7 @@
 BIOS_DEBUG_COLUMNS EQU 80
 BIOS_DEBUG_ROWS    EQU 13
 BIOS_DEBUG_TOP     EQU 12
-P125_VIDEO_PAGE1   EQU #78          ; RAM page 7, inverted page number
+P125_VIDEO_PAGE7   EQU #78          ; RAM page 7, inverted page number
 P125_VIDEO_PAGE3   EQU #7C          ; RAM page 3, inverted page number
 P125_HOST_PAGE5    EQU #7A          ; RAM page 5, host code at #6000
 P125_HOST_PAGE0    EQU #7F          ; RAM page 0, TR-DOS staging at #C000
@@ -57,7 +57,7 @@ p125_atm_ports_open_done:
 
         ; Map the alternate screen pages while the 32-byte mode trampoline
         ; is installed at #FFEC, the safe ATM mode-switch address.
-        ld      a, P125_VIDEO_PAGE1
+        ld      a, P125_VIDEO_PAGE7
         ld      bc, #7FF7
         out     (c), a
         ld      a, P125_VIDEO_PAGE3
@@ -473,7 +473,7 @@ p125_screen_write_char:
         ret
 
 p125_screen_map_video_pages:
-        ld      a, P125_VIDEO_PAGE1
+        ld      a, P125_VIDEO_PAGE7
         ld      bc, #7FF7
         out     (c), a
         ld      a, P125_VIDEO_PAGE3
