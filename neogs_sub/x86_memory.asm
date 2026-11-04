@@ -117,17 +117,15 @@ x86_mem_write8:
 .write_allowed:
         call    x86_mem_map_addr
         ret     c
-        ; Watch the BIOS error/status byte at physical 00415h. The write
-        ; logger is resident and uses the dedicated NeoGS debug port #EF.
+        ; Trace only changed writes in the first 0500h bytes (IVT+BDA).
+        ; This catches the actual BIOS error-flag write without flooding the
+        ; console with the full conventional-memory test. The logger is capped.
         ld      a, (x86_mem_addr+2)
         or      a
         jr      nz, .store
         ld      a, (x86_mem_addr+1)
-        cp      #04
-        jr      nz, .store
-        ld      a, (x86_mem_addr)
-        cp      #15
-        call    z, x86_mem_watch_bda_error
+        cp      #05
+        call    c, x86_mem_watch_low_write
 .store:
         ld      a, (x86_mem_value)
         ld      (hl), a
@@ -137,19 +135,37 @@ x86_mem_write8:
         scf
         ret
 
-; One-shot address watchpoint for BIOS BDA 0040:0015.
-; Emits old/new byte and guest CS:IP directly to the NeoGS #EF console.
-; Only this exact byte is traced, so normal POST memory traffic is silent.
-x86_mem_watch_bda_error:
+; Log up to 64 changed writes in physical 00000h-004FFh.
+; The trace includes physical address, old/new values and guest CS:IP.
+; No guest registers or memory backend address state are modified.
+x86_mem_watch_low_write:
         push    af
         push    bc
         push    de
         push    hl
         ld      a, (hl)
-        ld      (x86_mem_watch_old), a
+        ld      b, a
+        ld      a, (x86_mem_value)
+        cp      b
+        jr      z, .done
+        ld      a, (x86_mem_watch_count)
+        cp      64
+        jr      nc, .done
+        inc     a
+        ld      (x86_mem_watch_count), a
+
         ld      hl, x86_mem_watch_prefix
         call    x86_mem_watch_string
-        ld      a, (x86_mem_watch_old)
+        ld      a, (x86_mem_addr+2)
+        and     #0F
+        call    x86_mem_watch_hex8_low
+        ld      a, (x86_mem_addr+1)
+        call    x86_mem_watch_hex8
+        ld      a, (x86_mem_addr)
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, b
         call    x86_mem_watch_hex8
         ld      a, '>'
         out     (#EF), a
@@ -173,11 +189,17 @@ x86_mem_watch_bda_error:
         out     (#EF), a
         ld      a, 10
         out     (#EF), a
+.done:
         pop     hl
         pop     de
         pop     bc
         pop     af
         ret
+
+; Print the low nibble of A as one hexadecimal digit.
+x86_mem_watch_hex8_low:
+        and     #0F
+        jp      x86_mem_watch_nibble
 
 x86_mem_watch_string:
         ld      a, (hl)
@@ -209,8 +231,8 @@ x86_mem_watch_nibble:
         ret
 
 x86_mem_watch_prefix:
-        db      "[BDA 0040:0015] ", 0
-x86_mem_watch_old:
+        db      "[MEMW] ", 0
+x86_mem_watch_count:
         db      0
 
 ; -------------------------------------------------------------------------
