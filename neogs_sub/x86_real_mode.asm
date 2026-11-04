@@ -316,6 +316,8 @@ x86_real_dispatch:
         or      a
         call    nz, bios_progress_emit
 x86_real_dispatch_no_progress:
+        call    x86_io_tick
+        ret     c
         call    x86_real_fetch8
         ret     c
 
@@ -1627,10 +1629,17 @@ x86_real_ret_far_imm:
         jp      x86_real_next
 
 x86_real_hlt:
-        xor     a
-        ld      (x86_exit_status), a
+        ; HLT suspends guest execution until a maskable interrupt is accepted.
+        ; The deterministic PIT clock continues while halted.
+.hlt_wait:
+        call    x86_io_tick
+        ret     c
+        ld      a, (x86_io_irq_delivered)
         or      a
-        ret
+        jr      z, .hlt_wait
+        xor     a
+        ld      (x86_io_irq_delivered), a
+        jp      x86_real_dispatch
 
 x86_real_budget_exhausted:
         ; BIOS POST can legitimately execute more than 65535 architectural
