@@ -1243,3 +1243,15 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** RTC TRACE SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.81 K512VI1 initialization substage trace | SOURCE COMMITTED | Added markers around CMOS open, signature read, cold-start register writes and close; no hardware behavior changed intentionally. |
+
+
+## A1.82 — разделение двух OUT в записи RTC (2026-11-04)
+
+- [x] Runtime A1.81: CMOS open и чтение сигнатуры #11 завершаются; последняя отметка — [RTC 05] SIGNATURE WRITE BEGIN. Первая запись регистра #11/#AA не подтверждена.
+- [x] В write_byte_raw добавлены отдельные маркеры до/после OUT (C),A в порт #DFF7 и до/после OUT (C),L в порт #BFF7.
+- [x] Между операциями диагностика сохраняет AF/BC/HL; исходные A (номер регистра) и L (записываемое значение) сохраняются.
+- [ ] Сборка build_project125.bat и проверка ограничения ProgramEnd <= #A800.
+- [ ] Runtime: прислать строки от [RTC 05] до последней [RTC xx]. Если последняя [RTC 0D], остановка до/на записи индекса; если [RTC 0E] — после записи индекса; если [RTC 0F] — при/после подготовки записи данных; если [RTC 10] — оба OUT завершились.
+- **Статус:** PORT-CYCLE TRACE SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.82 trace individual RTC port writes | SOURCE COMMITTED | Added checkpoints around the index and data OUT instructions; no register values or port addresses intentionally changed. |
