@@ -1386,3 +1386,17 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.93 bypass RTC trace helper at stop boundary | SOURCE COMMITTED | Replaced the RTC 10 helper call with inline output to isolate the observed post-message stall; build/runtime remain unverified. |
+
+
+## A1.00 — read-only ATM keyboard-controller timer probe (2026-11-04)
+
+- [x] Добавлен отдельный модуль `zx_main/atm_kbd_rtc.asm` для независимой проверки таймера микроконтроллера XT/AT-клавиатуры.
+- [x] Вызов добавлен после инициализации K512VI1 CMOS RTC; существующий драйвер `rtc_driver.asm` не изменён.
+- [x] Проверка выполняет handshake `#55 -> #AA`, затем отдельный handshake перед командами чтения `#10/#50/#90/#D0`.
+- [x] Выводит сырые значения часов, минут, секунд и счётчика дней в порт `#EF`.
+- [x] Записывающие команды `#11/#51/#91/#D1` не используются; режим клавиатурного контроллера не переключается.
+- [ ] Сборка через `build_project125.bat`; проверить синтаксис SjASMPlus и ограничение `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить `[KBDRTC] CONTROLLER ACK #AA` либо `CONTROLLER NOT DETECTED`, затем получить строку `RAW H:M:S=...`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
+
+| 2026-11-04 | A1.00 | Added a non-invasive ATM keyboard MCU timer probe; no writes to the timer and no changes to the K512VI1 RTC or video subsystem. |
