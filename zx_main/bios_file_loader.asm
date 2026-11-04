@@ -186,16 +186,11 @@ bios_trdos_read_next_sector:
         scf
         ret
 .bios_sector_available:
-        ; Record and print the exact internal TR-DOS cursor before each read.
-        ; This confirms the catalogue start and every 0..15 track rollover.
-        call    bios_trdos_debug_dump_position
-
         ld      a, (bios_trdos_track)
         ld      d, a
         ld      a, (bios_trdos_sector)
         ld      e, a
         ld      hl, (bios_trdos_read_buffer)
-        ld      (bios_trdos_last_buffer), hl
         ld      b, 1
         ld      c, 5
         xor     a
@@ -239,67 +234,6 @@ bios_trdos_read_next_sector:
         scf
         ret
 
-; Print the exact TR-DOS internal track/sector requested by C=#05.
-; Project124/TR-DOS 5.04T uses internal sector IDs 0..15.
-bios_trdos_debug_dump_position:
-        push    af
-        push    bc
-        push    de
-        push    hl
-        ld      hl, bios_trdos_position_prefix
-.bios_pos_prefix_loop:
-        ld      a, (hl)
-        inc     hl
-        or      a
-        jr      z, .bios_pos_prefix_done
-        ld      bc, #00EF
-        out     (c), a
-        jr      .bios_pos_prefix_loop
-.bios_pos_prefix_done:
-        ld      a, (bios_trdos_track)
-        call    bios_trdos_debug_hex8
-        ld      a, '/'
-        ld      bc, #00EF
-        out     (c), a
-        ld      a, (bios_trdos_sector)
-        call    bios_trdos_debug_hex8
-        ld      a, 13
-        ld      bc, #00EF
-        out     (c), a
-        ld      a, 10
-        out     (c), a
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
-        ret
-
-; IN A=byte. Print two uppercase hexadecimal digits to port #EF.
-bios_trdos_debug_hex8:
-        push    af
-        rrca
-        rrca
-        rrca
-        rrca
-        and     #0F
-        call    bios_trdos_debug_hex_nibble
-        pop     af
-        and     #0F
-bios_trdos_debug_hex_nibble:
-        add     a, '0'
-        cp      '9' + 1
-        jr      c, .bios_hex_digit
-        add     a, 7
-.bios_hex_digit:
-        ld      bc, #00EF
-        out     (c), a
-        ret
-
-bios_trdos_position_prefix:
-        defb    "[BIOS READ] ", 0
-bios_trdos_debug_prefix:
-        defb    "[BIOS SRC FFF0] ", 0
-
 bios_trdos_filename:
         defb    "BIOS    "
 bios_trdos_track:        db 0
@@ -308,5 +242,4 @@ bios_trdos_sectors_left: db 0
 bios_trdos_file_error:   db 0
 bios_trdos_saved_sp:     dw 0
 bios_trdos_read_buffer:  dw BIOS_TRDOS_BUFFER
-bios_trdos_last_buffer:  dw BIOS_TRDOS_BUFFER
 bios_trdos_transfer_sectors_left: db 0
