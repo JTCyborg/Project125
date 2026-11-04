@@ -44,6 +44,13 @@ C_10MHZ         EQU #30
 C_12MHZ         EQU #10
 C_20MHZ         EQU #20
 C_24MHZ         EQU #00
+
+; NeoGS FPGA timer and interrupt controller (Z80-local I/O ports).
+TIM_FRQ         EQU #0E
+INTENA          EQU #0C
+INTREQ          EQU #0D
+B_TIMER_INT     EQU 0
+M_TIMER_INT     EQU #01
 B_PAN4CH        EQU 6
 M_PAN4CH        EQU #40
 B_INV7B         EQU 7
