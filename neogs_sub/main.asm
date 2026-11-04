@@ -1054,7 +1054,7 @@ x86_io_tick:
         ld      c, l
         ld      a, b
         or      c
-        jr      z, .pit_elapsed_done
+        jp      z, .pit_elapsed_done
 .pit_elapsed_loop:
         ld      hl, (x86_pit_fraction)
         ld      de, 30682
