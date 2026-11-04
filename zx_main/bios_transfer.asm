@@ -411,7 +411,7 @@ atm_keyboard_poll_and_send:
         ; are sent only when the physical matrix changes.
         ld      a, (atm_keyboard_initialized)
         or      a
-        jr      nz, .atm_kbd_done
+        jp      nz, .atm_kbd_done
 
 .atm_kbd_changed:
         ; Report the actual host-side matrix before attempting the DMA transfer.
