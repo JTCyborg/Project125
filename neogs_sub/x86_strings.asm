@@ -107,6 +107,9 @@ x86_string_cmps:
         ret     c
         ld      (x86_string_other), hl
         call    x86_string_compare
+        ; Guest FLAGS are stored separately. Clear the host Z80 carry from
+        ; SUB/SBC so the caller's RET C reports memory faults only.
+        or      a
         call    x86_string_advance_si
         call    x86_string_advance_di
         ret
@@ -168,6 +171,9 @@ x86_string_scas:
 .compare:
         ld      (x86_string_value), hl
         call    x86_string_compare
+        ; Do not leak the guest comparison borrow into the host carry flag:
+        ; RET C above the string engine is reserved for memory-access faults.
+        or      a
         call    x86_resident_memtest_scas_trace
         call    x86_string_advance_di
         ret
