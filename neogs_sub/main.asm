@@ -1184,33 +1184,21 @@ x86_io_trace_count: db 0
 ; the overlay interpreter; it emits only the first failed REP SCASB in BIOS
 ; segment F000h while testing guest RAM at ES >= 0080h.
 x86_resident_memtest_scas_trace:
-        ld      a, (x86_memtest_scas_trace_done)
-        or      a
-        ret     nz
+        ; Capture the first four SCAS iterations without assumptions about
+        ; REP, FLAGS, segment, or BIOS location. This proves whether the
+        ; interpreter reaches SCAS at all and records its actual operands.
+        ld      a, (x86_memtest_scas_trace_count)
+        cp      4
+        ret     nc
         ld      a, (x86_string_opcode)
         cp      #AE
+        jr      z, .trace_scas_opcode_ok
+        cp      #AF
         ret     nz
-        ld      a, (x86_real_rep_mode)
-        or      a
-        ret     z
-        ld      a, (x86_reg_flags)
-        bit     6, a
-        ret     nz
-        ld      hl, (x86_reg_cs)
-        ld      de, #F000
-        or      a
-        sbc     hl, de
-        ret     nz
-        ld      hl, (x86_reg_es)
-        ld      a, h
-        or      a
-        jr      nz, .segment_valid
-        ld      a, l
-        cp      #80
-        ret     c
-.segment_valid:
-        ld      a, 1
-        ld      (x86_memtest_scas_trace_done), a
+.trace_scas_opcode_ok:
+        ld      a, (x86_memtest_scas_trace_count)
+        inc     a
+        ld      (x86_memtest_scas_trace_count), a
         push    af
         push    bc
         push    de
@@ -1231,6 +1219,16 @@ x86_resident_memtest_scas_trace:
         ld      a, ' '
         out     (#EF), a
 
+        ; Opcode and REP mode.
+        ld      a, (x86_string_opcode)
+        call    x86_mem_watch_hex8
+        ld      a, '/'
+        out     (#EF), a
+        ld      a, (x86_real_rep_mode)
+        call    x86_mem_watch_hex8
+
+        ld      a, ' '
+        out     (#EF), a
         ld      hl, (x86_reg_cs)
         call    x86_resident_memtest_hex16
         ld      a, ':'
@@ -1321,7 +1319,7 @@ x86_resident_memtest_hex16:
         ld      a, l
         jp      x86_mem_watch_hex8
 
-x86_memtest_scas_trace_done:
+x86_memtest_scas_trace_count:
         db      0
 
 ; Shared bounds/diagnostic state accessed by resident BIOS and overlay CPU.
