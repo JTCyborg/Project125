@@ -1255,3 +1255,14 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** PORT-CYCLE TRACE SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.82 trace individual RTC port writes | SOURCE COMMITTED | Added checkpoints around the index and data OUT instructions; no register values or port addresses intentionally changed. |
+
+
+## A1.83 — контроль возврата из write_byte_raw (2026-11-04)
+
+- [x] Runtime A1.82: обе операции OUT завершились; последняя отметка — [RTC 10] DATA OUT DONE. Отметка вызывающей процедуры [RTC 06] отсутствует.
+- [x] В конец write_byte_raw добавлена контрольная отметка [RTC 11] WRITE RET непосредственно перед RET.
+- [ ] Сборка build_project125.bat; проверить синтаксис и лимит resident host image.
+- [ ] Runtime: если [RTC 11] отсутствует, остановка находится между завершением второго trace helper и последней контрольной точкой; если [RTC 11] есть, но [RTC 06] отсутствует — проверять RET, адрес возврата и стек.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.83 RTC write return checkpoint | SOURCE COMMITTED | Added a marker immediately before RET in write_byte_raw; no RTC port values or register settings changed. |
