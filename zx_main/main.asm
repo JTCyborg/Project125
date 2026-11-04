@@ -148,11 +148,8 @@ Init_Z80_System:
         ld      hl, trace_21_screen_clear_done
         call    p125_trace_port
 
-        ld      hl, trace_30_rtc_init_begin
-        call    p125_trace_port
+        ; Probe the DS12887 silently; timestamps remain enabled for normal logs.
         call    DS12887_PROBE
-        ld      hl, trace_31_rtc_init_done
-        call    p125_trace_port
 
         ld      hl, trace_40_ui_draw_begin
         call    p125_trace_port
@@ -165,8 +162,6 @@ Init_Z80_System:
         ; From this point onward, normal RTC-timestamped screen logging is live.
         ld      hl, trace_50_first_timestamp_begin
         call    p125_trace_port
-        ld      hl, msg_rtc_ready
-        call    p125_print_string
         ld      hl, trace_51_first_log_done
         call    p125_trace_port
         ld      hl, msg_p125_start
@@ -405,8 +400,6 @@ trace_10_video_init_begin:    defb "[TRACE 10] VIDEO INIT BEGIN", 13, 10, 0
 trace_11_video_init_done:     defb "[TRACE 11] VIDEO INIT DONE", 13, 10, 0
 trace_20_screen_clear_begin:  defb "[TRACE 20] SCREEN CLEAR BEGIN", 13, 10, 0
 trace_21_screen_clear_done:   defb "[TRACE 21] SCREEN CLEAR DONE", 13, 10, 0
-trace_30_rtc_init_begin:      defb "[TRACE 30] RTC INIT BEGIN", 13, 10, 0
-trace_31_rtc_init_done:       defb "[TRACE 31] RTC INIT DONE", 13, 10, 0
 trace_40_ui_draw_begin:       defb "[TRACE 40] UI DRAW BEGIN", 13, 10, 0
 trace_41_ui_draw_done:        defb "[TRACE 41] UI DRAW DONE", 13, 10, 0
 trace_50_first_timestamp_begin: defb "[TRACE 50] FIRST LOG/TIMESTAMP BEGIN", 13, 10, 0
@@ -424,9 +417,8 @@ trace_A1_bios_load_done:      defb "[TRACE A1] BIOS LOAD DONE", 13, 10, 0
 trace_B0_bios_exec_begin:     defb "[TRACE B0] BIOS EXEC BEGIN", 13, 10, 0
 trace_B1_bios_exec_return:    defb "[TRACE B1] BIOS EXEC RETURN", 13, 10, 0
 
-msg_rtc_ready:        defb "[RTC] DALLAS DS12887 PROBE COMPLETE", 13, 10, 0
 msg_p125_start:       defb "[P125] ATM HOST START", 13, 10, 0
-msg_p125_build_id:    defb "[P125] BUILD 20261104-A45 LEGACY TRDOS BOOT ORDER", 13, 10, 0
+msg_p125_build_id:    defb "[P125] BUILD 20261104-A46 QUIET INIT LOG", 13, 10, 0
 msg_fw_load:          defb "[P125] LOAD NEOGS FIRMWARE", 13, 10, 0
 msg_fw_file_error:    defb "[P125] ERROR: NEOLOAD.C FILE #", 0
 msg_fw_upload_error:  defb "[P125] ERROR: NEOGS FIRMWARE UPLOAD PHASE #", 0
