@@ -1679,3 +1679,32 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT VERIFIED. Найдены и исправлены два дополнительных расхождения ABI по HL и сохранению B в descriptor вызове.
 
 | 2026-11-04 | A1.30 TR-DOS HL / descriptor ABI | SOURCE COMMITTED | Preserve Project124's post-LDIR HL for search, preserve returned HL for descriptor, and change only C to 8 as Project124 does. Build/runtime pending. |
+## A1.31 — разделение TR-DOS dispatcher и FDC/catalogue path (2026-11-04)
+
+- [x] Runtime A27/A50: D1/D2 присутствуют, `[NLOAD 02]` отсутствует; HL ABI correction did not resolve the hang.
+- [x] Сверен опубликованный дизассемблер TR-DOS 5.03: сервис `C=#14` копирует 16-байтовый descriptor из `#5CDD` в `HL` без чтения диска; сервис `C=#0A` вызывает поиск, который читает сектор каталога.
+- [x] Перед C=#0A добавлен контрольный вызов C=#14 с отдельным 16-байтовым scratch buffer. Маркеры T0/T1 разделяют зависание в общем dispatcher `#3D13` и зависание в дисковом поиске.
+- [x] Driver banner A51; host build marker A28.
+- [ ] Build: проверить `build_project125.bat`, SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: если есть T1, но нет `[NLOAD 02]`, локализовано зависание внутри каталожного/FDC пути; если нет T1 — проблема в dispatcher/ROM entry path.
+- **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.31 TR-DOS dispatcher probe | SOURCE COMMITTED | Add a non-disk C=#14 TR-DOS API call before C=#0A to distinguish API entry/return failure from catalogue disk I/O. |
+
+## A1.32 — TR-DOS environment initialization (2026-11-04)
+
+- Source change: initialize `#5CF9=0`, `#5D10=0`, `#5D06=9`, and `ERR_SP` at `#5C5D` from the current SP before TR-DOS API calls.
+- Added runtime marker `[NLOAD E1] TRDOS DOSENV READY`; driver A52, host A29.
+- Build and hardware runtime are pending. The error-hook from `dv093d13.txt` is intentionally not installed because its BASIC/BIOS interception requires a separate ATM-specific implementation.
+- Status: SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+
+## A1.33 — исправление адреса ERR_SP (2026-11-04)
+
+- [x] Runtime A29/A52: `[NLOAD T1]` появился, но `[NLOAD 02]` отсутствует. Это доказывает возврат из недискового сервиса `C=#14`; зависание ограничено сервисом поиска каталога `C=#0A`.
+- [x] Повторная арифметическая проверка адресов статьи `dv093d13.txt`: десятичный адрес 23613 соответствует `#5C3D`, а не `#5C5D`. Предыдущая запись `SP` по `#5C5D` была ошибочной.
+- [x] Исправлено сохранение `SP` в `ERR_SP=#5C3D`. Значение `SP=BFF1` не попадает в запрещённый для TR-DOS диапазон `#AAxx`, отмеченный в `ig7d3d13.txt`.
+- [x] Driver banner A53; host build marker A30.
+- [ ] Build: собрать `build_project125.bat`; проверить отсутствие ошибок и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить `[NLOAD E1]`, `[NLOAD T0]`, `[NLOAD T1]`, затем `[NLOAD 02]`. Если поиск вернётся, продолжить descriptor/sector tests.
+- **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT VERIFIED.
