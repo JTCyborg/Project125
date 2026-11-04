@@ -16,6 +16,51 @@
 ; 8C /r: MOV r/m16,Sreg (ES,CS,SS,DS are readable).
 ; 8E /r: MOV Sreg,r/m16 (ES,SS,DS are writable; loading CS is invalid).
 ; -------------------------------------------------------------------------
+; -------------------------------------------------------------------------
+; C6/C7 — MOV r/m8,imm8 and MOV r/m16,imm16.
+; Only ModR/M /0 is defined by the 8086 encoding.
+; The common ModR/M decoder consumes displacement bytes before the immediate.
+; -------------------------------------------------------------------------
+x86_real_mov_immediate_rm:
+        ld      (x86_mov_opcode), a
+        call    x86_real_fetch8
+        ret     c
+        call    x86_real_mov_decode_modrm
+        ret     c
+        ld      a, (x86_mov_reg)
+        or      a
+        jp      nz, x86_real_mov_immediate_invalid
+
+        ld      a, (x86_mov_opcode)
+        cp      #C6
+        jr      z, .byte_immediate
+
+        ; C7: immediate word, little-endian.
+        xor     a
+        ld      (x86_mov_width), a
+        call    x86_real_mov_fetch16
+        ret     c
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+.byte_immediate:
+        ld      a, 1
+        ld      (x86_mov_width), a
+        call    x86_real_fetch8
+        ret     c
+        ld      l, a
+        ld      h, 0
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+x86_real_mov_immediate_invalid:
+        ld      a, (x86_mov_opcode)
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
 x86_real_mov_segment:
         ld      (x86_mov_opcode), a
         call    x86_real_fetch8
