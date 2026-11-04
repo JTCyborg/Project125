@@ -109,15 +109,20 @@ x86_io_read8:
         or      a
         sbc     hl, de
         jr      z, x86_pit_read_channel0
-        ; IBM PC/XT 8255 PB latch and memory-size sense input.
+        ; IBM PC/XT 8255: PA keyboard data, PB system control,
+        ; PC memory-size/cassette sense, and control-word latch.
         ld      a, (x86_io_port+1)
         or      a
         jr      nz, .read8_open_bus
         ld      a, (x86_io_port)
+        cp      #60
+        jp      z, x86_ppi_read_port_a
         cp      #61
         jp      z, x86_ppi_read_port_b
         cp      #62
         jp      z, x86_ppi_read_port_c
+        cp      #63
+        jp      z, x86_ppi_read_control
 .read8_open_bus:
         ld      a, #FF
         jp      x86_io_trace_read8
@@ -192,6 +197,8 @@ x86_io_write8:
         ld      a, (x86_io_port)
         cp      #61
         jp      z, x86_ppi_write_port_b
+        cp      #63
+        jp      z, x86_ppi_write_control
 .write8_unmapped:
         jp      x86_io_trace_write8
 
@@ -426,9 +433,18 @@ x86_io_tick:
         call    x86_int_enter
         ret
 
-; IBM PC/XT 8255 subset used by the BIOS POST.
-; Port 61 is the system-control latch (reset value 40h).
-; Port 62 returns the 640KB memory-size sense nibble selected by PB2.
+; IBM PC/XT 8255/PPI model used by the 5150 BIOS.
+; PA (60h) is the XT keyboard data latch. A PB6 low-to-high transition
+; resets the keyboard interface and makes the XT BAT byte AAh available.
+; PB (61h) resets to 40h. PC (62h) reports 640KB as 12h, multiplexed
+; by PB2 into the high/low memory-size nibble. No cassette is attached.
+x86_ppi_read_port_a:
+        ld      a, (x86_ppi_keyboard_data)
+        xor     a
+        ld      (x86_ppi_keyboard_ready), a
+        ld      a, (x86_ppi_keyboard_data)
+        ret
+
 x86_ppi_read_port_b:
         ld      a, (x86_ppi_port_b)
         ret
@@ -441,9 +457,92 @@ x86_ppi_read_port_c:
         inc     a
         ret
 
+x86_ppi_read_control:
+        ld      a, (x86_ppi_control)
+        ret
+
 x86_ppi_write_port_b:
+        ld      a, (x86_ppi_port_b)
+        bit     6, a
+        ld      b, a
         ld      a, (x86_io_value)
         ld      (x86_ppi_port_b), a
+        bit     6, b
+        ret     nz
+        bit     6, a
+        ret     z
+        ; Keyboard reset edge: XT keyboard performs BAT and returns AAh.
+        ld      a, #AA
+        ld      (x86_ppi_keyboard_data), a
+        ld      a, 1
+        ld      (x86_ppi_keyboard_ready), a
+        ret
+
+x86_ppi_write_control:
+        ld      a, (x86_io_value)
+        ld      (x86_ppi_control), a
+        ; Bit set/reset commands affect the selected PC port-C output bit.
+        bit     7, a
+        ret     nz
+        and     #0E
+        rrca
+        ld      b, a
+        ld      a, (x86_ppi_port_c)
+        ld      c, a
+        ld      a, (x86_io_value)
+        bit     0, a
+        jr      z, .ppi_bsr_clear
+        ld      a, 1
+        jr      .ppi_bsr_apply
+.ppi_bsr_clear:
+        xor     a
+.ppi_bsr_apply:
+        ld      a, b
+        and     7
+        ld      b, a
+        ld      a, (x86_io_value)
+        bit     0, a
+        ld      a, c
+        jr      z, .ppi_bsr_reset
+        ld      a, b
+        call    x86_ppi_set_port_c_bit
+        ret
+.ppi_bsr_reset:
+        ld      a, b
+        call    x86_ppi_clear_port_c_bit
+        ret
+
+x86_ppi_set_port_c_bit:
+        ld      b, a
+        ld      a, 1
+        jr      x86_ppi_change_port_c_bit
+x86_ppi_clear_port_c_bit:
+        ld      b, a
+        xor     a
+x86_ppi_change_port_c_bit:
+        push    af
+        ld      a, b
+        and     7
+        ld      c, a
+        ld      a, 1
+.ppi_c_shift:
+        dec     c
+        jr      c, .ppi_c_shift_done
+        add     a, a
+        jr      .ppi_c_shift
+.ppi_c_shift_done:
+        ld      b, a
+        pop     af
+        ld      a, (x86_ppi_port_c)
+        jr      z, .ppi_c_clear
+        or      b
+        jr      .ppi_c_store
+.ppi_c_clear:
+        cpl
+        and     b
+        cpl
+.ppi_c_store:
+        ld      (x86_ppi_port_c), a
         ret
 
 x86_io_read16:
@@ -680,8 +779,12 @@ x86_io_test_ip:      dw 0
 x86_io_test_ax:      dw 0
 x86_io_test_dx:      dw 0
 
-; PC/XT 8255 port-B latch; IBM 5150 reset value.
-x86_ppi_port_b:      db #40
+; PC/XT 8255 state. IBM 5150 reset values and empty keyboard.
+x86_ppi_port_b:          db #40
+x86_ppi_port_c:          db 0
+x86_ppi_control:         db #99
+x86_ppi_keyboard_data:   db 0
+x86_ppi_keyboard_ready:  db 0
 
 x86_io_guest_imm8:
         db #B0,#5A,#E6,#E0,#B0,#00,#E4,#E0,#F4
