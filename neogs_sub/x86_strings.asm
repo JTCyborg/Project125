@@ -162,6 +162,7 @@ x86_string_scas:
 .compare:
         ld      (x86_string_value), hl
         call    x86_string_compare
+        call    x86_resident_memtest_scas_trace
         call    x86_string_advance_di
         ret
 
