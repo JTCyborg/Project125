@@ -2075,7 +2075,10 @@ x86_real_shift_byte_cl:
         cp      #C8
         jp      z, x86_real_shift_byte_ror_cl
         cp      #E0
-        jp      nz, x86_real_shift_byte_cl_unsupported
+        jp      z, x86_real_shift_byte_shl_cl
+        cp      #E8
+        jp      z, x86_real_shift_byte_shr_cl
+        jp      x86_real_shift_byte_cl_unsupported
         ld      a, (x86_reg_cx)
         or      a
         jp      z, x86_real_next
@@ -2175,6 +2178,100 @@ x86_real_shift_byte_cl:
         ld      l, a
         ld      (x86_reg_ax), hl
         jp      x86_real_next
+
+; D2 E8: SHR AL,CL. The 8086 uses the complete CL count.
+; A zero count leaves AL and FLAGS unchanged. For count=1, OF is the
+; original sign bit; for larger counts OF is undefined and preserved.
+x86_real_shift_byte_shr_cl:
+        ld      a, (x86_reg_cx)
+        or      a
+        jp      z, x86_real_next
+        ld      (x86_shift_count), a
+        ld      (x86_shift_original_count), a
+        ld      a, (x86_reg_ax)
+        ld      (x86_shift_original), a
+        ld      (x86_shift_result), a
+.shr_byte_cl_loop:
+        ld      a, (x86_shift_result)
+        srl     a
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+        ld      a, (x86_shift_count)
+        dec     a
+        ld      (x86_shift_count), a
+        jr      nz, .shr_byte_cl_loop
+
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shr_byte_cl_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.shr_byte_cl_parity:
+        ld      a, (x86_shift_result)
+        and     a
+        jp      pe, .shr_byte_cl_pf
+        jr      .shr_byte_cl_zero
+.shr_byte_cl_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.shr_byte_cl_zero:
+        ld      a, (x86_shift_result)
+        or      a
+        jr      nz, .shr_byte_cl_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.shr_byte_cl_sign:
+        ld      a, (x86_shift_result)
+        bit     7, a
+        jr      z, .shr_byte_cl_overflow
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.shr_byte_cl_overflow:
+        ld      a, (x86_shift_original_count)
+        cp      1
+        jr      nz, .shr_byte_cl_preserve_of
+        ld      a, (x86_shift_original)
+        bit     7, a
+        jr      z, .shr_byte_cl_merge
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+.shr_byte_cl_merge:
+        ld      de, #F73A
+        jr      .shr_byte_cl_merge_apply
+.shr_byte_cl_preserve_of:
+        ld      de, #FF3A
+.shr_byte_cl_merge_apply:
+        ld      hl, (x86_reg_flags)
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        ld      a, (x86_reg_ax+1)
+        ld      h, a
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
+; D2 E0: SHL AL,CL. Kept as a separate handler so D2 group dispatch
+; can support individual documented ModR/M forms without mis-decoding.
+x86_real_shift_byte_shl_cl:
+        jp      x86_real_shift_byte_cl_shl_impl
 
 ; D2 C8: ROR AL,CL. The 8086 applies the complete CL count.
 ; ROR changes CF and (for count=1) OF only; PF/ZF/SF/AF are preserved.
