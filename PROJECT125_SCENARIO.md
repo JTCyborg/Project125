@@ -1450,3 +1450,31 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.11 NEOLOAD.C TR-DOS boundary tracing | SOURCE COMMITTED | Added port-#EF checkpoints around TR-DOS open/descriptor/first-sector calls; no loader protocol or data path changed. |
+
+
+## A1.12 — сохранить выбранный TR-DOS ROM при инициализации ATM-видео (2026-11-04)
+
+- [x] Runtime A1.11: выводится `[NLOAD 01] CATALOG SEARCH CALL`, но отсутствует `[NLOAD 02] CATALOG SEARCH RETURN`; сбой происходит внутри `CALL #3D13` (TR-DOS C=10), до чтения дескриптора и сектора.
+- [x] В `p125_atm_video_init` найдено несоответствие комментарию: запись `#18` в `#7FFD` принудительно устанавливала bit 4 (ROM select), вместо сохранения текущего ROM. Это могло отключать отображённый TR-DOS ROM перед последующим вызовом `#3D13`.
+- [x] Исправлено: брать текущее значение из системной копии `BANKM` по `#5C3B`, устанавливать только bit 3 (`OR #08`) для выбора альтернативного экрана и записывать полученное значение обратно в `#5C3B`.
+- [ ] Сборка `build_project125.bat`; подтвердить отсутствие ошибок ассемблера и проверить `ProgramEnd <= #A800`.
+- [ ] Runtime: после `[NLOAD 01]` должен появиться `[NLOAD 02]`; далее проверить descriptor и первый sector markers.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING. Причина является сильной гипотезой, пока не подтверждена повторным запуском.
+
+| 2026-11-04 | A1.12 Preserve TR-DOS ROM across ATM video init | SOURCE COMMITTED | Replaced hardcoded #7FFD=#18 with BANKM-preserving update that sets only screen bit 3. Build/runtime pending. |
+
+## D1.00 — переход с ATM 8031 probe на Dallas DS12887 (2026-11-04)
+
+- [x] Изучен `alfishe/unreal-speccy/io.cpp`: для модели ATM3 (ATM Turbo 2+) индекс CMOS выбирается записью в `#DFF7`, данные читаются/записываются через `#BFF7`.
+- [x] Подтверждено по `io.cpp`, что ATM3 не требует `EFF7_CMOS` gate; условие доступа отдельно разрешает `conf.mem_model == MM_ATM3`.
+- [x] Изучен `memory.cpp`: карта RTC-регистров совместима с MC146818/DS12887; Status A/B/D обрабатываются как регистры `0A/0B/0D`, VRT в Status D возвращает `#80`.
+- [x] Добавлен отдельный `zx_main/ds12887_rtc.asm`; `READ_CURRENT_TIME` теперь читает DS12887 через `#DFF7/#BFF7`, а не через порт клавиатурного контроллера `#FE`.
+- [x] Драйвер только читает RTC: не записывает время, дату, Status A/B и CMOS RAM. Проверяет VRT, ограниченно ожидает UIP=0 и повторяет снимок при смене секунд.
+- [x] Учтены режимы DS12887 из Status B: BCD/binary и 12/24 часа.
+- [x] `main.asm` переключён на `DS12887_PROBE`; build ID изменён на `20261104-A15 DS12887-RTC`; старый `atm_kbd_rtc.asm` оставлен в репозитории, но больше не включается в host image.
+- [ ] Сборка `build_project125.bat`: проверить синтаксис SjASMPlus, разрешение `READ_CURRENT_TIME` и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить `[DS12887 D1.00]`, `VRT OK`, `RAW H:M:S=...` и корректные `[HH:MM:SS]` timestamp в журнале.
+- [ ] Проверить, что после RTC probe выполнение доходит до `[TRACE 70] NEOLOAD READ BEGIN` и последующих `[NLOAD ...]`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING. Источник портов проверен статически по эмулятору; физическая плата и сборка не проверены.
+
+| 2026-11-04 | D1.00 Dallas DS12887 RTC | SOURCE COMMITTED | Implemented ATM3 #DFF7/#BFF7 read-only DS12887 driver, mode-aware time conversion and timestamp API; build/runtime pending. |

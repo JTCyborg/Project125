@@ -42,6 +42,9 @@ neo_fw_open_file:
         ld      c, 10
         ld      hl, trace_noload_01_search_call
         call    p125_trace_port
+        ; A1.13: capture the exact TR-DOS search environment immediately
+        ; before entering ROM. This routine writes only to diagnostic port #EF.
+        call    neo_diag_search_state
         call    #3D13
         ld      hl, trace_noload_02_search_return
         call    p125_trace_port
@@ -1172,6 +1175,80 @@ neogs_wait_data_byte::
         or      a
         ret
 
+; -------------------------------------------------------------------------
+; A1.13 TR-DOS boundary diagnostic.
+; Dumps BANKM, extension, TR-DOS mode byte and the exact 8-byte search name.
+; Uses port #EF only; preserves every register and does not touch TR-DOS state.
+; -------------------------------------------------------------------------
+neo_diag_search_state:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, trace_noload_diag_prefix
+        call    p125_trace_port
+        ld      a, (#5C3B)
+        call    neo_diag_hex8
+        ld      hl, trace_noload_diag_ext
+        call    p125_trace_port
+        ld      a, (#5CE5)
+        call    neo_diag_hex8
+        ld      hl, trace_noload_diag_mode
+        call    p125_trace_port
+        ld      a, (#5D06)
+        call    neo_diag_hex8
+        ld      hl, trace_noload_diag_name
+        call    p125_trace_port
+        ld      hl, #5CDD
+        ld      b, 8
+        ld      c, #EF
+.neo_diag_name_loop:
+        ld      a, (hl)
+        out     (c), a
+        inc     hl
+        djnz    .neo_diag_name_loop
+        ld      a, 13
+        out     (c), a
+        ld      a, 10
+        out     (c), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+; A = byte. Emit two uppercase hexadecimal digits to #EF.
+neo_diag_hex8:
+        push    af
+        push    bc
+        ld      c, #EF
+        rrca
+        rrca
+        rrca
+        rrca
+        call    neo_diag_hex_nibble
+        pop     bc
+        pop     af
+        push    af
+        push    bc
+        ld      c, #EF
+        and     #0F
+        call    neo_diag_hex_nibble
+        pop     bc
+        pop     af
+        ret
+
+; A = low nibble. C = #EF.
+neo_diag_hex_nibble:
+        and     #0F
+        add     a, '0'
+        cp      '9' + 1
+        jr      c, .neo_diag_hex_digit
+        add     a, 7
+.neo_diag_hex_digit:
+        out     (c), a
+        ret
+
 ; TR-DOS NeoGS package loader state and fixed 8-character filename.
 neo_fw_loader_filename:  db "NEOLOAD "
 neo_fw_firmware_filename: db "NEOFW   "
@@ -1219,6 +1296,10 @@ msg_p7_high_tx:        db "[P125] PH7 TX HIGH", 13, 10, 0
 msg_p7_high_ok:       db "[P125] PH7 HIGH ACK", 13, 10, 0
 msg_p7_wait_a3:        db "[P125] PH7 WAIT A3", 13, 10, 0
 msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
+trace_noload_diag_prefix:          defb "[NLOAD D] BANKM=", 0
+trace_noload_diag_ext:             defb " EXT=", 0
+trace_noload_diag_mode:            defb " MODE=", 0
+trace_noload_diag_name:            defb " NAME=", 0
 trace_noload_00_entry:             defb "[NLOAD 00] OPEN ENTRY", 13, 10, 0
 trace_noload_01_search_call:       defb "[NLOAD 01] CATALOG SEARCH CALL", 13, 10, 0
 trace_noload_02_search_return:     defb "[NLOAD 02] CATALOG SEARCH RETURN", 13, 10, 0
@@ -1228,4 +1309,4 @@ trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
 trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
 trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A42 NEOLOAD TRACE", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A43 TRDOS STATE DIAG", 13, 10, 0

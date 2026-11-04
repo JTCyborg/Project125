@@ -47,7 +47,7 @@ Init_Z80_System:
         call    p125_trace_port
 
         ; Initialize the ATM 80x25 text workspace. Project125 uses the native
-        ; ATM 8031 RTC through port #FE; K512VI1 CMOS is not probed here.
+        ; Dallas DS12887 RTC uses ATM3 CMOS index/data ports #DFF7/#BFF7.
         ld      hl, trace_20_screen_clear_begin
         call    p125_trace_port
         call    BIOS_DebugConsole_Clear
@@ -56,9 +56,9 @@ Init_Z80_System:
 
         ld      hl, trace_30_rtc_init_begin
         call    p125_trace_port
-        ; Initialize and read the native ATM Turbo 2+ 8031 RTC.
-        ; This avoids K512VI1 CMOS ports #EFF7/#DFF7/#BFF7 on ATM.
-        call    ATM_KBD_RTC_PROBE
+        ; Probe and read the Dallas DS12887 through the ATM3 CMOS port pair.
+        ; The driver is read-only; no RTC time/control register is written.
+        call    DS12887_PROBE
 
         ld      hl, trace_31_rtc_init_done
         call    p125_trace_port
@@ -391,9 +391,9 @@ trace_A1_bios_load_done:      defb "[TRACE A1] BIOS LOAD DONE", 13, 10, 0
 trace_B0_bios_exec_begin:     defb "[TRACE B0] BIOS EXEC BEGIN", 13, 10, 0
 trace_B1_bios_exec_return:    defb "[TRACE B1] BIOS EXEC RETURN", 13, 10, 0
 
-msg_rtc_ready:        defb "[RTC] ATM 8031 RTC PROBE COMPLETE", 13, 10, 0
+msg_rtc_ready:        defb "[RTC] DALLAS DS12887 PROBE COMPLETE", 13, 10, 0
 msg_p125_start:       defb "[P125] ATM HOST START", 13, 10, 0
-msg_p125_build_id:    defb "[P125] BUILD 20261104-A14 ATM8031-RTC", 13, 10, 0
+msg_p125_build_id:    defb "[P125] BUILD 20261104-A15 DS12887-RTC", 13, 10, 0
 msg_fw_load:          defb "[P125] LOAD NEOGS FIRMWARE", 13, 10, 0
 msg_fw_file_error:    defb "[P125] ERROR: NEOLOAD.C FILE #", 0
 msg_fw_upload_error:  defb "[P125] ERROR: NEOGS FIRMWARE UPLOAD PHASE #", 0
@@ -420,7 +420,7 @@ p125_log_line_start: db 1
 
 ; Project124-derived K512VI1 RTC driver.
         INCLUDE "rtc_driver.asm"
-        INCLUDE "atm_kbd_rtc.asm"
+        INCLUDE "ds12887_rtc.asm"
 
 ; Host-side modules: firmware bootstrap, BIOS DMA transport and TR-DOS reader.
         INCLUDE "neogs_driver.asm"
