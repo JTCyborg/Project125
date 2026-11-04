@@ -1183,3 +1183,781 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [x] Удалены только диагностические процедуры/строки и неиспользуемое поле адреса последнего буфера; TR-DOS C=#05, курсор 0..15, staging #C000..#DFFF, DMA, handshake и BIOS validation не изменялись.
 - [ ] Сборка `build_project125.bat` и runtime-проверка на ATM: в логе не должно быть `[P125] DISK DUMP`, `[BIOS READ]`; диагностические сообщения BIOS execution, включая `OP=xx`, сохраняются.
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+
+## A1.78 — первоначальный перенос RTC и Spectrum-консоли (2026-11-04, SUPERSEDED)
+
+**Примечание:** этот вариант экранного backend использовал стандартную Spectrum bitmap-память и был отвергнут для ATM. Его заменяет A1.79 — ATM Text 80×25 presenter. Timestamping входящего NeoGS потока, описанный ниже, также отменён: NeoGS сообщения должны оставаться без RTC-префикса.
+
+- [x] Импортирован драйвер CMOS/RTC K512VI1 из Project124 в `zx_main/rtc_driver.asm`: проверка сигнатуры, холодная инициализация регистров A/B, чтение BCD HH:MM:SS с ожиданием UIP.
+- [x] Чтение RTC адаптировано для сохранения исходного состояния прерываний Z80: `READ_CURRENT_TIME` больше не включает EI безусловно.
+- [x] Импортирован 42×12 символов 6×8 экранный диагностический backend Project124 в `zx_main/p125_screen_console.asm`; нижняя половина стандартного Spectrum bitmap используется как журнал, верхняя область не очищается и не перерисовывается.
+- [x] Шрифт `font68.bin` (768 bytes) встроен как assembler data, чтобы Project125 не зависел от внешнего бинарного файла шрифта.
+- [x] Скроллинг нижней консоли перенесён отдельно; не импортированы Commander file panels, клавиатурная навигация и старый 32-column renderer.
+- [x] Host output теперь зеркалируется одновременно в порт #EF и экранную консоль.
+- [~] Первоначально timestamp добавлялся и к NeoGS debug stream; это поведение отменено в A1.79. RTC-префикс применяется только к сообщениям Z80.
+- [x] Подсистемы CPU 8086, BIOS loader, NeoGS DMA/IPC и video-frame ABI не изменялись по смыслу; изменены только точки вывода debug stream.
+- [ ] Сборка `build_project125.bat`: проверить SjASMPlus синтаксис, включение новых модулей и ограничение `ProgramEnd <= #A800`.
+- [ ] Runtime на ATM/Unreal: проверить RTC показания, timestamp в порту #EF, дублирование тех же сообщений на экран, прокрутку после 12 строк.
+- [ ] Проверить, что экранный вывод не конфликтует с выбранным ATM видеорежимом; текущий backend использует стандартную Spectrum bitmap-область и не является ATM 640×200/320×200 presenter.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME NOT VERIFIED. Не объявлять экранный интерфейс подтверждённым до сборки и запуска на целевой конфигурации.
+## A1.79 — ATM-native 80×25 presenter and RTC log-source separation (2026-11-04)
+
+- [x] Replaced the incorrect Spectrum `#4000–#5AFF` bitmap console from A1.78 with the ATM Turbo 2+ hardware text mode 80×25 (`RG=6`, system-port value `#C6`).
+- [x] ATM shadow ports are opened first through the TR-DOS trampoline `#3D2F -> #2A53 -> #0177`; no shadow-port write is attempted before DOSEN is enabled.
+- [x] Selected the alternate ATM screen pair with `#7FFD=#18`: physical page 7 for character codes and page 3 for attributes. This avoids overwriting the resident host program in page 5 at `#6000`.
+- [x] The presenter is placed at `#A000` in CPU window 2. For each screen operation it temporarily maps page 7 to `#4000` and page 3 to `#C000`, then restores page 5/page 0. Thus the host code at `#6000` and the TR-DOS staging buffer at `#C000` are not left mapped out or overwritten.
+- [x] Ported the tested Project112 80×25 text layout: `#01C0 + row*64 + column/2`; even/odd character and attribute planes use the documented ATM address split.
+- [x] Recreated the Project124 two-zone layout as an ATM-native workspace: 12-row status panel above, 13-row timestamped diagnostic log below; 80 columns across the display.
+- [x] RTC K512VI1 initialization now runs after ATM shadow-port activation.
+- [x] Split host output into a raw character emitter and a Z80 log emitter. Z80-originated log lines receive `[HH:MM:SS]`; NeoGS debug-stream bytes are mirrored verbatim and never receive an RTC prefix.
+- [x] Z80-originated handshake trace messages use the host timestamp path; the NeoGS-originated BIOS/debug stream continues through the raw path.
+- [x] The five-byte BIOS tail diagnostic is buffered first; only after all NeoGS bytes have been consumed does the Z80 print the `[BIOS DST FFF0]` line with its RTC timestamp. This avoids delaying the NeoGS DBIT receive handshake while formatting the line.
+- [ ] Build: run `build_project125.bat`; verify the `ASSERT $ <= #A000` placement gate and final `ProgramEnd <= #A800` limit.
+- [ ] Runtime on ATM710/UnrealSpeccy: verify the complete 80×25 interface is visible, including both character parity halves; no black half-screen or overwritten host code.
+- [ ] Runtime: verify the status panel, 13-row log scrolling, and screen output during firmware upload and BIOS loading.
+- [ ] Runtime: verify K512VI1 time and `[HH:MM:SS]` on Z80-originated log lines; verify NeoGS lines have no inserted timestamp.
+- [ ] Regression: confirm NeoGS firmware upload, BIOS.C staging/DMA, IPC handshake and 8086 execution remain unchanged.
+- **Status:** SOURCE COMMITTED / BUILD NOT VERIFIED / ATM RUNTIME NOT VERIFIED. A1.79 supersedes the Spectrum bitmap backend introduced in A1.78; do not mark the ATM presenter complete until build and runtime checks pass.
+
+## A1.80 — startup trace markers on port #EF (2026-11-04)
+
+- [x] Added a dedicated `p125_trace_port` routine in `zx_main/main.asm`. It writes zero-terminated ASCII strings directly to port `#EF`, without RTC access, screen rendering, or the normal timestamped logger.
+- [x] Added checkpoints for Z80 entry, ATM video initialization, screen clear, RTC initialization, static UI drawing, and the first timestamped log line.
+- [x] Added checkpoints immediately before and after `READ_CURRENT_TIME` to identify an RTC read stall.
+- [x] Added checkpoints around NEOLOAD.C reading, NeoGS firmware upload, video CRC self-test, BIOS.C loading, and BIOS execution/return.
+- [x] Diagnostic markers are emitted only by the Z80 host. NeoGS debug-stream bytes and the normal log protocol are unchanged.
+- [ ] Build with `build_project125.bat`; verify assembler syntax and resident image size (`ProgramEnd <= #A800`).
+- [ ] Runtime: capture the port `#EF` log from `[TRACE 00]` onward. The last emitted marker identifies the call that did not return; report the complete log without trimming.
+- **Status:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+
+## A1.81 — трассировка внутренних этапов RTC K512VI1 (2026-11-04)
+
+- [x] Runtime A1.80: последовательность проходит [TRACE 00], инициализацию ATM-видео и очистку экрана; последняя отметка — [TRACE 30] RTC INIT BEGIN, [TRACE 31] отсутствует.
+- [x] Сбой локализован внутри вызова CHECK_AND_INIT_CMOS; видеорежим и экранный presenter на данном этапе не менять.
+- [x] В zx_main/rtc_driver.asm добавлены контрольные отметки непосредственно вокруг открытия CMOS, чтения сигнатуры регистра #11, трёх возможных записей регистров #11/#0A/#0B и закрытия CMOS.
+- [x] Маркеры RTC используют существующий независимый вывод p125_trace_port в порт #EF; диагностические вызовы сохраняют AF/BC/HL и не меняют прочитанное значение A.
+- [ ] Сборка build_project125.bat: проверить синтаксис и лимит resident host image.
+- [ ] Runtime: прислать полный лог от [TRACE 00] до последней строки [RTC xx]. Последняя RTC-метка укажет конкретный низкоуровневый шаг.
+- **Статус:** RTC TRACE SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.81 K512VI1 initialization substage trace | SOURCE COMMITTED | Added markers around CMOS open, signature read, cold-start register writes and close; no hardware behavior changed intentionally. |
+
+
+## A1.82 — разделение двух OUT в записи RTC (2026-11-04)
+
+- [x] Runtime A1.81: CMOS open и чтение сигнатуры #11 завершаются; последняя отметка — [RTC 05] SIGNATURE WRITE BEGIN. Первая запись регистра #11/#AA не подтверждена.
+- [x] В write_byte_raw добавлены отдельные маркеры до/после OUT (C),A в порт #DFF7 и до/после OUT (C),L в порт #BFF7.
+- [x] Между операциями диагностика сохраняет AF/BC/HL; исходные A (номер регистра) и L (записываемое значение) сохраняются.
+- [ ] Сборка build_project125.bat и проверка ограничения ProgramEnd <= #A800.
+- [ ] Runtime: прислать строки от [RTC 05] до последней [RTC xx]. Если последняя [RTC 0D], остановка до/на записи индекса; если [RTC 0E] — после записи индекса; если [RTC 0F] — при/после подготовки записи данных; если [RTC 10] — оба OUT завершились.
+- **Статус:** PORT-CYCLE TRACE SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.82 trace individual RTC port writes | SOURCE COMMITTED | Added checkpoints around the index and data OUT instructions; no register values or port addresses intentionally changed. |
+
+
+## A1.83 — контроль возврата из write_byte_raw (2026-11-04)
+
+- [x] Runtime A1.82: обе операции OUT завершились; последняя отметка — [RTC 10] DATA OUT DONE. Отметка вызывающей процедуры [RTC 06] отсутствует.
+- [x] В конец write_byte_raw добавлена контрольная отметка [RTC 11] WRITE RET непосредственно перед RET.
+- [ ] Сборка build_project125.bat; проверить синтаксис и лимит resident host image.
+- [ ] Runtime: если [RTC 11] отсутствует, остановка находится между завершением второго trace helper и последней контрольной точкой; если [RTC 11] есть, но [RTC 06] отсутствует — проверять RET, адрес возврата и стек.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.83 RTC write return checkpoint | SOURCE COMMITTED | Added a marker immediately before RET in write_byte_raw; no RTC port values or register settings changed. |
+
+
+## A1.84 — проверка адреса возврата RTC (2026-11-04)
+
+- [x] Runtime A1.83: [RTC 11] WRITE RET выведен; [RTC 06] SIGNATURE WRITE DONE отсутствует.
+- [x] После CALL write_byte_raw введена метка точного адреса продолжения rtc_signature_write_return.
+- [x] Перед RET вычисляется адрес вершины стека через HL=SP и сравнивается с rtc_signature_write_return.
+- [x] Добавлены исходы [RTC 12] RETURN ADDRESS OK и [RTC 13] RETURN ADDRESS BAD.
+- [ ] Сборка build_project125.bat и проверка размера host image.
+- [ ] Runtime: сообщить, какая из отметок RTC 12/13 появляется и есть ли затем RTC 06.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.84 RTC return-address validation | SOURCE COMMITTED | Added stack-top return-address comparison before RET; no RTC I/O protocol changes. |
+
+
+## A1.85 — исправление ошибок сборки RTC-диагностики (2026-11-04)
+
+- [x] Получена ошибка SjASMPlus: `CHECK_AND_INIT_CMOS.already_active` не найден; переход `JR` также выдавал недопустимое смещение из-за неразрешённой локальной метки.
+- [x] Локальная метка ветки уже активной RTC заменена на глобальную `rtc_already_active`; условный переход заменён на `JP Z`, чтобы исключить ограничение относительного диапазона.
+- [x] Исправлена логическая ошибка A1.84: `HL=SP` давало адрес вершины стека, а не адрес возврата. Теперь слово возврата временно снимается `POP DE`, немедленно возвращается `PUSH DE` и сравнивается с `rtc_signature_write_return`; исходный стек для RET сохраняется.
+- [ ] Повторить сборку через `build_project125.bat`; проверить синтаксис RTC и общий лимит resident host image.
+- [ ] Runtime: прислать полный лог RTC. Ожидаемые диагностические исходы — `[RTC 12] RETURN ADDRESS OK` либо `[RTC 13] RETURN ADDRESS BAD`, затем проверить появление `[RTC 06] SIGNATURE WRITE DONE`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.85 RTC assembler and stack-check correction | SOURCE COMMITTED | Fixed unresolved local branch/range error and corrected stack return-address comparison; build and runtime remain unverified. |
+
+
+## A1.86 — изоляция возврата из RTC trace helper (2026-11-04)
+
+- [x] Runtime A1.85: лог обрывается после `[RTC 10] DATA OUT DONE`; `[RTC 11] WRITE RET` не наблюдается.
+- [x] Из исходника подтверждено: после вывода RTC 10 следующий шаг — новый вызов `p125_trace_port` для RTC 11; проверка адреса возврата A1.85 находится позже и пока не достигается/не подтверждена.
+- [x] Добавлены прямые одиночные маркеры в порт `#00EF`, не использующие `p125_trace_port`: `>` перед вызовом RTC 11 и `<` после него. Они разделяют возврат из предыдущего trace helper и выполнение следующего вызова.
+- [ ] Сборка `build_project125.bat`; проверить размер host image.
+- [ ] Runtime: если нет `>`, остановка внутри/на возврате из вызова, который печатает RTC 10; если `>` есть, но RTC 11 и `<` отсутствуют — проблема в следующем вызове trace helper; если видны RTC 11 и `<`, выполнение прошло оба вызова, продолжить к сравнению адреса возврата.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.86 isolate RTC trace-helper return path | SOURCE COMMITTED | Added raw port markers around the RTC 11 trace-helper call; no RTC register values or I/O addresses changed. |
+
+
+## A1.87 — идентификатор версии RTC-драйвера в runtime-логе (2026-11-04)
+
+- [x] В начало `CHECK_AND_INIT_CMOS` добавлен вывод строки `[RTC DRIVER A1.87]` через независимый `p125_trace_port` в порт `#EF`.
+- [x] Идентификатор выводится до `[RTC 01] OPEN BEGIN`, поэтому версия драйвера видна даже при остановке на любом последующем этапе RTC-инициализации.
+- [x] Диагностические маркеры A1.86 (`>`, `[RTC 11]`, `<`) и проверка адреса возврата сохранены.
+- [ ] Сборка `build_project125.bat`; проверить синтаксис SjASMPlus и ограничение размера host image.
+- [ ] Runtime: подтвердить первой строкой RTC-диагностики `[RTC DRIVER A1.87]`, затем прислать полный лог.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING. Версия в логе подтверждает исходник драйвера, но сама по себе не подтверждает, что собранный бинарник был обновлён.
+
+| 2026-11-04 | A1.87 RTC driver revision in runtime log | SOURCE COMMITTED | Added an unmistakable `[RTC DRIVER A1.87]` banner before RTC initialization checkpoints; build/runtime remain unverified. |
+
+
+## A1.88 — вывод фактического и ожидаемого адреса возврата RTC (2026-11-04)
+
+- [x] Runtime A1.87: маркеры `>` и `<` присутствуют; `p125_trace_port` завершает оба вызова; сравнение вершины стека выдаёт `[RTC 13] RETURN ADDRESS BAD`.
+- [x] В ветке несовпадения добавлен вывод `ACTUAL=xxxx EXPECTED=xxxx` в порт `#EF`, шестнадцатерично, без изменения RTC I/O и без записи в стек вызывающего кода.
+- [ ] Сборка `build_project125.bat`; проверить синтаксис SjASMPlus и лимит host image.
+- [ ] Runtime: зафиксировать оба адреса; по их разнице определить источник смещения стека/неверного адреса продолжения.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.88 print RTC return-address mismatch values | SOURCE COMMITTED | Added ACTUAL/EXPECTED hexadecimal address output on mismatch; build and runtime remain unverified. |
+
+## A1.89 — исправление вывода адресов возврата RTC (2026-11-04)
+
+- [x] Повторно получен актуальный `zx_main/rtc_driver.asm` из ветки `neogs-driver-rewrite`; предыдущий formatter A1.88 действительно терял фактический адрес при выводе префикса.
+- [x] Введены RAM-переменные `rtc_actual_addr` и `rtc_expected_addr`; входные DE/HL копируются в них до вызовов форматирования.
+- [x] Вывод ACTUAL/EXPECTED теперь читает сохранённые слова из переменных, а не из регистров, которые меняет `p125_trace_port`.
+- [x] Перед вызовом formatter после вывода сообщения о mismatch ожидаемый адрес повторно загружается в HL.
+- [x] Проверка адреса возврата ограничена первой записью сигнатуры `#11=#AA`; последующие записи регистров #0A/#0B имеют другие адреса продолжения и не сравниваются с меткой первой записи.
+- [x] Баннер runtime-драйвера изменён на `[RTC DRIVER A1.89]`.
+- [x] По первоисточнику `cmos/bc07cmos.txt` подтверждено соответствие портов: open/close `#EFF7`, индекс `#DFF7`, данные `#BFF7`; значения инициализации #11=#AA, #0A=#20, #0B=#02 сохранены.
+- [ ] Сборка через `build_project125.bat`; проверить SjASMPlus syntax и ограничение resident host image.
+- [ ] Runtime: прислать полный лог начиная с `[RTC DRIVER A1.89]`. При mismatch ожидается строка `ACTUAL=xxxx EXPECTED=xxxx`; при совпадении — `[RTC 12] RETURN ADDRESS OK`, затем `[RTC 06] SIGNATURE WRITE DONE`.
+- [ ] После получения адресов установить причину расхождения; CMOS hardware initialization пока не объявляется подтверждённой.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING. A1.88 runtime не подтверждён; его formatter заменён исправлением A1.89.
+## A1.90 — диагностика SP без изменения стека (2026-11-04)
+
+- [x] Runtime A1.89 получен: `ACTUAL=0000 EXPECTED=67C0`; mismatch подтверждён корректным шестнадцатеричным форматтером.
+- [x] Диагностическое чтение вершины стека заменено на вычисление адреса `SP` и чтение двух байтов по `(SP)` без `POP/PUSH`.
+- [x] Добавлен вывод `SP=xxxx` перед `ACTUAL` и `EXPECTED`.
+- [x] Сравнение по-прежнему выполняется только для первой записи сигнатуры CMOS #11.
+- [ ] Сборка через `build_project125.bat`; проверить SjASMPlus syntax и размер resident host image.
+- [ ] Runtime: прислать строку `[RTC DRIVER A1.90]` и диагностическую строку `SP=xxxx ACTUAL=xxxx EXPECTED=67C0`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+## A1.91 — снимки стека на входе и выходе RTC write (2026-11-04)
+
+- [x] Runtime A1.90: `SP=AFF7 ACTUAL=0000 EXPECTED=67C0`; SP находится в ожидаемой верхней области host stack, но слово по вершине стека не совпадает с адресом возврата.
+- [x] В `write_byte_raw` добавлен снимок `SP` и двух байтов по `(SP)` непосредственно при входе, до первого вызова `p125_trace_port`.
+- [x] Добавлен второй снимок тех же значений непосредственно перед `RET`, после всех RTC trace helper вызовов.
+- [x] Диагностика выполняется только для записи регистра CMOS #11; снимки сохраняются в RAM, живой стек не модифицируется.
+- [ ] Сборка через `build_project125.bat`; проверить синтаксис SjASMPlus и ограничение resident host image.
+- [ ] Runtime: проверить `ENTRY_SP`, `ENTRY_RET`, `EXIT_SP`, `EXIT_RET`, `EXPECTED`. Если ENTRY_RET уже неверен — исследовать caller/call boundary; если ENTRY_RET верен, а EXIT_RET повреждён — локализовать изменение внутри trace helper path.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.91 RTC entry/exit stack snapshots | SOURCE COMMITTED | Captures stack pointer and return word before the first trace call and immediately before RET; build/runtime remain unverified. |
+
+
+## A1.92 — восстановление отсутствующих RTC diagnostic labels (2026-11-04)
+
+- [x] Исправлена ошибка сборки A1.91: процедуры обращались к диагностическим переменным, объявления которых отсутствовали в `rtc_driver.asm`.
+- [x] Добавлены все восемь требуемых символов: `rtc_saved_hl`, `rtc_saved_de`, `rtc_entry_sp`, `rtc_entry_ret`, `rtc_write_index`, `rtc_exit_sp`, `rtc_exit_ret` и `rtc_expected_addr`.
+- [x] Runtime banner обновлён до `[RTC DRIVER A1.92]`, чтобы отличать исправленный исходник от A1.91.
+- [ ] Сборка через `build_project125.bat`; проверить синтаксис и `ProgramEnd <= #A800`.
+- [ ] Runtime: получить полный лог A1.92 и проверить значения `ENTRY_SP`, `ENTRY_RET`, `EXIT_SP`, `EXIT_RET` и `EXPECTED`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.92 restore missing RTC diagnostic workspace | SOURCE COMMITTED | Added the missing RAM labels referenced by the A1.91 stack-snapshot instrumentation; build/runtime remain unverified. |
+
+
+## A1.93 — обход trace helper после RTC DATA OUT (2026-11-04)
+
+- [x] Runtime A1.92: лог заканчивается после `[RTC 10] DATA OUT DONE`; прямой маркер `>` после вызова `p125_trace_port` не появляется.
+- [x] Участок сразу после записи CMOS data локализован как граница остановки: после вывода RTC 10 следующий шаг — возврат из trace helper и прямой `OUT (#EF)`.
+- [x] Вызов `p125_trace_port` для RTC 10 заменён inline-выводом той же строки через `OUT (C),A`, с сохранением AF/BC/HL и сбалансированным стеком. Остальные диагностические вызовы и CMOS порты не изменены.
+- [x] Runtime banner обновлён до `[RTC DRIVER A1.93]`.
+- [ ] Сборка `build_project125.bat`; проверить синтаксис и `ProgramEnd <= #A800`.
+- [ ] Runtime: если появляется `>` — остановка была связана с вызовом helper для RTC 10; затем проверить `[RTC 11]`, `<`, `ENTRY_RET/EXIT_RET`. Если `>` отсутствует — причина находится раньше либо в выводе/обработке порта `#EF`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.93 bypass RTC trace helper at stop boundary | SOURCE COMMITTED | Replaced the RTC 10 helper call with inline output to isolate the observed post-message stall; build/runtime remain unverified. |
+
+
+## A1.00 — read-only ATM keyboard-controller timer probe (2026-11-04)
+
+- [x] Добавлен отдельный модуль `zx_main/atm_kbd_rtc.asm` для независимой проверки таймера микроконтроллера XT/AT-клавиатуры.
+- [x] Вызов добавлен после инициализации K512VI1 CMOS RTC; существующий драйвер `rtc_driver.asm` не изменён.
+- [x] Проверка выполняет handshake `#55 -> #AA`, затем отдельный handshake перед командами чтения `#10/#50/#90/#D0`.
+- [x] Выводит сырые значения часов, минут, секунд и счётчика дней в порт `#EF`.
+- [x] Записывающие команды `#11/#51/#91/#D1` не используются; режим клавиатурного контроллера не переключается.
+- [ ] Сборка через `build_project125.bat`; проверить синтаксис SjASMPlus и ограничение `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить `[KBDRTC] CONTROLLER ACK #AA` либо `CONTROLLER NOT DETECTED`, затем получить строку `RAW H:M:S=...`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
+
+| 2026-11-04 | A1.00 | Added a non-invasive ATM keyboard MCU timer probe; no writes to the timer and no changes to the K512VI1 RTC or video subsystem. |
+
+
+## A1.94 — K512VI1 signature readback / port access diagnostic (2026-11-04)
+
+- [x] Runtime A1.93 подтверждает, что `write_byte_raw` проходит участок после записи: появились `>` и `[RTC 11] WRITE RET`; это подтверждает возврат кода, но не принятие записи CMOS.
+- [x] Добавлен вывод фактически прочитанного значения регистра подписи #11 сразу после открытия K512VI1.
+- [x] После холодной записи #AA добавлено повторное чтение того же регистра и сравнение с #AA.
+- [x] В лог выводится `SIGNATURE READ #11=xx`, затем `SIGNATURE READBACK #11=xx` и результат `WRITE VERIFIED` либо `WRITE MISMATCH`.
+- [x] Не меняются адреса портов #EFF7/#DFF7/#BFF7, видеорежим и ATM shadow-port setup.
+- [ ] Сборка через `build_project125.bat`; проверить синтаксис SjASMPlus и ограничение `ProgramEnd <= #A800`.
+- [ ] Runtime: прислать полный лог от `[RTC DRIVER A1.94]`; особенно значения `SIGNATURE READ` и `SIGNATURE READBACK`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
+
+| 2026-11-04 | A1.94 K512VI1 signature readback | SOURCE COMMITTED | Logs the CMOS signature value and verifies the cold-start signature write by reading register #11 back; build/runtime remain unverified. |
+
+
+## A1.10 — native ATM Turbo 2+ 8031 RTC driver (2026-11-04)
+
+- [x] Проверена документация ATM Turbo 2+ плат 7.00–7.10: протокол контроллера — `#55 -> #AA`, затем команда чтения через `IN A,(#FE)`.
+- [x] Подтверждены команды времени `#10/#50/#90` (секунды/минуты/часы) и даты `#12/#52/#92` (число/месяц/год).
+- [x] Исправлена прежняя ошибка в трактовке команд: `#D0` — счётчик дней RTC, а не дата месяца; дата читается командами `#12/#52/#92`.
+- [x] `atm_kbd_rtc.asm` заменён полноценным read-only драйвером A1.10: независимый handshake перед каждой командой, чтение времени/даты, диагностический вывод сырых байтов.
+- [x] Реализован API `READ_CURRENT_TIME` для существующего timestamp logger; значения преобразуются в десятичные ASCII-цифры.
+- [x] Startup Project125 больше не вызывает K512VI1 CMOS initialization на ATM; CMOS-драйвер `rtc_driver.asm` оставлен в проекте, его API чтения времени на ATM не используется.
+- [x] Не выполняются команды записи времени/даты; видеорежим, ATM shadow ports, клавиатурный режим и CMOS I/O не меняются.
+- [ ] Сборка через `build_project125.bat`; проверить SjASMPlus syntax и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить `[ATM RTC A1.10] 8031 RTC DRIVER`, `CONTROLLER ACK #AA`, строку TIME/DATE и появление корректных timestamp `[HH:MM:SS]`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
+
+| 2026-11-04 | A1.10 native ATM 8031 RTC | SOURCE COMMITTED | Replaced the non-invasive probe with a read-only RTC driver and routed the logger timestamp API to ATM's native controller. Build and runtime remain unverified. |
+
+
+## A1.10.1 — fix SjASMPlus branch range in ATM RTC driver (2026-11-04)
+
+- [x] Replaced relative `JR` branches in `atm_kbd_rtc.asm` with absolute `JP` branches. This removes the Z80 signed 8-bit displacement limit that caused assembler errors at the long probe/error paths.
+- [ ] Rebuild with `build.bat` / project build script; confirm no further assembler diagnostics.
+- [ ] Runtime verification remains pending.
+- **Status:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
+
+
+## A1.11 — локализация сбоя при открытии NEOLOAD.C (2026-11-04)
+
+- [x] Runtime A1.10: после `[TRACE 70] NEOLOAD READ BEGIN` экран исчезает и ATM перезагружается; `[TRACE 71]` отсутствует.
+- [x] По исходнику подтверждено: `load_neogs_bootstrap_file` входит в `neo_fw_open_file`: поиск каталога TR-DOS через `#3D13`, чтение дескриптора, затем чтение первого сектора в #C000. Передача данных NeoGS на этом этапе ещё не начинается.
+- [x] В `neogs_driver.asm` добавлены независимые маркеры порта #EF вокруг входа в `neo_fw_open_file`, обоих вызовов TR-DOS каталога/дескриптора и чтения первого сектора. Функциональные команды, адреса портов и порядок загрузки не изменены.
+- [ ] Сборка через `build_project125.bat`; проверить SjASMPlus и размер host image.
+- [ ] Runtime: прислать лог с последним достигнутым маркером `[NLOAD xx]`. Это разделит поиск каталога, чтение дескриптора и чтение сектора.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.11 NEOLOAD.C TR-DOS boundary tracing | SOURCE COMMITTED | Added port-#EF checkpoints around TR-DOS open/descriptor/first-sector calls; no loader protocol or data path changed. |
+
+
+## A1.12 — сохранить выбранный TR-DOS ROM при инициализации ATM-видео (2026-11-04)
+
+- [x] Runtime A1.11: выводится `[NLOAD 01] CATALOG SEARCH CALL`, но отсутствует `[NLOAD 02] CATALOG SEARCH RETURN`; сбой происходит внутри `CALL #3D13` (TR-DOS C=10), до чтения дескриптора и сектора.
+- [x] В `p125_atm_video_init` найдено несоответствие комментарию: запись `#18` в `#7FFD` принудительно устанавливала bit 4 (ROM select), вместо сохранения текущего ROM. Это могло отключать отображённый TR-DOS ROM перед последующим вызовом `#3D13`.
+- [x] Исправлено: брать текущее значение из системной копии `BANKM` по `#5C3B`, устанавливать только bit 3 (`OR #08`) для выбора альтернативного экрана и записывать полученное значение обратно в `#5C3B`.
+- [ ] Сборка `build_project125.bat`; подтвердить отсутствие ошибок ассемблера и проверить `ProgramEnd <= #A800`.
+- [ ] Runtime: после `[NLOAD 01]` должен появиться `[NLOAD 02]`; далее проверить descriptor и первый sector markers.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING. Причина является сильной гипотезой, пока не подтверждена повторным запуском.
+
+| 2026-11-04 | A1.12 Preserve TR-DOS ROM across ATM video init | SOURCE COMMITTED | Replaced hardcoded #7FFD=#18 with BANKM-preserving update that sets only screen bit 3. Build/runtime pending. |
+
+## D1.00 — переход с ATM 8031 probe на Dallas DS12887 (2026-11-04)
+
+- [x] Изучен `alfishe/unreal-speccy/io.cpp`: для модели ATM3 (ATM Turbo 2+) индекс CMOS выбирается записью в `#DFF7`, данные читаются/записываются через `#BFF7`.
+- [x] Подтверждено по `io.cpp`, что ATM3 не требует `EFF7_CMOS` gate; условие доступа отдельно разрешает `conf.mem_model == MM_ATM3`.
+- [x] Изучен `memory.cpp`: карта RTC-регистров совместима с MC146818/DS12887; Status A/B/D обрабатываются как регистры `0A/0B/0D`, VRT в Status D возвращает `#80`.
+- [x] Добавлен отдельный `zx_main/ds12887_rtc.asm`; `READ_CURRENT_TIME` теперь читает DS12887 через `#DFF7/#BFF7`, а не через порт клавиатурного контроллера `#FE`.
+- [x] Драйвер только читает RTC: не записывает время, дату, Status A/B и CMOS RAM. Проверяет VRT, ограниченно ожидает UIP=0 и повторяет снимок при смене секунд.
+- [x] Учтены режимы DS12887 из Status B: BCD/binary и 12/24 часа.
+- [x] `main.asm` переключён на `DS12887_PROBE`; build ID изменён на `20261104-A15 DS12887-RTC`; старый `atm_kbd_rtc.asm` оставлен в репозитории, но больше не включается в host image.
+- [ ] Сборка `build_project125.bat`: проверить синтаксис SjASMPlus, разрешение `READ_CURRENT_TIME` и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить `[DS12887 D1.00]`, `VRT OK`, `RAW H:M:S=...` и корректные `[HH:MM:SS]` timestamp в журнале.
+- [ ] Проверить, что после RTC probe выполнение доходит до `[TRACE 70] NEOLOAD READ BEGIN` и последующих `[NLOAD ...]`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING. Источник портов проверен статически по эмулятору; физическая плата и сборка не проверены.
+
+| 2026-11-04 | D1.00 Dallas DS12887 RTC | SOURCE COMMITTED | Implemented ATM3 #DFF7/#BFF7 read-only DS12887 driver, mode-aware time conversion and timestamp API; build/runtime pending. |
+
+## A1.14 / D1.01 — ATM3 map and Dallas status diagnostics (2026-11-04)
+
+- [x] Added raw DS12887 Status D/A/B dump before VRT decision; VRT check now tests bit 7 rather than requiring the entire register to equal `#80`.
+- [x] RTC diagnostic identifies the actual raw register values, allowing distinction between a dead/disabled CMOS interface and a Dallas VRT condition.
+- [x] Added ATM3 live mapping dump before `CALL #3D13`: port `#0CBE` (bit 4 = `CF_TRDOS`, low nibble = FF77 mode) and port `#00BF` (`pBF`, bit 0 = DOS-port decode enable).
+- [x] NeoGS driver marker advanced to A44; RTC driver marker advanced to D1.01; host build ID advanced to A16.
+- [ ] Build and verify assembler output / `ProgramEnd <= #A800`.
+- [ ] Runtime inspect `[DS12887] STATUS D/A/B=...`; status D bit 7 must be set for valid clock/battery state.
+- [ ] Runtime inspect `[NLOAD D] ... ATM3MAP=xx PBF=xx`; ATM3MAP bit 4 should be set while TR-DOS ROM is active, and PBF bit 0 indicates DOS-port decoding.
+- [ ] Confirm `[NLOAD 02] CATALOG SEARCH RETURN` appears.
+- **Status:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
+
+| 2026-11-04 | A1.14 / D1.01 RTC + ATM3 mapping diagnostics | SOURCE COMMITTED | Added DS12887 raw status and ATM3 TR-DOS map register diagnostics; build/runtime pending. |
+
+
+## A1.15 — ATM710-specific TR-DOS ROM mapping diagnostic (2026-11-04)
+
+- [x] Повторно проверен Unreal Speccy io.cpp: ATM710 обрабатывает запись в xx77 через set_atm_FF77, но не имеет ATM3 readback-портов #0CBE/#00BF; ATM3 диагностические чтения A44 для ATM710 неприменимы и возвращают FF.
+- [x] Проверен Unreal Speccy atm.cpp: set_atm_FF77 сохраняет полный адрес OUT-порта в comp.aFF77; для ATM710 бит 8 адреса включает ATM memory, бит 9 управляет CPM/TR-DOS mapping. memory.cpp формирует CF_TRDOS при нулевом бите 9.
+- [x] Подтверждено, что Project125 устанавливает FF77 через trampoline по адресу порта #0177 (ATM memory enabled, CPM bit clear), затем сохраняет BANKM при переключении #7FFD.
+- [x] Удалены невалидные ATM3 readback-пробы из neo_diag_search_state.
+- [x] Добавлен безопасный read-only dump первых 8 байт, реально видимых по адресу TR-DOS entry #3D13, непосредственно перед вызовом ROM. Это проверяет содержимое отображённого ROM без записи в ATM mapping ports.
+- [x] Driver marker обновлён до A45 ATM710 ROM MAP DIAG.
+- [ ] Build: выполнить build_project125.bat; проверить ошибки SjASMPlus и ProgramEnd <= #A800.
+- [ ] Runtime: проверить [NLOAD D] ... ATM710 ROM@3D13=...; сопоставить восемь байт с ROM TR-DOS, затем проверить появление [NLOAD 02] CATALOG SEARCH RETURN.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.15 ATM710 TR-DOS ROM mapping diagnostic | SOURCE COMMITTED | Replaced invalid ATM3-only port probes with a read-only dump of the bytes visible at the TR-DOS entry address #3D13. Build/runtime remain pending. |
+
+
+## D1.04 / A1.18 — SMUC DOS-port gate readback (2026-11-04)
+
+- [x] По актуальному Unreal Speccy `io.cpp` подтверждено: ATM710 не входит в декодер GLUK `#DFF7/#BFF7`; этот путь разрешён для Pentagon с CMOS gate или ATM3.
+- [x] Подтверждено: SMUC `#DFBA/#FFBA` обслуживается только внутри `CF_DOSPORTS` и при `SMUC=enable`. Запись в `#FFBA` задаёт `pFFBA`; bit 7=0 выбирает запись адреса CMOS через `#DFBA`, bit 7=1 — запись данных.
+- [x] В RTC probe добавлен readback системного порта `#FFBA` после выбора address mode. Значение выводится как `[DS12887] SMUC FFBA READBACK=xx`.
+- [x] RTC banner обновлён до D1.04; host build marker обновлён до A19.
+- [ ] Build: выполнить `build_project125.bat`; проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: если `FFBA READBACK=FF`, SMUC decoder не активен в момент RTC probe (проверить `CF_DOSPORTS`/ROM mapping); если читается не-FF, но Status D/A/B остаются FF, исследовать адресный/данный цикл CMOS отдельно.
+- [ ] Runtime PASS только при валидных Status D/A/B и корректном времени.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | D1.04 / A1.18 SMUC gate readback | SOURCE COMMITTED | Added read-only `#FFBA` system-port readback to distinguish an inactive SMUC/DOS-port decoder from an RTC register-access fault; build/runtime remain unverified. |
+
+
+## D1.05 / A1.19 — достоверная проверка SMUC decoder (2026-11-04)
+
+- [x] Исправлена трактовка предыдущей диагностики: чтение `#FFBA` возвращает `comp.nvram.out`, поэтому значение `FF` не доказывает закрытый SMUC decoder.
+- [x] По `io.cpp` подтверждён фиксированный диагностический ответ `#57` для порта `#5FBE` при активных `CF_DOSPORTS` и `SMUC=enable`.
+- [x] В RTC probe заменено чтение `#FFBA` на read-only проверку `IN A,(#5FBE)`; ожидаемый ответ Unreal Speccy — `57`.
+- [x] RTC banner обновлён до D1.05; host build marker обновлён до A20.
+- [ ] Build: выполнить `build_project125.bat`; проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: `SMUC ID #5FBE=57` подтверждает активный декодер; иное значение указывает, что SMUC/DOS-port gate не активен. При `57` и статусах RTC `FF` проверить цикл записи адреса/чтения `#DFBA`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | D1.05 / A1.19 SMUC signature diagnostic | SOURCE COMMITTED | Replaced ambiguous FFBA NVRAM readback with the fixed #5FBE signature read (#57 when SMUC and DOS ports are decoded); build/runtime remain unverified. |
+
+
+## D1.06 / A1.20 — раздельная диагностика GLUK и SMUC (2026-11-04)
+
+- [x] Разобран runtime-лог A20: строка `[DS12887 D1.04]` была вызвана ошибочной строкой banner в исходнике; код уже содержал D1.05-проверку `#5FBE`. Это не свидетельствует о сборке старого RTC-модуля.
+- [x] Исправлен banner на D1.06.
+- [x] Добавлен отдельный вывод статусов `D/A/B` после чтения через GLUK и через SMUC, а также итогового выбранного backend. Теперь можно отличить неисправность/недоступность GLUK-пути от SMUC decoder gate.
+- [x] Удалён устаревший вывод статусов, заменённый раздельными диагностическими строками.
+- [x] Зафиксирован runtime результат пользователя: `SMUC ID #5FBE=FF`, итоговые статусы `FF FF FF`; RTC timestamp остаётся неизвестным.
+- [ ] Build: выполнить `build_project125.bat`; проверить отсутствие ошибок SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: получить строки `GLUK D/A/B`, `SMUC D/A/B`, `SMUC ID #5FBE` и `SELECTED D/A/B`.
+- [ ] Если `#5FBE=FF`, исследовать, почему SMUC/DOS-port decoder закрыт именно в момент RTC probe; не делать вывод о неисправности DS12887 по этому значению.
+- [ ] Если `#5FBE=57`, но SMUC D/A/B остаются FF, исследовать последовательность выбора адреса `#DFBA` и чтения данных `#DFBA`.
+- [ ] RTC PASS только после валидных Status D/A/B и корректного чтения времени.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | D1.06 / A1.20 GLUK + SMUC split diagnostics | SOURCE COMMITTED | Corrected the stale D1.04 banner and added separate register triplets for both backends. The supplied A20 runtime log shows #5FBE=FF and FF status bytes; no RTC PASS. Build and next runtime remain pending. |
+
+
+## A1.21 — исправление параметра SMUC в Unreal Speccy (2026-11-04)
+
+- [x] По исходнику Unreal Speccy `config.cpp` подтверждено, что `SMUC` читается через `GetPrivateProfileInt("MISC", "SMUC", 0, ...)`.
+- [x] Значение `SMUC=enable` не является допустимым числовым включением: Win32 `GetPrivateProfileInt` возвращает значение по умолчанию 0, поэтому `conf.smuc` остаётся выключенным.
+- [x] Правильная настройка эмулятора: секция `[MISC]`, параметр `SMUC=1`. `CMOS=DALLAS` остаётся строковым параметром и распознаётся отдельно.
+- [x] Runtime D1.06 после изменения конфигурации подтверждён: GLUK D/A/B=`FF FF FF`, SMUC D/A/B=`80 20 02`, SMUC ID `#5FBE=57`.
+- [x] DS12887 Status D bit 7 (VRT) установлен; драйвер выбрал SMUC backend и вывел `RAW H:M:S=10:59:21`.
+- [x] Временные метки RTC успешно появились в журнале Project125.
+- **Статус:** RTC PASS — CONFIGURATION + READ-ONLY CLOCK ACCESS RUNTIME VERIFIED. GLUK path is unavailable in this ATM710 setup; SMUC path is working.
+
+| 2026-11-04 | A1.21 SMUC numeric configuration | RTC PASS | `SMUC=1` activates the emulator SMUC decoder; signature #5FBE=57, Status D/A/B=80/20/02, VRT OK and DS12887 time 10:59:21 confirmed at runtime. |
+
+
+## A1.22 — TR-DOS NEOLOAD.C open/search boundary (2026-11-04)
+
+- [x] RTC work is closed as runtime PASS; subsequent work is isolated to TR-DOS/NeoGS loading.
+- [x] Runtime reaches `[NLOAD 00] OPEN ENTRY`, `[NLOAD 01] CATALOG SEARCH CALL`, and prints the exact search context: `BANKM=DC EXT=43 MODE=09`, visible bytes at `#3D13` = `00 18 E7 00 C3 69 2F CD`, filename `NEOLOAD `.
+- [x] Новый полный runtime log от 2026-11-04 снова заканчивается после `NAME=NEOLOAD`; `[NLOAD 02] CATALOG SEARCH RETURN` отсутствует. Подтверждено, что управление не возвращается из `CALL #3D13` (C=#0A) в текущей последовательности.
+- [x] Уточнена семантика TR-DOS shadow ROM: переход на opcode-fetch в диапазоне `#3D00..#3DFF` включает теневое DOS ROM; обычное чтение данных `(HL)` по `#3D13` не активирует переключение и показывает underlying ROM. Поэтому байты `00 18 E7 00 C3 69 2F CD` из A1.15/A1.22 не являются достоверной проверкой содержимого TR-DOS ROM и не должны сравниваться с его образом.
+- [ ] If the call does return, inspect returned C and TR-DOS error bytes `#5D0F/#5D10`, then proceed to descriptor and first-sector read.
+- [ ] Do not modify ATM video initialization, RTC, or the NeoGS upload protocol during this isolated loader diagnosis.
+- **Статус:** DIAGNOSTIC SOURCE PRESENT / RUNTIME BOUNDARY OBSERVED / ROOT CAUSE NOT YET ESTABLISHED.
+
+| 2026-11-04 | A1.22 NEOLOAD.C search boundary | DIAGNOSTIC | The captured excerpt reaches the pre-call ROM/name dump; the return trace is not present in the supplied excerpt, so the TR-DOS search outcome remains undetermined. |
+
+
+## A1.23 — корректная трактовка TR-DOS shadow ROM diagnostic (2026-11-04)
+
+- [x] По документации TR-DOS подтверждено: теневое DOS ROM включается при выборке команды (opcode fetch) по адресу в диапазоне `#3D00..#3DFF`; точка `#3D13` — машинный API dispatcher.
+- [x] Установлено, что диагностическое чтение `LD A,(HL)` при HL=`#3D13` не вызывает shadow-ROM переключение. Выведенные A45 байты относятся к underlying ROM и не доказывают, что TR-DOS ROM отсутствует или повреждён.
+- [x] В текущем коде есть корректная граница выполнения: `[NLOAD 01] CATALOG SEARCH CALL` выводится перед `CALL #3D13`, `[NLOAD 02] CATALOG SEARCH RETURN` — сразу после возврата. Именно эта пара, а не data dump, определяет, вернулось ли управление из TR-DOS.
+- [x] Runtime boundary повторён: вызов `CALL #3D13` не возвращает управление в наблюдаемом запуске; причина внутри ROM/API path или его вызывающего контекста пока не доказана.
+- [ ] При возврате проверить C, #5D0F/#5D10 и последующие descriptor/sector markers.
+- **Статус:** STATIC DOCUMENTATION CHECK COMPLETE / RUNTIME CALL OUTCOME NOT YET ESTABLISHED.
+
+| 2026-11-04 | A1.23 TR-DOS shadow ROM diagnostic semantics | STATIC PASS | Direct data reads at #3D13 do not activate the shadow ROM; only the instruction-fetch transition does. The A45 byte dump is not a ROM identity test. Runtime call return remains to be established. |
+
+
+## A1.24 — увеличение стека перед TR-DOS API (2026-11-04)
+
+- [x] Сопоставлена раскладка стека: Project124, где тот же TR-DOS API `CALL #3D13` используется в рабочем загрузчике, устанавливает `SP=#BFFF`; Project125 ранее устанавливал `SP=#AFFF` при `ProgramEnd <= #A800`, оставляя только 2 КБ между концом resident image и верхом стека.
+- [x] Project125 stack top увеличен до `#BFFF`, как в проверенной реализации Project124. Область `#A800..#BFFF` остаётся свободной под стек; буфер первого сектора остаётся в `#C000`.
+- [x] Добавлен вывод фактического SP в `[NLOAD D]` непосредственно перед `CALL #3D13`; driver banner повышен до A46, host build marker до A21.
+- [x] Runtime 2026-11-04: BUILD A21 / DRIVER A46 действительно загружены; диагностическая процедура показала `SP=BFF1`, как и ожидалось.
+- [x] После увеличения стека зависание на `CALL #3D13` осталось без изменений; нехватка стекового пространства не подтверждается как причина.
+- [ ] Выполнить `build_project125.bat` для следующей версии и проверить отсутствие ошибок сборки / assertion.
+- [ ] Runtime: проверить возврат `[NLOAD 02] CATALOG SEARCH RETURN`.
+- **Статус:** STACK PLACEMENT RUNTIME VERIFIED; STACK NOT ROOT CAUSE; TR-DOS MAPPING ROOT CAUSE UNDER INVESTIGATION.
+
+| 2026-11-04 | A1.24 NEOLOAD stack headroom | SOURCE COMMITTED | Increased Project125 SP from #AFFF to #BFFF to match Project124's proven TR-DOS loader stack placement; added live SP trace. Build/runtime pending. |
+
+
+## A1.25 — ATM710 #FFF7 mux enable / TR-DOS shadow-ROM selection (2026-11-04)
+
+- [x] Первоначально обнаружены значения D7=0 в `#FFF7`, но последующий runtime A22 показал, что это не исправляет зависание.
+- [x] Уточнена адресация: `#FFF7` выбирает окно 3 (`#C000–#FFFF`), тогда как TR-DOS shadow ROM расположен в окне 0 (`#0000–#3FFF`). Поэтому D7 в `#FFF7` не включает автоматическое переключение именно нижнего окна.
+- [x] Изменение A22 само по себе не считается исправлением причины; runtime A22 по-прежнему зависает после `NAME=NEOLOAD`.
+- [x] Host build marker повышен до `20261104-A22 TRDOS SHADOW MUX FIX`.
+- [ ] Сборка `build_project125.bat`: проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: подтвердить `[NLOAD 02] CATALOG SEARCH RETURN`; затем проверить descriptor (`[NLOAD 03/04]`) и первый sector (`[NLOAD 05/06]`).
+- **Статус:** A22 NOT EFFECTIVE; initial interpretation corrected in A1.26. D7 on window 3 does not establish lower-window TR-DOS mapping.
+
+| 2026-11-04 | A1.25 ATM710 #FFF7 mux attempt | NOT EFFECTIVE | A22 set D7 for window 3 (#C000–#FFFF); runtime still hangs at CALL #3D13. Corrected in A1.26. |
+
+
+## A1.26 — ATM710 lower ROM window #3FF7 mapping (2026-11-04)
+
+- [x] Повторно сверена адресация мультиплексора: `#3FF7` — окно 0 (`#0000–#3FFF`), `#7FF7` — окно 1, `#BFF7` — окно 2, `#FFF7` — окно 3.
+- [x] Установлено, что A22 меняла D7 только для окна 3; это не включает требуемый `#7FFD` mux для нижнего ROM-окна. Runtime A22 подтвердил отсутствие эффекта: зависание по-прежнему после `NAME=NEOLOAD`.
+- [x] В `p125_atm_video_init` добавлена настройка окна 0 через `OUT (#3FF7),#BF`: D7=1 (разрешить #7FFD ROM2 mux / TR-DOS auto-select), D6=0 (ROM), D0-D5=`#3F` (инверсный номер ROM page 0).
+- [x] Изменение выполняется после открытия ATM shadow ports через TR-DOS `#3D2F`; host code остаётся в окне 1, стек `#BFFF` — в окне 2.
+- [x] Убрана ошибочная установка D7 в `#FFF7`: окно 3 должно оставаться на фиксированной RAM page 0 (`#7F`), иначе при D7=1 его выбор страницы зависит от младших битов `#7FFD` (в текущем `BANKM=DC` это страница 4), а не от RAM page 0. `#7FF7`/`#FFF7` возвращены к исходным фиксированным страницам `#7A`/`#7F` и `#78`/`#7C`.
+- [x] Host build marker обновлён до `20261104-A23 LOWER ROM WINDOW MUX FIX`.
+- [ ] Сборка `build_project125.bat`: проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить, появился ли `[NLOAD 02] CATALOG SEARCH RETURN`; если появился — проверить descriptor и чтение первого сектора.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING. `#BF` следует из битовой карты ATM 7.10 (D7 mux, D6 ROM, инверсный номер ROM page 0); подтверждение только после сборки и runtime.
+
+| 2026-11-04 | A1.26 ATM710 lower ROM window mapping | SOURCE COMMITTED | Added `OUT (#3FF7),#BF` to enable ROM2/TR-DOS auto-select in window 0; build and runtime pending. |
+
+
+## A1.27 — повторная активация ATM710 DOSEN перед TR-DOS API (2026-11-04)
+
+- [x] Изучен документ Hardware «Описание архитектуры и портов ATM2+», разделы 3.1 и 4.1: адрес `#0177` задаёт A8=1 (ATM memory manager enabled), A9=0 (CPM/DOSEN gate); документ рекомендует `#0177` для включения теневых портов.
+- [x] Подтверждено, что A23 выставляет нижнее ROM-окно через `#3FF7=#BF`, а `BANKM=DC` сохраняет ROM2=1.
+- [x] Добавлен диагностический тест: непосредственно перед первым `CALL #3D13` повторно активировать gate через штатный TR-DOS trampoline `#3D2F` → `#2A53` (`OUT (C),A; RET`) с `BC=#0177`, `A=#C3`, затем восстановить `C=#0A`.
+- [x] Добавлены runtime markers `[NLOAD D1] DOSEN REARM BEGIN` и `[NLOAD D2] DOSEN REARM DONE`; driver marker A47, build marker A24.
+- [ ] Build: собрать `build_project125.bat`; проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [x] Runtime 2026-11-04 A24/A47: оба маркера D1 и D2 появились; следующий `[NLOAD 02]` отсутствует. Trampoline возвращается, повторная активация DOSEN не устранила зависание.
+- [ ] При появлении `[NLOAD 02]` проверить C, `#5D0F/#5D10`, затем descriptor и первый сектор; не объявлять загрузчик исправным только по возврату поиска.
+- **Статус:** DOSEN RE-ARM RUNTIME VERIFIED; НЕ ЯВЛЯЕТСЯ ИСПРАВЛЕНИЕМ. A24/A47 зависает после возврата из trampoline.
+
+| 2026-11-04 | A1.27 ATM710 DOSEN re-arm before TR-DOS API | SOURCE COMMITTED | Added a fresh documented `#0177` gate activation through the `#3D2F`/`#2A53` ROM trampoline immediately before the `C=#0A` catalogue search. Build and runtime pending. |
+
+
+## A1.28 — восстановление BC перед TR-DOS catalog API (2026-11-04)
+
+- [x] Runtime A24/A47 подтвердил, что DOSEN trampoline #3D2F -> #2A53 возвращается: присутствуют D1 и D2, но CALL #3D13 не возвращает управление.
+- [x] Сравнение с рабочим Project124 выявило отличие ABI: в Project124 перед поиском LDIR обнуляет BC, после чего LD C,10 формирует BC=#000A. В Project125 после trampoline остаётся BC=#0177; команда LD C,10 оставляла B=#01 и передавала в ROM BC=#010A.
+- [x] Исправлено: перед поиском задаётся LD BC,10; перед чтением descriptor задаётся LD BC,8. Sector read сохраняет отдельный штатный B=1.
+- [x] Driver banner повышен до A48; host build marker до A25.
+- [ ] Сборка build_project125.bat: проверить SjASMPlus и ProgramEnd <= #A800.
+- [ ] Runtime: подтвердить [NLOAD 02] CATALOG SEARCH RETURN; далее проверить descriptor и чтение первого сектора.
+- **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT YET VERIFIED. Исправление конкретного ABI-регистрового расхождения, выявленного сравнением с Project124.
+
+
+## A1.29 — восстановление A и BC перед TR-DOS search (2026-11-04)
+
+- [x] Runtime A25/A48: D1 и D2 присутствуют, но `[NLOAD 02]` отсутствует; исправление только BC не устранило зависание.
+- [x] Повторное сравнение с рабочим Project124: перед `CALL #3D13` там A сохраняет значение 9 (режим поиска), тогда как DOSEN trampoline Project125 устанавливает A=#C3 и оставляет его изменённым.
+- [x] Перед поиском теперь явно задаются `A=9` и `BC=10`; driver banner A49, host build marker A26.
+- [ ] Build: проверить `build_project125.bat` и `ProgramEnd <= #A800`.
+- [x] Runtime 2026-11-04 A26/A49: D1/D2 присутствуют, но `[NLOAD 02]` отсутствует; исправление A/BC не устранило зависание.
+- **Статус:** SOURCE COMMITTED / RUNTIME TESTED — NOT EFFECTIVE. A26/A49 всё ещё зависает внутри первого `CALL #3D13`.
+
+## A1.30 — восстановление HL и точного descriptor ABI TR-DOS (2026-11-04)
+
+- [x] Runtime A26/A49: D1/D2 присутствуют, но `[NLOAD 02]` отсутствует; восстановление A и BC не устранило зависание.
+- [x] При сравнении с Project124 найдено ещё одно отличие: Project124 входит в первый `CALL #3D13` с HL, оставшимся после `LDIR`. В Project125 диагностические сообщения заменяли HL адресом строки лога; сохранение HL внутри trace helper не возвращало исходный post-LDIR контекст.
+- [x] Перед первым поиском теперь сохраняется post-LDIR HL и восстанавливается непосредственно перед `CALL #3D13`; HL, возвращённый поиском, сохраняется для descriptor API и восстанавливается после trace.
+- [x] Исправлен также descriptor ABI: Project124 выполняет только `LD C,8`, сохраняя B, возвращённый поиском. Project125 ранее принудительно обнулял B через `LD BC,8`; теперь выполняется точное `LD C,8`.
+- [x] Driver banner A50; host build marker A27.
+- [ ] Build: проверить `build_project125.bat`, SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: подтвердить `[NLOAD 02] CATALOG SEARCH RETURN`; затем `[NLOAD 03/04]` и `[NLOAD 05/06]`.
+- **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT VERIFIED. Найдены и исправлены два дополнительных расхождения ABI по HL и сохранению B в descriptor вызове.
+
+| 2026-11-04 | A1.30 TR-DOS HL / descriptor ABI | SOURCE COMMITTED | Preserve Project124's post-LDIR HL for search, preserve returned HL for descriptor, and change only C to 8 as Project124 does. Build/runtime pending. |
+## A1.31 — разделение TR-DOS dispatcher и FDC/catalogue path (2026-11-04)
+
+- [x] Runtime A27/A50: D1/D2 присутствуют, `[NLOAD 02]` отсутствует; HL ABI correction did not resolve the hang.
+- [x] Сверен опубликованный дизассемблер TR-DOS 5.03: сервис `C=#14` копирует 16-байтовый descriptor из `#5CDD` в `HL` без чтения диска; сервис `C=#0A` вызывает поиск, который читает сектор каталога.
+- [x] Перед C=#0A добавлен контрольный вызов C=#14 с отдельным 16-байтовым scratch buffer. Маркеры T0/T1 разделяют зависание в общем dispatcher `#3D13` и зависание в дисковом поиске.
+- [x] Driver banner A51; host build marker A28.
+- [ ] Build: проверить `build_project125.bat`, SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: если есть T1, но нет `[NLOAD 02]`, локализовано зависание внутри каталожного/FDC пути; если нет T1 — проблема в dispatcher/ROM entry path.
+- **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.31 TR-DOS dispatcher probe | SOURCE COMMITTED | Add a non-disk C=#14 TR-DOS API call before C=#0A to distinguish API entry/return failure from catalogue disk I/O. |
+
+## A1.32 — TR-DOS environment initialization (2026-11-04)
+
+- Source change: initialize `#5CF9=0`, `#5D10=0`, `#5D06=9`, and `ERR_SP` at `#5C5D` from the current SP before TR-DOS API calls.
+- Added runtime marker `[NLOAD E1] TRDOS DOSENV READY`; driver A52, host A29.
+- Build and hardware runtime are pending. The error-hook from `dv093d13.txt` is intentionally not installed because its BASIC/BIOS interception requires a separate ATM-specific implementation.
+- Status: SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+
+## A1.33 — исправление адреса ERR_SP (2026-11-04)
+
+- [x] Runtime A29/A52: `[NLOAD T1]` появился, но `[NLOAD 02]` отсутствует. Это доказывает возврат из недискового сервиса `C=#14`; зависание ограничено сервисом поиска каталога `C=#0A`.
+- [x] Повторная арифметическая проверка адресов статьи `dv093d13.txt`: десятичный адрес 23613 соответствует `#5C3D`, а не `#5C5D`. Предыдущая запись `SP` по `#5C5D` была ошибочной.
+- [x] Исправлено сохранение `SP` в `ERR_SP=#5C3D`. Значение `SP=BFF1` не попадает в запрещённый для TR-DOS диапазон `#AAxx`, отмеченный в `ig7d3d13.txt`.
+- [x] Driver banner A53; host build marker A30.
+- [ ] Build: собрать `build_project125.bat`; проверить отсутствие ошибок и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить `[NLOAD E1]`, `[NLOAD T0]`, `[NLOAD T1]`, затем `[NLOAD 02]`. Если поиск вернётся, продолжить descriptor/sector tests.
+- **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT VERIFIED.
+
+
+## A1.34 — возврат к проверенному TR-DOS open из Project124 (2026-11-04)
+
+- [x] Сверен архивный рабочий файл `Project125/neogs_driver.asm` из ветки `main` (blob `156f64798ccc9feb5f0fdaa242fd8b246ce9231a`) с активным `zx_main/neogs_driver.asm`.
+- [x] В `neo_fw_open_file` восстановлена последовательность рабочего драйвера: копирование имени в `#5CDD`, `A=9`, `#5D06=9`, `C=10`, прямой `CALL #3D13`; затем descriptor через `C=8` без изменения остальных возвращённых регистров.
+- [x] Удалены из критического пути открытия: DOSEN trampoline, диагностический `C=#14` probe, дополнительная инициализация DOSENV/ERR_SP, сохранение/подмена HL и trace-вызовы между подготовкой и ROM API.
+- [x] Остальная логика чтения первого сектора, потоковой передачи NeoGS, RTC и экранный код не менялись.
+- [x] Driver banner A54; host build marker A31.
+- [ ] Build: собрать проект и проверить SjASMPlus, размер resident image и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить возврат каталожного поиска `C=#0A`, descriptor `C=#08`, чтение первого сектора, затем полный запуск NeoGS.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Это восстановление известной рабочей последовательности, а не заявление о подтверждённом runtime.
+
+| 2026-11-04 | A1.34 Legacy TR-DOS open restore | SOURCE COMMITTED | Restore the exact archived Project124 TR-DOS open sequence in the active driver; remove added pre-call probes/trampoline/environment writes from this critical path. Build/runtime pending. |
+
+
+## A1.35 — трассировка границ TR-DOS open без изменения ABI (2026-11-04)
+
+- Runtime A31/A54: вывод доходит до `[TRACE 70] NEOLOAD READ BEGIN`, но не появляется `[TRACE 71]`; по этому логу нельзя определить, зависает ли каталог, descriptor или чтение первого сектора.
+- Добавлены только контрольные сообщения вокруг прежних вызовов: OPEN ENTRY, перед/после `C=10), перед/после `C=8), перед/после чтения первого сектора.
+- `p125_trace_port` сохраняет AF/BC/HL и не меняет DE; контрольные вызовы размещены так, чтобы значения регистров TR-DOS ABI перед ROM-вызовами оставались прежними.
+- Сама последовательность API инициализации, параметры `#5CDD/#5CE5/#5D06), вызовы `C=10)/`C=8`, sector read и NeoGS transfer не изменялись.
+- Driver A55; host build A32.
+- [ ] Build: проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: последний появившийся маркер однозначно локализует проблемный участок.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.35 TR-DOS open boundary trace | SOURCE COMMITTED | Add register-preserving markers around the archived TR-DOS calls to localize the stall without changing their inputs. |
+
+
+## A1.36 — TR-DOS catalogue search hang: stack placement
+- [x] Runtime A55 log localizes the hang inside TR-DOS `#3D13` catalogue search (`C=#0A`): `[NLOAD 01]` appears and `[NLOAD 02]` does not.
+- [x] Static comparison: Project124 sets the host stack to `#AFFF`; Project125 had moved it to `#BFFF` while calling the same TR-DOS ROM API.
+- [x] Restored Project124's `#AFFF` stack top in Project125. The resident screen module is constrained to end at or below `#A800`, leaving the stack above it.
+- [ ] Rebuild and run on ATM/Unreal; confirm `[NLOAD 02]` and subsequent descriptor/sector markers. This change is not yet runtime-verified.
+
+
+## A1.37 — TR-DOS search boundary snapshot
+- [x] A55 runtime with stack top restored to `#AFFF` still stops after `[NLOAD 01] CATALOG SEARCH CALL`; the stack-placement change did not resolve the hang.
+- [x] Re-enabled the existing read-only `neo_diag_search_state` immediately before `CALL #3D13` for the next run. It reports BANKM, extension, name length, live SP, ROM bytes at `#3D13`, and the eight-byte search name; it preserves AF/BC/DE/HL and does not change TR-DOS state.
+- [ ] Inspect the A56 snapshot against the known-working Project124 boundary and identify the actual ROM/paging/workspace discrepancy before changing the API sequence.
+
+
+## A1.38 — восстановление гарантированного выбора TR-DOS ROM (2026-11-04)
+
+- [x] Сопоставлен рабочий старт из `main/0`: он явно устанавливает `#7FFD=#10` и сохраняет это значение в `#5C3B` до первого открытия файла TR-DOS.
+- [x] В активной ветке `neogs-driver-rewrite` `p125_atm_video_init` ранее только читал унаследованный `#5C3B` и выставлял бит 3. Если унаследованный bit 4 был нулевым, TR-DOS ROM1 не выбирался, хотя комментарий ошибочно предполагал, что он уже активен.
+- [x] Изменено на детерминированную последовательность `#7FFD=#18`: bit 4 выбирает ROM1/TR-DOS, bit 3 выбирает альтернативный экран. Это эквивалентно проверенному `#10` из рабочего старта с добавленным экранным bit 3. Затем существующие `#3FF7/#7FF7/#FFF7` настройки ATM выполняются без изменений.
+- [x] Версия host build повышена до A34. Драйвер NeoGS, RTC DS12887, видео-рендерер и TR-DOS ABI не менялись.
+- [ ] Build: проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить появление `[NLOAD 02] CATALOG SEARCH RETURN`, затем descriptor, первый сектор, загрузку NeoGS и BIOS.C.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Это исправление конкретного расхождения с рабочим стартом; успешный запуск пока не заявляется.
+
+| 2026-11-04 | A1.38 TR-DOS ROM1 selection | SOURCE COMMITTED | Force the same ROM1/TR-DOS selection used by the working main/0 startup, while retaining alternate-screen selection. Build/runtime pending. |
+
+
+## A1.39 — восстановление сброса ATM #EFF7 перед TR-DOS (2026-11-04)
+
+- [x] Runtime A34/A56: BANKM=18, extension 43 (ASCII C), mode 09, SP AFF1, имя NEOLOAD; после [NLOAD 01] управление не возвращается из CALL #3D13.
+- [x] Повторно сопоставлен рабочий 0/zx_main/main.asm из main/0 с текущим стартом. Помимо выбора #7FFD=#10 и записи BANKM, рабочий старт явно выполняет OUT (#EFF7),0 до TR-DOS операций. В текущем ATM init этот сброс отсутствовал.
+- [x] В p125_atm_video_init восстановлен сброс #EFF7=0 сразу после выбора #7FFD=#18 и до настройки #3FF7/#7FF7/#FFF7.
+- [x] RTC DS12887, текстовый рендерер, TR-DOS API-параметры и NeoGS transfer не менялись. Build marker обновлён до A35.
+- [ ] Build: проверить SjASMPlus и ProgramEnd <= #A800.
+- [ ] Runtime: проверить, появляется ли [NLOAD 02] CATALOG SEARCH RETURN; затем проверить descriptor, первый sector и продолжение загрузки.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Это восстановление ещё одного отличия от известного рабочего старта, не заявление о подтверждённом исправлении.
+
+| 2026-11-04 | A1.39 ATM #EFF7 reset before TR-DOS | SOURCE COMMITTED | Restore the explicit OUT (#EFF7),0 from the working main/0 startup before ATM window setup and the first TR-DOS catalogue call; build/runtime pending. |
+
+
+## A1.40 — не переназначать ATM window 0 (#0000-#3FFF) (2026-11-04)
+
+- [x] Runtime A35 повторяет зависание после `[NLOAD 01]`; значения границы поиска не изменились: `BANKM=18`, `EXT=43`, `MODE=09`, `SP=AFF1`, `NAME=NEOLOAD`.
+- [x] Сопоставление с рабочим `main/0/zx_main/main.asm`: рабочая последовательность выбирала ROM через `#7FFD=#10`, сбрасывала `#EFF7`, но не программировала `#3FF7`.
+- [x] Удалена запись `#3FF7=#BF` из `p125_atm_video_init`. Window 0 оставлен штатному ATM ROM/ROM2 decoder, чтобы не подменять ROM-страницу, на которой должен срабатывать TR-DOS overlay для `#3Dxx`. Окна 1/3 для видеопамяти и staging остаются настроенными как прежде.
+- [x] `#7FFD=#18` (ROM select + alternate screen) и сброс `#EFF7=0` сохранены. RTC, UI renderer, TR-DOS ABI и NeoGS transfer не менялись.
+- [ ] Build: проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: подтвердить возврат `[NLOAD 02]`, затем descriptor и sector read.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. A35 показал, что одного сброса `#EFF7` недостаточно; изменение A1.40 проверяет отличие от рабочего startup — отсутствие принудительного paging window 0.
+
+| 2026-11-04 | A1.40 Keep native ATM TR-DOS ROM mapping | SOURCE COMMITTED | Remove the non-baseline `#3FF7=#BF` write; retain native ROM/ROM2 decoder for TR-DOS #3Dxx overlay. Build/runtime pending. |
+
+
+## A1.41 — возвращение штатного #7FFD на время TR-DOS API (2026-11-04)
+
+- [x] Hardware/ATM2+ подтверждает, что ROM2 определяется битом D4 порта #7FFD, а DOSEN включается при ROM2=1 и переходе на #3Dxx; бит D3 #7FFD выбирает видеостраницу 5/1 либо 7/3.
+- [x] Известный рабочий старт Project125 main/0 входил в TR-DOS с #7FFD=#10 и BANKM=#10. Активная версия оставляла #18 (добавлен бит D3 для альтернативного текстового экрана).
+- [x] Добавлены две регистросохраняющие процедуры: перед каждым вызовом TR-DOS #3D13 временно устанавливается #7FFD/BANKM=#10; сразу после возврата восстанавливается #18. Применено к поиску каталога C=10, descriptor C=8 и чтению сектора C=5.
+- [x] Входные и возвращаемые AF/BC/DE/HL сохраняются; на момент самого CALL #3D13 дополнительного стекового кадра нет. RTC, ATM renderer, размещение окон #7FF7/#FFF7 и NeoGS transport не менялись.
+- [x] Driver banner A57; host build marker A37.
+- [ ] Build: проверить SjASMPlus и ASSERT ProgramEnd <= #A800.
+- [ ] Runtime: проверить [NLOAD 02] после поиска; затем descriptor и первый sector. Если поиск вернётся, проверить, что экранный режим восстанавливается и загрузка NeoGS продолжается.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Это проверка конкретного отличия от рабочего startup, а не заявление об исправлении.
+
+| 2026-11-04 | A1.41 Legacy #7FFD state around TR-DOS calls | SOURCE COMMITTED | Temporarily use the proven #10 ROM2/BANKM state for C=10/C=8/C=5 TR-DOS API calls, then restore #18 for the alternate text screen. Build/runtime pending. |
+
+
+## A1.42 — недисковая проверка TR-DOS dispatcher перед поиском каталога (2026-11-04)
+
+- Runtime A37/A57: после [NLOAD 01] CATALOG SEARCH CALL нет [NLOAD 02]; временное переключение #7FFD/BANKM на #10 не устранило зависание.
+- Перед каталоговым поиском C=#0A добавлен контрольный недисковый вызов TR-DOS C=#14 под той же картой #7FFD/BANKM=#10.
+- C=#14 направляет 16-байтовый descriptor в отдельный буфер neo_fw_trdos_probe_buffer; входные AF/BC/DE/HL запроса C=#0A сохраняются и восстанавливаются полностью.
+- Новые метки: [NLOAD T0] TRDOS NON-DISK API BEGIN и [NLOAD T1] TRDOS NON-DISK API RETURN. Если T0 есть, T1 нет — проблема до/в dispatcher; если T1 есть, но NLOAD 02 нет — dispatcher возвращается, зависание локализуется внутри каталожного поиска/дискового пути.
+- Driver A58; host build A38.
+- RTC, экранный интерфейс, NeoGS protocol и параметры исходного поиска C=#0A не менялись.
+- [ ] Build: SjASMPlus и ASSERT ProgramEnd <= #A800.
+- [ ] Runtime: проверить T0/T1, затем NLOAD 02 и последующие descriptor/sector markers.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME PENDING.
+
+| 2026-11-04 | A1.42 TR-DOS dispatcher preflight | SOURCE COMMITTED | Run non-disk C=#14 under the same legacy mapping before catalogue C=#0A, preserving the exact original search registers. Build/runtime pending. |
+
+
+## A1.43 — прямой каталоговый поиск по ABI Project124 (2026-11-04)
+
+- [x] Runtime A38/A58: появились оба маркера `[NLOAD T0]` и `[NLOAD T1]`; недисковый вызов `C=#14` возвращается, но `[NLOAD 02]` после каталогового поиска `C=#0A` отсутствует.
+- [x] Результат ограничивает зависание каталоговым/дисковым путём, но не доказывает неисправность FDC: тестовый `C=#14` был дополнительным вызовом, которого нет в рабочем Project124.
+- [x] Удалён preflight `C=#14` и диагностический snapshot непосредственно перед поиском. Между подготовкой имени и `CALL #3D13` теперь нет дополнительных ROM API вызовов или чтения ROM/workspace.
+- [x] Сохранено только переключение `#7FFD/BANKM=#10` перед вызовом, необходимое для согласования с проверенной картой TR-DOS; после возврата восстанавливается host map `#18`.
+- [x] Driver A59; host build A39.
+- [ ] Build: проверить SjASMPlus и `ASSERT ProgramEnd <= #A800`.
+- [ ] Runtime: проверить `[NLOAD 02] CATALOG SEARCH RETURN`. Если зависание останется, следующий этап — проверить FDC status/interrupt и TR-DOS disk path без изменения ABI.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME PENDING. Успешное открытие файла не заявляется.
+
+| 2026-11-04 | A1.43 Direct Project124 catalogue search ABI | SOURCE COMMITTED | Remove the diagnostic C=#14 call and ROM/workspace snapshot; retain legacy #10 paging and issue C=#0A directly. Build/runtime pending. |
+
+
+## A1.44 — корректная конфигурация SMUC FFBA для DS12887 (2026-11-04)
+
+- [x] Runtime A39/A59: TR-DOS C=#0A зависает; до поиска выполняются DS12887 SMUC fallback и запись `OUT (#FFBA),0`.
+- [x] По документации SMUC FFBA — мультиплексированный системный регистр. Его фиксированные биты должны соответствовать шаблону `0 111 0 A8 A7 1`; произвольное `#00` недопустимо и может нарушить работу контроллера.
+- [x] Для RTC address/read mode с A8=A7=0 установлен корректный байт `#71`. Остальная последовательность доступа к DS12887 через `#DFBA` не изменена.
+- [x] RTC driver D1.07. Проверка DS12887 должна по-прежнему показывать SMUC D/A/B, ID #5FBE=57 и RAW H:M:S.
+- [ ] Build/runtime pending. Критерий: после RTC timestamp TR-DOS C=#0A должен вернуть управление и показать `[NLOAD 02]`.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME PENDING. Причина является сильной аппаратно-документальной гипотезой, пока не подтверждена runtime.
+
+| 2026-11-04 | A1.44 SMUC FFBA fixed-bit correction | SOURCE COMMITTED | Replace invalid FFBA=#00 with documented #71 RTC address/read mode; validate TR-DOS search and RTC. |
+
+
+## A1.45 — явная маркировка RTC D1.07 / проверка SMUC FFBA (2026-11-04)
+
+- Runtime A39/A59 повторяет остановку после [NLOAD 01]. В присланном логе RTC banner показывает D1.06, поэтому по нему нельзя однозначно определить версию RTC исходника, собранную в бинарный файл.
+- Текущий исходник `zx_main/ds12887_rtc.asm` уже содержит исправление A1.44: при SMUC fallback процедура `DS12887_OPEN` записывает `#71` в `#FFBA`, а не `#00`. Само чтение DS12887 через `#DFBA` не меняется.
+- Обновлены только диагностические версии: RTC banner D1.07, host A40, NeoGS driver A60. Логика RTC, TR-DOS ABI, видеорежим и NeoGS transport не изменялись.
+- Цель следующего запуска — однозначно подтвердить выполнение именно RTC D1.07 / FFBA=#71 и проверить, вернётся ли TR-DOS search C=#0A.
+- [ ] Build: проверить SjASMPlus и `ASSERT ProgramEnd <= #A800`.
+- [ ] Runtime: подтвердить строки BUILD A40, DRIVER A60, DS12887 D1.07; затем проверить [NLOAD 02].
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+## A1.46 — ATM2+ window-0 TR-DOS overlay mapping (2026-11-04)
+
+- [x] Hardware document Hardware/Описание архитектуры и портов ATM2+.txt, sections 3 and 4.1, confirms that TR-DOS overlay requires ROM2=1, a fetch at #3Dxx, and a window-0 ROM mapping with D7=1 so the low ROM select is multiplexed with DOSEN.
+- [x] Reordered ATM initialization: reset #EFF7 before enabling permanent DOSEN through the #3D2F/#2A53 trampoline. The previous order reset the paging/control latch after the shadow-port/DOSEN setup.
+- [x] Explicitly configure window 0 through #3FF7=#BF (ROM page 0, D7=1 DOSEN/ROM2-linked selection), after shadow ports are opened. Keep #7FFD=#18, BANKM, video pages, window 1/3, RTC and screen renderer unchanged.
+- [ ] Build: run SjASMPlus/build_project125.bat; verify no assembly errors and ProgramEnd <= #A800.
+- [ ] Runtime: confirm [NLOAD 02] CATALOG SEARCH RETURN; then descriptor C=#08, first sector C=#05, NeoGS upload and BIOS load.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. This is a hardware-mapping correction to test, not a claim that the TR-DOS hang is fixed.
+
+| 2026-11-04 | A1.46 ATM2+ window-0 TR-DOS overlay mapping | SOURCE COMMITTED | Reset paging control before DOSEN activation and explicitly couple window-0 ROM mapping to ROM2/DOSEN using #3FF7=#BF. Build/runtime pending. |
+
+## A1.47 — TR-DOS search-key diagnostic (2026-11-04)
+
+- [x] Preserve the Project124 C=#0A catalogue call path; add a register-preserving dump of the exact nine bytes at #5CDD..#5CE5 immediately before the call.
+- [ ] Build and verify marker A42.
+- [ ] Runtime: record `[NLOAD KEY]` output. Expected key for NEOLOAD.C: `4E454F4C4F41442043`; expected key for NEOFW.C: `4E454F465720202043`.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Diagnostic only; it does not claim to fix the catalogue-search hang.
+
+| 2026-11-04 | A1.47 TR-DOS search-key diagnostic | SOURCE COMMITTED | Dump exact filename+extension bytes before C=#0A without changing API registers. Build/runtime pending. |
+
+
+## A1.48 — TR-DOS ROM boundary diagnostic (2026-11-04)
+
+- [x] A1.47 runtime confirms the exact search key is `NEOLOAD C` (`4E454F4C4F41442043`).
+- [x] Add the existing register-preserving, read-only `neo_diag_search_state` immediately before the `C=#0A` search. It reports BANKM, extension, DOS mode, SP, eight bytes visible at `#3D13`, and the raw eight-byte filename.
+- [ ] Build and verify marker A43 / driver A61.
+- [ ] Runtime: capture the complete `[NLOAD D]` diagnostic through the `[NLOAD 01]` call boundary.
+- **Status:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. No claim that the search hang is fixed.
+
+
+## A1.49 — Post-map TR-DOS ROM boundary probe (2026-11-04)
+
+- [x] A1.48 runtime exposed a diagnostic ordering flaw: `ROM@3D13` and `BANKM` were sampled while the ATM UI mapping was still active (`BANKM=#18`), before `neo_fw_trdos_legacy_map` selected `#10`.
+- [x] Move the legacy paging switch ahead of the diagnostic. The ROM bytes and BANKM are now sampled after the `#10` switch, immediately before the unchanged `CALL #3D13`.
+- [ ] Build and verify marker A44 / driver A62.
+- [ ] Runtime: capture `[NLOAD D]` and `ATM710 ROM@3D13` from the post-map probe.
+- **Status:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. This isolates the mapping at the actual call boundary; it does not yet restore the full ATM window-0 configuration or claim the hang is fixed.
+
+
+## A1.50 — восстановление архивного TR-DOS startup до инициализации ATM UI (2026-11-04)
+
+- Runtime A44/A62: после переключения BANKM на #10 поиск всё ещё не возвращался. ROM boundary bytes 00 18 E7 00 C3 69 2F CD соответствуют исполняемому входному stub TR-DOS 5.03 по адресу #3D13; версия ROM и сама точка входа подтверждены, поэтому дальнейшая замена адреса/версии не обоснована.
+- Сопоставление с рабочим 0/zx_main/main.asm выявило главное архитектурное отличие: архив сначала выставляет #7FFD/BANKM=#10 и #EFF7=0, затем выполняет TR-DOS file I/O; ATM video init, DOSEN/window-0 mux #3FF7 и экранные страницы в архивном загрузочном пути до дисковых операций не включаются.
+- Host startup A45 теперь повторяет эту последовательность. Вся работа с TR-DOS (NEOLOAD.C, NEOFW.C, BIOS.C и секторное чтение) выполняется до p125_atm_video_init, #3FF7=#BF, RTC UI/log renderer.
+- Driver A63 удаляет временное переключение #7FFD=#10/#18 вокруг каждого API-вызова. Поиск C=#0A, descriptor C=#08 и sector read C=#05 используют один непрерывный архивный disk map; диагностические routines сохраняют входные регистры.
+- До инициализации экрана диагностические сообщения выводятся напрямую в #EF; после загрузки BIOS.C включаются ATM UI, DS12887 и обычные RTC timestamped screen logs. BIOS CRC selftest и запуск x86 выполняются после инициализации UI.
+- Это изолирующий перенос проверенной последовательности Project124/0, а не заявление, что runtime уже исправлен.
+- [ ] Build: SjASMPlus; проверить отсутствие ошибок и ProgramEnd <= #A800.
+- [ ] Runtime: ожидать [NLOAD 02] CATALOG SEARCH RETURN, затем descriptor/sector markers, firmware upload, BIOS.C load; после [TRACE A1] BIOS LOAD DONE должны начаться VIDEO INIT / RTC / UI markers.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.50 Archive-first TR-DOS boot order | SOURCE COMMITTED | Restore exact #7FFD/BANKM=#10 + #EFF7=0 startup and defer ATM video/window-0/DOSEN/RTC UI until NEOLOAD.C, NEOFW.C and BIOS.C disk I/O have completed. Remove per-call #10/#18 paging toggles. |
+
+
+## A1.51 — исправление младшего байта физического адреса segment:offset (2026-11-04)
+
+- [x] Runtime A45/A63: TR-DOS 5.03 успешно выполняет C=#0A (каталог), C=#08 (дескриптор) и C=#05 (сектора); NEOLOAD.C и NEOFW.C открываются, поток прошивки завершается, BIOS.C загружается в page 75.
+- [x] NeoGS dump физического адреса FFFF0h подтверждает reset-vector bytes `EA 5B E0 00 F0`, то есть `JMP F000:E05B`.
+- [x] Runtime остановился с `CS:IP=FFFF:0001 OP=DC`. Анализ `x86_mem_calc_phys` выявил ошибку: при вычислении младшего байта `(segment << 4) + offset` исходный код вращал весь младший байт сегмента без маски. Для сегмента FFFFh это давало FFh вместо F0h, поэтому fetch из FFFF:0000 фактически обращался к FFFFFh (последнему байту BIOS ROM, DC), а не FFFF0h (EA).
+- [x] Исправлен `neogs_sub/x86_memory.asm`: маски `AND #0F` добавлены перед сдвигом младшей тетрады сегмента в байт 0 и перед сдвигом младшей тетрады старшего байта сегмента в байт 1. Без второй маски адрес `F000:E05B` также вычислялся бы неверно: верхняя тетрада `F0` ошибочно вращалась бы в `0F`.
+- [ ] Build: SjASMPlus / build_project125.bat; проверить все сценарии адресации и отсутствие новых ошибок.
+- [ ] Runtime: проверить физические адреса FFFF:0000 -> FFFF0h и F000:E05B -> FE05Bh; первая выборка должна дать EA, far JMP должен установить CS:IP=F000:E05B, затем зафиксировать следующий неподдержанный BIOS opcode/инструкцию.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Исправление обосновано точным вычислением адреса и runtime-дампом, но запуск BIOS после него ещё не проверен.
+
+| 2026-11-04 | A1.51 Fix physical address low byte for FFFF:0000 | SOURCE COMMITTED | Mask segment low nibble before shifting into physical address byte 0; correct FFFF:0000 from FFFFFh to FFFF0h. Build/runtime pending. |
+
+
+## A1.52 — сокращение дискового и RTC startup-лога (2026-11-04)
+
+- [x] Runtime после A1.51: BIOS reset vector теперь проходит дальше; лог показывает `STOP ... OP=8E F000:E05F`, то есть следующая остановка происходит на opcode 8Eh после far JMP. Исправление адресации физического адреса дало ожидаемый переход; поддержка opcode 8Eh — отдельная задача.
+- [x] В `zx_main/neogs_driver.asm` удалены только повторяющиеся сообщения `[NLOAD 07] TRDOS SECTOR READ CALL` и `[NLOAD 08] TRDOS SECTOR READ RETURN` из общего sector-read пути. Сам вызов TR-DOS `C=#05`, проверка ошибок и перемещение курсора секторов не менялись. Маркеры первого сектора `[NLOAD 05]/[NLOAD 06]` сохранены.
+- [x] В `zx_main/ds12887_rtc.asm` отключён вывод диагностических сообщений DS12887_PROBE (GLUK/SMUC, статусы D/A/B, VRT, raw time и ошибки probe). Выбор backend, проверка VRT, доступ к DS12887 и READ_CURRENT_TIME сохранены.
+- [x] В `zx_main/main.asm` удалены `[TRACE 30]/[TRACE 31]` и сообщение `[RTC] DALLAS DS12887 PROBE COMPLETE`. Обычные временные метки в последующих сообщениях сохраняются; маркеры `[TRACE 60]/[TRACE 61]` чтения времени пока оставлены, поскольку это runtime read tracing, а не инициализация.
+- [x] Build identifiers: host A46, driver A64.
+- [ ] Build: SjASMPlus / build_project125.bat; проверить отсутствие ошибок и ASSERT ProgramEnd <= #A800.
+- [ ] Runtime: подтвердить отсутствие повторяющихся NLOAD 07/08 и любых DS12887/RTC INIT диагностик, при этом обычные timestamps должны остаться рабочими.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.52 Quiet sector-read and RTC probe logs | SOURCE COMMITTED | Remove repetitive C=#05 trace messages and DS12887 startup diagnostics while preserving disk I/O, RTC probe, and timestamp functionality. |
+
+
+## A1.53 — 8086 MOV Sreg,r/m16 и тихие RTC timestamps (2026-11-04)
+
+- Runtime A46/A64: TR-DOS 5.03 открывает NEOLOAD.C и NEOFW.C; NeoGS firmware upload и BIOS.C staging завершаются. Видео CRC проходит. BIOS reset vector выполняет far JMP и останавливается на opcode 8Eh по адресу F000:E05F.
+- Найдена причина dispatch: диапазон общего MOV decoder в x86_real_mode.asm покрывал только 88h..8Bh; 8Ch и 8Eh не направлялись в обработчик. Сам x86_real_mov.asm реализовывал только 88h..8Bh.
+- Добавлена отдельная реализация 8Ch/8Eh: MOV r/m16,Sreg и MOV Sreg,r/m16. Для 8Eh разрешены ES, SS и DS; MOV CS (ModR/M /1) и зарезервированные /4../7 отвергаются как unsupported. Используется существующий декодер ModR/M и эффективного адреса, включая segment overrides.
+- В main.asm удалены TRACE 60/61 из каждого timestamp. p125_print_timestamp теперь проверяет ds12887_available и не выводит неизвестное время до успешного DS12887 probe. Сам DS12887_PROBE и последующее чтение времени не меняются.
+- Build marker A47. Driver A64 не изменён; TR-DOS startup order и disk routines не изменялись.
+- [ ] Build: SjASMPlus / build_firmware.asm и host build; проверить отсутствие ошибок, размер resident host и отсутствие конфликтов меток.
+- [ ] Runtime: подтвердить отсутствие TRACE 60/61 и ранних неизвестных timestamp; затем записать следующую BIOS instruction после F000:E05F.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.53 MOV segment registers and quiet RTC timestamps | SOURCE COMMITTED | Dispatch and implement 8Ch/8Eh segment-register MOV forms; suppress timestamp polling until DS12887 is available and remove per-line RTC trace noise. Build/runtime pending. |
+
+
+## A1.54 — 8086 MOV r/m, immediate (2026-11-04)
+
+- Runtime A47/A64: TR-DOS 5.03, NEOLOAD.C, NEOFW.C, firmware upload, BIOS.C staging, UI and video CRC selftest pass. BIOS reset vector and far JMP work. The new segment-register MOV handler passes opcode 8Eh at F000:E05F; the next stop is opcode C7 at F000:E061.
+- C7 is MOV r/m16,imm16. Added exact dispatch for C6/C7 and a common handler using the existing ModR/M effective-address decoder and memory/register write path. C6 handles byte immediate; C7 handles little-endian word immediate. Both require ModR/M /0; other extension fields return unsupported.
+- No TR-DOS, NeoGS upload, RTC, or UI sequencing changes.
+- Build marker remains A47; no new host marker is introduced by this interpreter-only change.
+- [ ] Build: SjASMPlus firmware and host; check for duplicate labels, relative-branch range, and resident image size.
+- [ ] Runtime: verify the BIOS passes C7 and capture the next stop.
+- **Status:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.54 MOV immediate to r/m | SOURCE COMMITTED | Implement 8086 C6/C7 immediate MOV through existing ModR/M decoder. Build/runtime pending. |

@@ -24,7 +24,6 @@ P125_VIDEO_PAGE7   EQU #78          ; RAM page 7, inverted page number
 P125_VIDEO_PAGE3   EQU #7C          ; RAM page 3, inverted page number
 P125_HOST_PAGE5    EQU #7A          ; RAM page 5, host code at #6000
 P125_HOST_PAGE0    EQU #7F          ; RAM page 0, TR-DOS staging at #C000
-P125_ROM_PAGE0     EQU #BF          ; ROM page 0 + D7 auto-select for lower 16K
 
 Console_X: db 0
 Console_Y: db BIOS_DEBUG_TOP
@@ -39,7 +38,23 @@ p125_atm_video_init::
         push    de
         push    hl
 
-        ; Open ATM shadow ports through the still-mapped TR-DOS ROM.
+        ; Reset the ATM paging/control latch BEFORE enabling permanent
+        ; DOSEN. On this board #EFF7 is part of the ATM paging control path;
+        ; resetting it after the #0177 shadow-port setup can undo the state
+        ; needed by the TR-DOS overlay.
+        xor     a
+        ld      bc, #EFF7
+        out     (c), a
+
+        ; ROM2=1 (D4) is required for TR-DOS overlay; D3 selects alternate
+        ; video pages 7/3. This is #18, matching the host display setup.
+        ld      a, #18
+        ld      bc, #7FFD
+        out     (c), a
+        ld      (#5C3B), a
+
+        ; Open shadow ports and hold DOSEN permanently (A9=0) using the
+        ; documented TR-DOS ROM trampoline. Do this AFTER the paging reset.
         ld      bc, p125_atm_ports_open_done
         push    bc
         ld      bc, #2A53
@@ -49,25 +64,14 @@ p125_atm_video_init::
         jp      #3D2F
 
 p125_atm_ports_open_done:
-        ; Preserve the active ROM selection from the Spectrum 128K BANKM
-        ; shadow. In particular, do NOT force bit 4: TR-DOS must remain mapped
-        ; after video init because later file operations call ROM entry #3D13.
-        ; Set only bit 3 to select the alternate screen while preserving all
-        ; other #7FFD latch bits, including the TR-DOS ROM selection.
-        ld      a, (#5C3B)
-        or      #08
-        ld      bc, #7FFD
-        out     (c), a
-        ld      (#5C3B), a
-
-        ; Configure window 0 (#0000-#3FFF), not window 3. D6=0 selects ROM,
-        ; D7=1 enables the #7FFD ROM2 mux and TR-DOS shadow-ROM auto-select
-        ; on opcode fetches at #3Dxx. Lower six bits select ROM page 0.
-        ; Host code is in window 1 and the stack is in window 2, so this
-        ; mapping change does not disturb the running host.
-        ld      a, P125_ROM_PAGE0
+        ; Window 0 must use ROM with D7=1 so its ROM page selection is
+        ; coupled to ROM2/DOSEN. #BF selects the low ROM page with the
+        ; DOSEN-controlled low ROM select: BASIC-48 when DOSEN=0, TR-DOS
+        ; when DOSEN=1. This is the ATM2+ documented auto-TR-DOS mapping.
+        ld      a, #BF
         ld      bc, #3FF7
         out     (c), a
+
 
         ; Map the alternate screen pages while the 32-byte mode trampoline
         ; is installed at #FFEC. Window 3 uses a fixed RAM page here; the

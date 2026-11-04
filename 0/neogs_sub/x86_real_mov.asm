@@ -11,6 +11,135 @@
 ; Default segment is DS; BP-based forms default to SS. ES/CS/SS/DS override prefixes are supported.
 ; =========================================================================
 
+; -------------------------------------------------------------------------
+; 8C/8E — MOV between a segment register and r/m16.
+; 8C /r: MOV r/m16,Sreg (ES,CS,SS,DS are readable).
+; 8E /r: MOV Sreg,r/m16 (ES,SS,DS are writable; loading CS is invalid).
+; -------------------------------------------------------------------------
+; -------------------------------------------------------------------------
+; C6/C7 — MOV r/m8,imm8 and MOV r/m16,imm16.
+; Only ModR/M /0 is defined by the 8086 encoding.
+; The common ModR/M decoder consumes displacement bytes before the immediate.
+; -------------------------------------------------------------------------
+x86_real_mov_immediate_rm:
+        ld      (x86_mov_opcode), a
+        call    x86_real_fetch8
+        ret     c
+        call    x86_real_mov_decode_modrm
+        ret     c
+        ld      a, (x86_mov_reg)
+        or      a
+        jp      nz, x86_real_mov_immediate_invalid
+
+        ld      a, (x86_mov_opcode)
+        cp      #C6
+        jr      z, .byte_immediate
+
+        ; C7: immediate word, little-endian.
+        xor     a
+        ld      (x86_mov_width), a
+        call    x86_real_mov_fetch16
+        ret     c
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+.byte_immediate:
+        ld      a, 1
+        ld      (x86_mov_width), a
+        call    x86_real_fetch8
+        ret     c
+        ld      l, a
+        ld      h, 0
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+x86_real_mov_immediate_invalid:
+        ld      a, (x86_mov_opcode)
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
+x86_real_mov_segment:
+        ld      (x86_mov_opcode), a
+        call    x86_real_fetch8
+        ret     c
+        call    x86_real_mov_decode_modrm
+        ret     c
+        xor     a
+        ld      (x86_mov_width), a
+
+        ld      a, (x86_mov_opcode)
+        cp      #8E
+        jr      z, .load_segment
+
+        ; 8C: read selected segment register, then write r/m16.
+        ld      a, (x86_mov_reg)
+        cp      0
+        jr      z, .store_es
+        cp      1
+        jr      z, .store_cs
+        cp      2
+        jr      z, .store_ss
+        cp      3
+        jr      z, .store_ds
+        jp      x86_real_mov_segment_invalid
+.store_es:
+        ld      hl, (x86_reg_es)
+        jr      .store_rm
+.store_cs:
+        ld      hl, (x86_reg_cs)
+        jr      .store_rm
+.store_ss:
+        ld      hl, (x86_reg_ss)
+        jr      .store_rm
+.store_ds:
+        ld      hl, (x86_reg_ds)
+.store_rm:
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+.load_segment:
+        ; 8E /1 (MOV CS,...) and /4../7 are invalid on the 8086.
+        ld      a, (x86_mov_reg)
+        cp      0
+        jr      z, .load_es
+        cp      2
+        jr      z, .load_ss
+        cp      3
+        jr      z, .load_ds
+        jp      x86_real_mov_segment_invalid
+.load_es:
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_mov_value), hl
+        ld      hl, (x86_mov_value)
+        ld      (x86_reg_es), hl
+        jp      x86_real_next
+.load_ss:
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_mov_value), hl
+        ld      hl, (x86_mov_value)
+        ld      (x86_reg_ss), hl
+        jp      x86_real_next
+.load_ds:
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_mov_value), hl
+        ld      hl, (x86_mov_value)
+        ld      (x86_reg_ds), hl
+        jp      x86_real_next
+
+x86_real_mov_segment_invalid:
+        ld      a, (x86_mov_opcode)
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
 x86_real_mov_modrm:
         ld      (x86_mov_opcode), a
         call    x86_real_fetch8

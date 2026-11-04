@@ -1743,3 +1743,221 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [x] Static comparison: Project124 sets the host stack to `#AFFF`; Project125 had moved it to `#BFFF` while calling the same TR-DOS ROM API.
 - [x] Restored Project124's `#AFFF` stack top in Project125. The resident screen module is constrained to end at or below `#A800`, leaving the stack above it.
 - [ ] Rebuild and run on ATM/Unreal; confirm `[NLOAD 02]` and subsequent descriptor/sector markers. This change is not yet runtime-verified.
+
+
+## A1.37 — TR-DOS search boundary snapshot
+- [x] A55 runtime with stack top restored to `#AFFF` still stops after `[NLOAD 01] CATALOG SEARCH CALL`; the stack-placement change did not resolve the hang.
+- [x] Re-enabled the existing read-only `neo_diag_search_state` immediately before `CALL #3D13` for the next run. It reports BANKM, extension, name length, live SP, ROM bytes at `#3D13`, and the eight-byte search name; it preserves AF/BC/DE/HL and does not change TR-DOS state.
+- [ ] Inspect the A56 snapshot against the known-working Project124 boundary and identify the actual ROM/paging/workspace discrepancy before changing the API sequence.
+
+
+## A1.38 — восстановление гарантированного выбора TR-DOS ROM (2026-11-04)
+
+- [x] Сопоставлен рабочий старт из `main/0`: он явно устанавливает `#7FFD=#10` и сохраняет это значение в `#5C3B` до первого открытия файла TR-DOS.
+- [x] В активной ветке `neogs-driver-rewrite` `p125_atm_video_init` ранее только читал унаследованный `#5C3B` и выставлял бит 3. Если унаследованный bit 4 был нулевым, TR-DOS ROM1 не выбирался, хотя комментарий ошибочно предполагал, что он уже активен.
+- [x] Изменено на детерминированную последовательность `#7FFD=#18`: bit 4 выбирает ROM1/TR-DOS, bit 3 выбирает альтернативный экран. Это эквивалентно проверенному `#10` из рабочего старта с добавленным экранным bit 3. Затем существующие `#3FF7/#7FF7/#FFF7` настройки ATM выполняются без изменений.
+- [x] Версия host build повышена до A34. Драйвер NeoGS, RTC DS12887, видео-рендерер и TR-DOS ABI не менялись.
+- [ ] Build: проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить появление `[NLOAD 02] CATALOG SEARCH RETURN`, затем descriptor, первый сектор, загрузку NeoGS и BIOS.C.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Это исправление конкретного расхождения с рабочим стартом; успешный запуск пока не заявляется.
+
+| 2026-11-04 | A1.38 TR-DOS ROM1 selection | SOURCE COMMITTED | Force the same ROM1/TR-DOS selection used by the working main/0 startup, while retaining alternate-screen selection. Build/runtime pending. |
+
+
+## A1.39 — восстановление сброса ATM #EFF7 перед TR-DOS (2026-11-04)
+
+- [x] Runtime A34/A56: BANKM=18, extension 43 (ASCII C), mode 09, SP AFF1, имя NEOLOAD; после [NLOAD 01] управление не возвращается из CALL #3D13.
+- [x] Повторно сопоставлен рабочий 0/zx_main/main.asm из main/0 с текущим стартом. Помимо выбора #7FFD=#10 и записи BANKM, рабочий старт явно выполняет OUT (#EFF7),0 до TR-DOS операций. В текущем ATM init этот сброс отсутствовал.
+- [x] В p125_atm_video_init восстановлен сброс #EFF7=0 сразу после выбора #7FFD=#18 и до настройки #3FF7/#7FF7/#FFF7.
+- [x] RTC DS12887, текстовый рендерер, TR-DOS API-параметры и NeoGS transfer не менялись. Build marker обновлён до A35.
+- [ ] Build: проверить SjASMPlus и ProgramEnd <= #A800.
+- [ ] Runtime: проверить, появляется ли [NLOAD 02] CATALOG SEARCH RETURN; затем проверить descriptor, первый sector и продолжение загрузки.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Это восстановление ещё одного отличия от известного рабочего старта, не заявление о подтверждённом исправлении.
+
+| 2026-11-04 | A1.39 ATM #EFF7 reset before TR-DOS | SOURCE COMMITTED | Restore the explicit OUT (#EFF7),0 from the working main/0 startup before ATM window setup and the first TR-DOS catalogue call; build/runtime pending. |
+
+
+## A1.40 — не переназначать ATM window 0 (#0000-#3FFF) (2026-11-04)
+
+- [x] Runtime A35 повторяет зависание после `[NLOAD 01]`; значения границы поиска не изменились: `BANKM=18`, `EXT=43`, `MODE=09`, `SP=AFF1`, `NAME=NEOLOAD`.
+- [x] Сопоставление с рабочим `main/0/zx_main/main.asm`: рабочая последовательность выбирала ROM через `#7FFD=#10`, сбрасывала `#EFF7`, но не программировала `#3FF7`.
+- [x] Удалена запись `#3FF7=#BF` из `p125_atm_video_init`. Window 0 оставлен штатному ATM ROM/ROM2 decoder, чтобы не подменять ROM-страницу, на которой должен срабатывать TR-DOS overlay для `#3Dxx`. Окна 1/3 для видеопамяти и staging остаются настроенными как прежде.
+- [x] `#7FFD=#18` (ROM select + alternate screen) и сброс `#EFF7=0` сохранены. RTC, UI renderer, TR-DOS ABI и NeoGS transfer не менялись.
+- [ ] Build: проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: подтвердить возврат `[NLOAD 02]`, затем descriptor и sector read.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. A35 показал, что одного сброса `#EFF7` недостаточно; изменение A1.40 проверяет отличие от рабочего startup — отсутствие принудительного paging window 0.
+
+| 2026-11-04 | A1.40 Keep native ATM TR-DOS ROM mapping | SOURCE COMMITTED | Remove the non-baseline `#3FF7=#BF` write; retain native ROM/ROM2 decoder for TR-DOS #3Dxx overlay. Build/runtime pending. |
+
+
+## A1.41 — возвращение штатного #7FFD на время TR-DOS API (2026-11-04)
+
+- [x] Hardware/ATM2+ подтверждает, что ROM2 определяется битом D4 порта #7FFD, а DOSEN включается при ROM2=1 и переходе на #3Dxx; бит D3 #7FFD выбирает видеостраницу 5/1 либо 7/3.
+- [x] Известный рабочий старт Project125 main/0 входил в TR-DOS с #7FFD=#10 и BANKM=#10. Активная версия оставляла #18 (добавлен бит D3 для альтернативного текстового экрана).
+- [x] Добавлены две регистросохраняющие процедуры: перед каждым вызовом TR-DOS #3D13 временно устанавливается #7FFD/BANKM=#10; сразу после возврата восстанавливается #18. Применено к поиску каталога C=10, descriptor C=8 и чтению сектора C=5.
+- [x] Входные и возвращаемые AF/BC/DE/HL сохраняются; на момент самого CALL #3D13 дополнительного стекового кадра нет. RTC, ATM renderer, размещение окон #7FF7/#FFF7 и NeoGS transport не менялись.
+- [x] Driver banner A57; host build marker A37.
+- [ ] Build: проверить SjASMPlus и ASSERT ProgramEnd <= #A800.
+- [ ] Runtime: проверить [NLOAD 02] после поиска; затем descriptor и первый sector. Если поиск вернётся, проверить, что экранный режим восстанавливается и загрузка NeoGS продолжается.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Это проверка конкретного отличия от рабочего startup, а не заявление об исправлении.
+
+| 2026-11-04 | A1.41 Legacy #7FFD state around TR-DOS calls | SOURCE COMMITTED | Temporarily use the proven #10 ROM2/BANKM state for C=10/C=8/C=5 TR-DOS API calls, then restore #18 for the alternate text screen. Build/runtime pending. |
+
+
+## A1.42 — недисковая проверка TR-DOS dispatcher перед поиском каталога (2026-11-04)
+
+- Runtime A37/A57: после [NLOAD 01] CATALOG SEARCH CALL нет [NLOAD 02]; временное переключение #7FFD/BANKM на #10 не устранило зависание.
+- Перед каталоговым поиском C=#0A добавлен контрольный недисковый вызов TR-DOS C=#14 под той же картой #7FFD/BANKM=#10.
+- C=#14 направляет 16-байтовый descriptor в отдельный буфер neo_fw_trdos_probe_buffer; входные AF/BC/DE/HL запроса C=#0A сохраняются и восстанавливаются полностью.
+- Новые метки: [NLOAD T0] TRDOS NON-DISK API BEGIN и [NLOAD T1] TRDOS NON-DISK API RETURN. Если T0 есть, T1 нет — проблема до/в dispatcher; если T1 есть, но NLOAD 02 нет — dispatcher возвращается, зависание локализуется внутри каталожного поиска/дискового пути.
+- Driver A58; host build A38.
+- RTC, экранный интерфейс, NeoGS protocol и параметры исходного поиска C=#0A не менялись.
+- [ ] Build: SjASMPlus и ASSERT ProgramEnd <= #A800.
+- [ ] Runtime: проверить T0/T1, затем NLOAD 02 и последующие descriptor/sector markers.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME PENDING.
+
+| 2026-11-04 | A1.42 TR-DOS dispatcher preflight | SOURCE COMMITTED | Run non-disk C=#14 under the same legacy mapping before catalogue C=#0A, preserving the exact original search registers. Build/runtime pending. |
+
+
+## A1.43 — прямой каталоговый поиск по ABI Project124 (2026-11-04)
+
+- [x] Runtime A38/A58: появились оба маркера `[NLOAD T0]` и `[NLOAD T1]`; недисковый вызов `C=#14` возвращается, но `[NLOAD 02]` после каталогового поиска `C=#0A` отсутствует.
+- [x] Результат ограничивает зависание каталоговым/дисковым путём, но не доказывает неисправность FDC: тестовый `C=#14` был дополнительным вызовом, которого нет в рабочем Project124.
+- [x] Удалён preflight `C=#14` и диагностический snapshot непосредственно перед поиском. Между подготовкой имени и `CALL #3D13` теперь нет дополнительных ROM API вызовов или чтения ROM/workspace.
+- [x] Сохранено только переключение `#7FFD/BANKM=#10` перед вызовом, необходимое для согласования с проверенной картой TR-DOS; после возврата восстанавливается host map `#18`.
+- [x] Driver A59; host build A39.
+- [ ] Build: проверить SjASMPlus и `ASSERT ProgramEnd <= #A800`.
+- [ ] Runtime: проверить `[NLOAD 02] CATALOG SEARCH RETURN`. Если зависание останется, следующий этап — проверить FDC status/interrupt и TR-DOS disk path без изменения ABI.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME PENDING. Успешное открытие файла не заявляется.
+
+| 2026-11-04 | A1.43 Direct Project124 catalogue search ABI | SOURCE COMMITTED | Remove the diagnostic C=#14 call and ROM/workspace snapshot; retain legacy #10 paging and issue C=#0A directly. Build/runtime pending. |
+
+
+## A1.44 — корректная конфигурация SMUC FFBA для DS12887 (2026-11-04)
+
+- [x] Runtime A39/A59: TR-DOS C=#0A зависает; до поиска выполняются DS12887 SMUC fallback и запись `OUT (#FFBA),0`.
+- [x] По документации SMUC FFBA — мультиплексированный системный регистр. Его фиксированные биты должны соответствовать шаблону `0 111 0 A8 A7 1`; произвольное `#00` недопустимо и может нарушить работу контроллера.
+- [x] Для RTC address/read mode с A8=A7=0 установлен корректный байт `#71`. Остальная последовательность доступа к DS12887 через `#DFBA` не изменена.
+- [x] RTC driver D1.07. Проверка DS12887 должна по-прежнему показывать SMUC D/A/B, ID #5FBE=57 и RAW H:M:S.
+- [ ] Build/runtime pending. Критерий: после RTC timestamp TR-DOS C=#0A должен вернуть управление и показать `[NLOAD 02]`.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME PENDING. Причина является сильной аппаратно-документальной гипотезой, пока не подтверждена runtime.
+
+| 2026-11-04 | A1.44 SMUC FFBA fixed-bit correction | SOURCE COMMITTED | Replace invalid FFBA=#00 with documented #71 RTC address/read mode; validate TR-DOS search and RTC. |
+
+
+## A1.45 — явная маркировка RTC D1.07 / проверка SMUC FFBA (2026-11-04)
+
+- Runtime A39/A59 повторяет остановку после [NLOAD 01]. В присланном логе RTC banner показывает D1.06, поэтому по нему нельзя однозначно определить версию RTC исходника, собранную в бинарный файл.
+- Текущий исходник `zx_main/ds12887_rtc.asm` уже содержит исправление A1.44: при SMUC fallback процедура `DS12887_OPEN` записывает `#71` в `#FFBA`, а не `#00`. Само чтение DS12887 через `#DFBA` не меняется.
+- Обновлены только диагностические версии: RTC banner D1.07, host A40, NeoGS driver A60. Логика RTC, TR-DOS ABI, видеорежим и NeoGS transport не изменялись.
+- Цель следующего запуска — однозначно подтвердить выполнение именно RTC D1.07 / FFBA=#71 и проверить, вернётся ли TR-DOS search C=#0A.
+- [ ] Build: проверить SjASMPlus и `ASSERT ProgramEnd <= #A800`.
+- [ ] Runtime: подтвердить строки BUILD A40, DRIVER A60, DS12887 D1.07; затем проверить [NLOAD 02].
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+## A1.46 — ATM2+ window-0 TR-DOS overlay mapping (2026-11-04)
+
+- [x] Hardware document Hardware/Описание архитектуры и портов ATM2+.txt, sections 3 and 4.1, confirms that TR-DOS overlay requires ROM2=1, a fetch at #3Dxx, and a window-0 ROM mapping with D7=1 so the low ROM select is multiplexed with DOSEN.
+- [x] Reordered ATM initialization: reset #EFF7 before enabling permanent DOSEN through the #3D2F/#2A53 trampoline. The previous order reset the paging/control latch after the shadow-port/DOSEN setup.
+- [x] Explicitly configure window 0 through #3FF7=#BF (ROM page 0, D7=1 DOSEN/ROM2-linked selection), after shadow ports are opened. Keep #7FFD=#18, BANKM, video pages, window 1/3, RTC and screen renderer unchanged.
+- [ ] Build: run SjASMPlus/build_project125.bat; verify no assembly errors and ProgramEnd <= #A800.
+- [ ] Runtime: confirm [NLOAD 02] CATALOG SEARCH RETURN; then descriptor C=#08, first sector C=#05, NeoGS upload and BIOS load.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. This is a hardware-mapping correction to test, not a claim that the TR-DOS hang is fixed.
+
+| 2026-11-04 | A1.46 ATM2+ window-0 TR-DOS overlay mapping | SOURCE COMMITTED | Reset paging control before DOSEN activation and explicitly couple window-0 ROM mapping to ROM2/DOSEN using #3FF7=#BF. Build/runtime pending. |
+
+## A1.47 — TR-DOS search-key diagnostic (2026-11-04)
+
+- [x] Preserve the Project124 C=#0A catalogue call path; add a register-preserving dump of the exact nine bytes at #5CDD..#5CE5 immediately before the call.
+- [ ] Build and verify marker A42.
+- [ ] Runtime: record `[NLOAD KEY]` output. Expected key for NEOLOAD.C: `4E454F4C4F41442043`; expected key for NEOFW.C: `4E454F465720202043`.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Diagnostic only; it does not claim to fix the catalogue-search hang.
+
+| 2026-11-04 | A1.47 TR-DOS search-key diagnostic | SOURCE COMMITTED | Dump exact filename+extension bytes before C=#0A without changing API registers. Build/runtime pending. |
+
+
+## A1.48 — TR-DOS ROM boundary diagnostic (2026-11-04)
+
+- [x] A1.47 runtime confirms the exact search key is `NEOLOAD C` (`4E454F4C4F41442043`).
+- [x] Add the existing register-preserving, read-only `neo_diag_search_state` immediately before the `C=#0A` search. It reports BANKM, extension, DOS mode, SP, eight bytes visible at `#3D13`, and the raw eight-byte filename.
+- [ ] Build and verify marker A43 / driver A61.
+- [ ] Runtime: capture the complete `[NLOAD D]` diagnostic through the `[NLOAD 01]` call boundary.
+- **Status:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. No claim that the search hang is fixed.
+
+
+## A1.49 — Post-map TR-DOS ROM boundary probe (2026-11-04)
+
+- [x] A1.48 runtime exposed a diagnostic ordering flaw: `ROM@3D13` and `BANKM` were sampled while the ATM UI mapping was still active (`BANKM=#18`), before `neo_fw_trdos_legacy_map` selected `#10`.
+- [x] Move the legacy paging switch ahead of the diagnostic. The ROM bytes and BANKM are now sampled after the `#10` switch, immediately before the unchanged `CALL #3D13`.
+- [ ] Build and verify marker A44 / driver A62.
+- [ ] Runtime: capture `[NLOAD D]` and `ATM710 ROM@3D13` from the post-map probe.
+- **Status:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. This isolates the mapping at the actual call boundary; it does not yet restore the full ATM window-0 configuration or claim the hang is fixed.
+
+
+## A1.50 — восстановление архивного TR-DOS startup до инициализации ATM UI (2026-11-04)
+
+- Runtime A44/A62: после переключения BANKM на #10 поиск всё ещё не возвращался. ROM boundary bytes 00 18 E7 00 C3 69 2F CD соответствуют исполняемому входному stub TR-DOS 5.03 по адресу #3D13; версия ROM и сама точка входа подтверждены, поэтому дальнейшая замена адреса/версии не обоснована.
+- Сопоставление с рабочим 0/zx_main/main.asm выявило главное архитектурное отличие: архив сначала выставляет #7FFD/BANKM=#10 и #EFF7=0, затем выполняет TR-DOS file I/O; ATM video init, DOSEN/window-0 mux #3FF7 и экранные страницы в архивном загрузочном пути до дисковых операций не включаются.
+- Host startup A45 теперь повторяет эту последовательность. Вся работа с TR-DOS (NEOLOAD.C, NEOFW.C, BIOS.C и секторное чтение) выполняется до p125_atm_video_init, #3FF7=#BF, RTC UI/log renderer.
+- Driver A63 удаляет временное переключение #7FFD=#10/#18 вокруг каждого API-вызова. Поиск C=#0A, descriptor C=#08 и sector read C=#05 используют один непрерывный архивный disk map; диагностические routines сохраняют входные регистры.
+- До инициализации экрана диагностические сообщения выводятся напрямую в #EF; после загрузки BIOS.C включаются ATM UI, DS12887 и обычные RTC timestamped screen logs. BIOS CRC selftest и запуск x86 выполняются после инициализации UI.
+- Это изолирующий перенос проверенной последовательности Project124/0, а не заявление, что runtime уже исправлен.
+- [ ] Build: SjASMPlus; проверить отсутствие ошибок и ProgramEnd <= #A800.
+- [ ] Runtime: ожидать [NLOAD 02] CATALOG SEARCH RETURN, затем descriptor/sector markers, firmware upload, BIOS.C load; после [TRACE A1] BIOS LOAD DONE должны начаться VIDEO INIT / RTC / UI markers.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.50 Archive-first TR-DOS boot order | SOURCE COMMITTED | Restore exact #7FFD/BANKM=#10 + #EFF7=0 startup and defer ATM video/window-0/DOSEN/RTC UI until NEOLOAD.C, NEOFW.C and BIOS.C disk I/O have completed. Remove per-call #10/#18 paging toggles. |
+
+
+## A1.51 — исправление младшего байта физического адреса segment:offset (2026-11-04)
+
+- [x] Runtime A45/A63: TR-DOS 5.03 успешно выполняет C=#0A (каталог), C=#08 (дескриптор) и C=#05 (сектора); NEOLOAD.C и NEOFW.C открываются, поток прошивки завершается, BIOS.C загружается в page 75.
+- [x] NeoGS dump физического адреса FFFF0h подтверждает reset-vector bytes `EA 5B E0 00 F0`, то есть `JMP F000:E05B`.
+- [x] Runtime остановился с `CS:IP=FFFF:0001 OP=DC`. Анализ `x86_mem_calc_phys` выявил ошибку: при вычислении младшего байта `(segment << 4) + offset` исходный код вращал весь младший байт сегмента без маски. Для сегмента FFFFh это давало FFh вместо F0h, поэтому fetch из FFFF:0000 фактически обращался к FFFFFh (последнему байту BIOS ROM, DC), а не FFFF0h (EA).
+- [x] Исправлен `neogs_sub/x86_memory.asm`: маски `AND #0F` добавлены перед сдвигом младшей тетрады сегмента в байт 0 и перед сдвигом младшей тетрады старшего байта сегмента в байт 1. Без второй маски адрес `F000:E05B` также вычислялся бы неверно: верхняя тетрада `F0` ошибочно вращалась бы в `0F`.
+- [ ] Build: SjASMPlus / build_project125.bat; проверить все сценарии адресации и отсутствие новых ошибок.
+- [ ] Runtime: проверить физические адреса FFFF:0000 -> FFFF0h и F000:E05B -> FE05Bh; первая выборка должна дать EA, far JMP должен установить CS:IP=F000:E05B, затем зафиксировать следующий неподдержанный BIOS opcode/инструкцию.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Исправление обосновано точным вычислением адреса и runtime-дампом, но запуск BIOS после него ещё не проверен.
+
+| 2026-11-04 | A1.51 Fix physical address low byte for FFFF:0000 | SOURCE COMMITTED | Mask segment low nibble before shifting into physical address byte 0; correct FFFF:0000 from FFFFFh to FFFF0h. Build/runtime pending. |
+
+
+## A1.52 — сокращение дискового и RTC startup-лога (2026-11-04)
+
+- [x] Runtime после A1.51: BIOS reset vector теперь проходит дальше; лог показывает `STOP ... OP=8E F000:E05F`, то есть следующая остановка происходит на opcode 8Eh после far JMP. Исправление адресации физического адреса дало ожидаемый переход; поддержка opcode 8Eh — отдельная задача.
+- [x] В `zx_main/neogs_driver.asm` удалены только повторяющиеся сообщения `[NLOAD 07] TRDOS SECTOR READ CALL` и `[NLOAD 08] TRDOS SECTOR READ RETURN` из общего sector-read пути. Сам вызов TR-DOS `C=#05`, проверка ошибок и перемещение курсора секторов не менялись. Маркеры первого сектора `[NLOAD 05]/[NLOAD 06]` сохранены.
+- [x] В `zx_main/ds12887_rtc.asm` отключён вывод диагностических сообщений DS12887_PROBE (GLUK/SMUC, статусы D/A/B, VRT, raw time и ошибки probe). Выбор backend, проверка VRT, доступ к DS12887 и READ_CURRENT_TIME сохранены.
+- [x] В `zx_main/main.asm` удалены `[TRACE 30]/[TRACE 31]` и сообщение `[RTC] DALLAS DS12887 PROBE COMPLETE`. Обычные временные метки в последующих сообщениях сохраняются; маркеры `[TRACE 60]/[TRACE 61]` чтения времени пока оставлены, поскольку это runtime read tracing, а не инициализация.
+- [x] Build identifiers: host A46, driver A64.
+- [ ] Build: SjASMPlus / build_project125.bat; проверить отсутствие ошибок и ASSERT ProgramEnd <= #A800.
+- [ ] Runtime: подтвердить отсутствие повторяющихся NLOAD 07/08 и любых DS12887/RTC INIT диагностик, при этом обычные timestamps должны остаться рабочими.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.52 Quiet sector-read and RTC probe logs | SOURCE COMMITTED | Remove repetitive C=#05 trace messages and DS12887 startup diagnostics while preserving disk I/O, RTC probe, and timestamp functionality. |
+
+
+## A1.53 — 8086 MOV Sreg,r/m16 и тихие RTC timestamps (2026-11-04)
+
+- Runtime A46/A64: TR-DOS 5.03 открывает NEOLOAD.C и NEOFW.C; NeoGS firmware upload и BIOS.C staging завершаются. Видео CRC проходит. BIOS reset vector выполняет far JMP и останавливается на opcode 8Eh по адресу F000:E05F.
+- Найдена причина dispatch: диапазон общего MOV decoder в x86_real_mode.asm покрывал только 88h..8Bh; 8Ch и 8Eh не направлялись в обработчик. Сам x86_real_mov.asm реализовывал только 88h..8Bh.
+- Добавлена отдельная реализация 8Ch/8Eh: MOV r/m16,Sreg и MOV Sreg,r/m16. Для 8Eh разрешены ES, SS и DS; MOV CS (ModR/M /1) и зарезервированные /4../7 отвергаются как unsupported. Используется существующий декодер ModR/M и эффективного адреса, включая segment overrides.
+- В main.asm удалены TRACE 60/61 из каждого timestamp. p125_print_timestamp теперь проверяет ds12887_available и не выводит неизвестное время до успешного DS12887 probe. Сам DS12887_PROBE и последующее чтение времени не меняются.
+- Build marker A47. Driver A64 не изменён; TR-DOS startup order и disk routines не изменялись.
+- [ ] Build: SjASMPlus / build_firmware.asm и host build; проверить отсутствие ошибок, размер resident host и отсутствие конфликтов меток.
+- [ ] Runtime: подтвердить отсутствие TRACE 60/61 и ранних неизвестных timestamp; затем записать следующую BIOS instruction после F000:E05F.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.53 MOV segment registers and quiet RTC timestamps | SOURCE COMMITTED | Dispatch and implement 8Ch/8Eh segment-register MOV forms; suppress timestamp polling until DS12887 is available and remove per-line RTC trace noise. Build/runtime pending. |
+
+
+## A1.54 — 8086 MOV r/m, immediate (2026-11-04)
+
+- Runtime A47/A64: TR-DOS 5.03, NEOLOAD.C, NEOFW.C, firmware upload, BIOS.C staging, UI and video CRC selftest pass. BIOS reset vector and far JMP work. The new segment-register MOV handler passes opcode 8Eh at F000:E05F; the next stop is opcode C7 at F000:E061.
+- C7 is MOV r/m16,imm16. Added exact dispatch for C6/C7 and a common handler using the existing ModR/M effective-address decoder and memory/register write path. C6 handles byte immediate; C7 handles little-endian word immediate. Both require ModR/M /0; other extension fields return unsupported.
+- No TR-DOS, NeoGS upload, RTC, or UI sequencing changes.
+- Build marker remains A47; no new host marker is introduced by this interpreter-only change.
+- [ ] Build: SjASMPlus firmware and host; check for duplicate labels, relative-branch range, and resident image size.
+- [ ] Runtime: verify the BIOS passes C7 and capture the next stop.
+- **Status:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.54 MOV immediate to r/m | SOURCE COMMITTED | Implement 8086 C6/C7 immediate MOV through existing ModR/M decoder. Build/runtime pending. |

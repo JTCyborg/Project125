@@ -207,6 +207,7 @@ x86_mem_test:
 x86_mem_calc_phys:
         ; Byte 0 = (segment low << 4) + offset low.
         ld      a, (x86_mem_segment)
+        and     #0F                 ; only segment bits 3:0 contribute to byte 0
         rlca
         rlca
         rlca
@@ -228,6 +229,7 @@ x86_mem_calc_phys:
         and     #0F
         ld      b, a
         ld      a, (x86_mem_segment+1)
+        and     #0F                 ; only segment bits 7:4 contribute to byte 1
         rlca
         rlca
         rlca

@@ -25,6 +25,10 @@ load_neogs_firmware_file::
 
 ; HL points to an eight-character TR-DOS filename (extension is always C).
 neo_fw_open_file:
+        push    hl
+        ld      hl, trace_noload_00_entry
+        call    p125_trace_port
+        pop     hl
         ld      (neo_fw_requested_name_ptr), hl
         ld      hl, (neo_fw_requested_name_ptr)
         ; Search the requested exact 8.3 catalogue name.
@@ -36,7 +40,19 @@ neo_fw_open_file:
         ld      a, 9
         ld      (#5D06), a
         ld      c, 10
+        ; A1.47 diagnostic: dump the exact nine bytes passed to the TR-DOS
+        ; catalogue search (8-byte name plus extension) immediately before
+        ; the ROM call. This is outside the API call and preserves all regs.
+        call    neo_fw_trace_search_name
+        ; Keep the archived Project124 C=#0A ABI and disk map unchanged.
+        ; Diagnostic helpers preserve AF/BC/DE/HL; no paging changes occur
+        ; between preparing C=#0A and entering the TR-DOS dispatcher.
+        ld      hl, trace_noload_01_search_call
+        call    p125_trace_port
+        call    neo_diag_search_state
         call    #3D13
+        ld      hl, trace_noload_02_search_return
+        call    p125_trace_port
         ld      a, c
         cp      #FF
         jp      z, .file_not_found
@@ -48,7 +64,11 @@ neo_fw_open_file:
         ld      (#5D10), a
         pop     af
         ld      c, 8
+        ld      hl, trace_noload_03_descriptor_call
+        call    p125_trace_port
         call    #3D13
+        ld      hl, trace_noload_04_descriptor_return
+        call    p125_trace_port
         ld      a, (#5D0F)
         ld      b, a
         ld      a, (#5D10)
@@ -83,7 +103,11 @@ neo_fw_open_file:
 
         ; Read only the first sector now. Later sectors are fetched on demand
         ; by the active transfer after the preceding buffer bytes have been sent.
+        ld      hl, trace_noload_05_sector_call
+        call    p125_trace_port
         call    neo_fw_read_next_sector
+        ld      hl, trace_noload_06_sector_return
+        call    p125_trace_port
         jp      c, .sector_read_failed
         xor     a
         ret
@@ -104,11 +128,67 @@ neo_fw_open_file:
         scf
         ret
 
+ 
+; Emit the exact TR-DOS search key from #5CDD..#5CE5 as 18 hex digits.
+; Preserves every Z80 register so the following C=#0A ABI is unchanged.
+neo_fw_trace_search_name:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, trace_noload_search_name
+        call    p125_trace_port
+        ld      hl, #5CDD
+        ld      b, 9
+.search_name_loop:
+        ld      a, (hl)
+        push    bc
+        push    hl
+        call    neo_fw_trace_hex8
+        pop     hl
+        pop     bc
+        inc     hl
+        djnz    .search_name_loop
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+neo_fw_trace_hex8:
+        push    af
+        rrca
+        rrca
+        rrca
+        rrca
+        call    neo_fw_trace_hex_nibble
+        pop     af
+        and     #0F
+        jp      neo_fw_trace_hex_nibble
+
+neo_fw_trace_hex_nibble:
+        and     #0F
+        add     a, '0'
+        cp      '9'+1
+        jr      c, .hex_out
+        add     a, 7
+.hex_out:
+        push    bc
+        ld      bc, #00EF
+        out     (c), a
+        pop     bc
+        ret
+
 ; -------------------------------------------------------------------------
 ; Read one TR-DOS sector into the reusable #C000 buffer.
 ; Uses neo_fw_load_track/sector/remaining. Advances the cursor only after a
 ; successful read. OUT: carry clear; carry set on disk error/exhaustion.
 ; Clobbers AF, BC, DE, HL.
+
 neo_fw_read_next_sector:
         ld      a, (neo_fw_load_remaining)
         or      a
@@ -126,6 +206,8 @@ neo_fw_read_next_sector:
         xor     a
         ld      (#5D0F), a
         ld      (#5D10), a
+        ; Sector reads are intentionally silent; only file-level milestones
+        ; and first-sector acquisition are logged by the caller.
         call    #3D13
         ld      a, (#5D0F)
         ld      b, a
@@ -892,22 +974,28 @@ gs_boot_send_command_long:
 ; command-handler completion. Do not use DBIT as the command-complete flag.
 gs_boot_send_command:
         ld      (neo_fw_command_byte), a
+        ; A1.60 trace is emitted only for phase 5. Read the RTC before
+        ; publishing the command so timestamp rendering cannot delay IPC.
+        ld      a, (neo_fw_timeout_phase)
+        cp      5
+        jr      nz, .command_write
+        call    p125_log_prefix_if_needed
+.command_write:
         ld      a, (neo_fw_command_byte)
         out     (GSCOM), a
-        ; A1.60 trace: host command write requests CBIT assertion.
         ld      a, (neo_fw_timeout_phase)
         cp      5
         jr      nz, .command_trace_done
         ld      a, 'H'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, 'C'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, (neo_fw_command_byte)
         call    p125_print_hex8
         ld      a, 13
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, 10
-        out     (#EF), a
+        call    p125_emit_char
 .command_trace_done:
         ld      bc, FW_BYTE_TIMEOUT
 .command_wait:
@@ -926,16 +1014,17 @@ gs_boot_send_command:
         ld      a, (neo_fw_timeout_phase)
         cp      5
         jr      nz, .command_done_no_trace
+        call    p125_log_prefix_if_needed
         ld      a, 'H'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, 'c'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, '-'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, 13
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, 10
-        out     (#EF), a
+        call    p125_emit_char
 .command_done_no_trace:
         or      a
         ret
@@ -986,23 +1075,25 @@ gs_boot_send_data_byte:
         scf
         ret
 .data_slot_free:
-        ld      a, (neo_fw_tx_byte)
-        out     (GSDAT), a
-        ; Trace only the failing startup handshake, not the 15-KiB firmware stream.
+        ; Trace only the failing startup handshake, not the 15-KiB firmware
+        ; stream. Emit the timestamp before touching the shared DBIT slot.
         ld      a, (neo_fw_timeout_phase)
         cp      7
         jr      nz, .data_tx_trace_done
+        call    p125_log_prefix_if_needed
         ld      a, 'H'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, '+'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, (neo_fw_tx_byte)
         call    p125_print_hex8
         ld      a, 13
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, 10
-        out     (#EF), a
+        call    p125_emit_char
 .data_tx_trace_done:
+        ld      a, (neo_fw_tx_byte)
+        out     (GSDAT), a
         ld      a, 2
         ld      (neo_fw_tx_wait_state), a
         ld      bc, FW_BYTE_TIMEOUT
@@ -1053,16 +1144,17 @@ gs_boot_receive_data_byte:
         cp      7
         jr      nz, .receive_trace_done
 .receive_trace:
+        call    p125_log_prefix_if_needed
         ld      a, 'H'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, '-'
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, (neo_fw_last_rx_byte)
         call    p125_print_hex8
         ld      a, 13
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, 10
-        out     (#EF), a
+        call    p125_emit_char
 .receive_trace_done:
         ld      a, (neo_fw_last_rx_byte)
         ; DBIT is shared by both directions. Give the NeoGS sender time to
@@ -1140,10 +1232,120 @@ neogs_wait_data_byte::
         or      a
         ret
 
+; -------------------------------------------------------------------------
+; A1.13 TR-DOS boundary diagnostic.
+; Dumps BANKM, extension, TR-DOS mode byte and the exact 8-byte search name.
+; Uses port #EF only; preserves every register and does not touch TR-DOS state.
+; -------------------------------------------------------------------------
+neo_diag_search_state:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, trace_noload_diag_prefix
+        call    p125_trace_port
+        ld      a, (#5C3B)
+        call    neo_diag_hex8
+        ld      hl, trace_noload_diag_ext
+        call    p125_trace_port
+        ld      a, (#5CE5)
+        call    neo_diag_hex8
+        ld      hl, trace_noload_diag_mode
+        call    p125_trace_port
+        ld      a, (#5D06)
+        call    neo_diag_hex8
+        ld      hl, trace_noload_diag_sp
+        call    p125_trace_port
+        ; Record the live stack pointer at the TR-DOS search boundary.
+        ld      hl, 0
+        add     hl, sp
+        ld      a, h
+        call    neo_diag_hex8
+        ld      a, l
+        call    neo_diag_hex8
+        ld      a, 13
+        ld      c, #EF
+        out     (c), a
+        ld      a, 10
+        out     (c), a
+        ; ATM710 has no ATM3 #0CBE/#BF readback registers in Unreal Speccy.
+        ; Read the actual bytes visible at the TR-DOS entry address instead.
+        ; If ROM0 is not mapped, this signature will not match the TR-DOS ROM.
+        ld      hl, trace_noload_diag_rom
+        call    p125_trace_port
+        ld      hl, #3D13
+        ld      b, 8
+.neo_diag_rom_loop:
+        ld      a, (hl)
+        call    neo_diag_hex8
+        ld      a, ' '
+        ld      c, #EF
+        out     (c), a
+        inc     hl
+        djnz    .neo_diag_rom_loop
+        ld      a, 13
+        ld      c, #EF
+        out     (c), a
+        ld      a, 10
+        out     (c), a
+        ld      hl, trace_noload_diag_name
+        call    p125_trace_port
+        ld      hl, #5CDD
+        ld      b, 8
+        ld      c, #EF
+.neo_diag_name_loop:
+        ld      a, (hl)
+        out     (c), a
+        inc     hl
+        djnz    .neo_diag_name_loop
+        ld      a, 13
+        out     (c), a
+        ld      a, 10
+        out     (c), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+; A = byte. Emit two uppercase hexadecimal digits to #EF.
+neo_diag_hex8:
+        push    af
+        push    bc
+        ld      c, #EF
+        rrca
+        rrca
+        rrca
+        rrca
+        call    neo_diag_hex_nibble
+        pop     bc
+        pop     af
+        push    af
+        push    bc
+        ld      c, #EF
+        and     #0F
+        call    neo_diag_hex_nibble
+        pop     bc
+        pop     af
+        ret
+
+; A = low nibble. C = #EF.
+neo_diag_hex_nibble:
+        and     #0F
+        add     a, '0'
+        cp      '9' + 1
+        jr      c, .neo_diag_hex_digit
+        add     a, 7
+.neo_diag_hex_digit:
+        out     (c), a
+        ret
+
 ; TR-DOS NeoGS package loader state and fixed 8-character filename.
 neo_fw_loader_filename:  db "NEOLOAD "
 neo_fw_firmware_filename: db "NEOFW   "
 neo_fw_requested_name_ptr: dw 0
+neo_fw_trdos_search_hl:  dw 0
+neo_fw_trdos_probe_buffer: defs 16
 neo_fw_load_buffer:     dw 0
 neo_fw_load_remaining:  db 0
 neo_fw_buffer_remaining: dw 0
@@ -1187,4 +1389,23 @@ msg_p7_high_tx:        db "[P125] PH7 TX HIGH", 13, 10, 0
 msg_p7_high_ok:       db "[P125] PH7 HIGH ACK", 13, 10, 0
 msg_p7_wait_a3:        db "[P125] PH7 WAIT A3", 13, 10, 0
 msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A41 TRACE", 13, 10, 0
+trace_noload_diag_prefix:          defb "[NLOAD D] BANKM=", 0
+trace_noload_diag_ext:             defb " EXT=", 0
+trace_noload_diag_mode:            defb " MODE=", 0
+trace_noload_diag_sp:              defb " SP=", 0
+trace_noload_diag_rom:             defb " ATM710 ROM@3D13=", 0
+trace_noload_diag_name:            defb " NAME=", 0
+trace_noload_search_name: defb "[NLOAD KEY] ", 0
+trace_noload_00_entry:             defb "[NLOAD 00] OPEN ENTRY", 13, 10, 0
+trace_noload_01_search_call:       defb "[NLOAD 01] CATALOG SEARCH CALL", 13, 10, 0
+trace_noload_gate_begin:           defb "[NLOAD D1] DOSEN REARM BEGIN", 13, 10, 0
+trace_noload_gate_done:            defb "[NLOAD D2] DOSEN REARM DONE", 13, 10, 0
+trace_noload_dosenv_ready: defb "[NLOAD E1] TRDOS DOSENV READY",13,10,0
+trace_noload_api_probe_begin:      defb "[NLOAD T0] TRDOS NON-DISK API BEGIN", 13, 10, 0
+trace_noload_api_probe_return:     defb "[NLOAD T1] TRDOS NON-DISK API RETURN", 13, 10, 0
+trace_noload_02_search_return:     defb "[NLOAD 02] CATALOG SEARCH RETURN", 13, 10, 0
+trace_noload_03_descriptor_call:   defb "[NLOAD 03] DESCRIPTOR CALL", 13, 10, 0
+trace_noload_04_descriptor_return: defb "[NLOAD 04] DESCRIPTOR RETURN", 13, 10, 0
+trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 0
+trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A64 QUIET DISK LOG", 13, 10, 0
