@@ -100,7 +100,7 @@ x86_io_read8:
         sbc     hl, de
         jr      nz, .read8_check_e0
         ld      a, #FF
-        jp      x86_io_trace_read8
+        ret
 .read8_check_e0:
         ld      hl, (x86_io_port)
         ld      de, #00E0
