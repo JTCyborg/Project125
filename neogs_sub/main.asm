@@ -1010,6 +1010,8 @@ neo_timer_init:
 neo_timer_isr:
         push    af
         push    hl
+        ld      a, M_TIMER_INT
+        out     (INTREQ), a             ; acknowledge/clear timer request
         ld      hl, (neo_timer_ticks)
         inc     hl
         ld      (neo_timer_ticks), hl
