@@ -102,8 +102,71 @@ x86_mem_read8:
         call    x86_mem_map_addr
         ret     c
         ld      a, (hl)
+        call    x86_mem_watch_low_read
         or      a
         ret
+
+; Trace every BIOS read of the conventional-memory-size and equipment/error
+; bytes. This is deliberately independent of the write-watch budget.
+; The helper preserves AF/BC/DE/HL and therefore the guest read result.
+x86_mem_watch_low_read:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      a, (x86_mem_addr+2)
+        or      a
+        jr      nz, .done
+        ld      a, (x86_mem_addr+1)
+        cp      #04
+        jr      nz, .done
+        ld      a, (x86_mem_addr)
+        cp      #13
+        jr      c, .done
+        cp      #16
+        jr      nc, .done
+        ld      hl, x86_mem_read_prefix
+        call    x86_mem_watch_string
+        ld      a, (x86_mem_addr+2)
+        and     #0F
+        call    x86_mem_watch_hex8_low
+        ld      a, (x86_mem_addr+1)
+        call    x86_mem_watch_hex8
+        ld      a, (x86_mem_addr)
+        call    x86_mem_watch_hex8
+        ld      a, '='
+        out     (#EF), a
+        pop     hl
+        push    hl
+        ld      a, (hl)
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.done:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_mem_read_prefix:
+        db      "[MEMR] ", 0
 
 ; Write one byte. IN x86_mem_addr[0..2], x86_mem_value.
 x86_mem_write8:
