@@ -70,7 +70,7 @@ rtc_already_active:
         POP     BC: POP     AF
         RET
 
-rtc_driver_version:              DEFB "[RTC DRIVER A1.87]", 13, 10, 0
+rtc_driver_version:              DEFB "[RTC DRIVER A1.88]", 13, 10, 0
 rtc_trace_01_open_begin:          DEFB "[RTC 01] OPEN BEGIN", 13, 10, 0
 rtc_trace_02_open_done:           DEFB "[RTC 02] OPEN DONE", 13, 10, 0
 rtc_trace_03_signature_read_begin: DEFB "[RTC 03] SIGNATURE READ BEGIN", 13, 10, 0
