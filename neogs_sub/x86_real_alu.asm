@@ -42,8 +42,29 @@ x86_real_group1_word_immediate:
         ld      (x86_group1_word_modrm), a
         and     #C0
         cp      #C0
-        jp      nz, x86_real_group1_word_unsupported
+        jr      z, .word_register_operand
 
+        ; BIOS uses 81 /7 CMP r/m16,imm16 with direct [disp16].
+        ; Honor the active segment prefix (the observed form is ES:[0072]).
+        ld      a, (x86_group1_word_modrm)
+        and     #38
+        cp      #38
+        jp      nz, x86_real_group1_word_unsupported
+        ld      a, (x86_group1_word_modrm)
+        and     #C7
+        cp      #06
+        jp      nz, x86_real_group1_word_unsupported
+        ld      a, (x86_group1_word_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_alu_read_memory_word
+        ret     c
+        ld      (x86_alu_dst), hl
+        xor     a
+        ld      (x86_alu_dst_reg), a
+        jr      .word_operand_ready
+
+.word_register_operand:
         ld      a, (x86_group1_word_modrm)
         and     #38
         ld      (x86_alu_mode), a
@@ -52,6 +73,11 @@ x86_real_group1_word_immediate:
         ld      (x86_alu_dst_reg), a
         call    x86_alu_read_reg16
         ld      (x86_alu_dst), hl
+
+.word_operand_ready:
+        ld      a, (x86_group1_word_modrm)
+        and     #38
+        ld      (x86_alu_mode), a
 
         call    x86_real_fetch8
         ret     c
