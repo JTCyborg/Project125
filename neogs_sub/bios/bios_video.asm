@@ -21,7 +21,7 @@ BIOS_VIDEO_COLUMNS EQU 42
 BIOS_VIDEO_ROWS    EQU 12
 BIOS_VIDEO_MODE    EQU #03
 
-bios_int10_dispatch:
+bios_int10_dispatch_impl:
         ld      hl, (x86_reg_ax)
         ld      a, h
         cp      #00
@@ -38,7 +38,7 @@ bios_int10_dispatch:
         ret
 
 ; Install IVT[10h] -> 0000:5200 (firmware service trap).
-bios_int10_install_vector:
+bios_int10_install_vector_impl:
         ld      hl, 0
         ld      (x86_mem_segment), hl
         ld      hl, #0040
@@ -270,14 +270,14 @@ bios_video_write_word:
 ; round-trip, 42-column wrap, CR/LF, and the streamed host console path.
 ; Expected final AX=1A10h, DX=020Fh, BDA cursor=020Fh.
 ; -------------------------------------------------------------------------
-bios_int10_video_test:
+bios_int10_video_test_impl:
         xor     a
         ld      (x86_real_bounds_enable), a
         call    x86_mem_init
         ld      hl, x86_bios_video_test_image
         ld      de, #5002
         ld      bc, x86_bios_video_test_image_end - x86_bios_video_test_image
-        call    x86_real_copy_image
+        call bank69_call_x86_real_copy_image
         jp      c, bios_video_test_fail_1
 
         ; Verify POST installed IVT[10h] -> 0000:5200.
@@ -324,7 +324,7 @@ bios_int10_video_test:
         ld      hl, #0202
         ld      (x86_reg_flags), hl
 
-        call    x86_real_execute
+        call bank69_call_x86_real_execute
         jp      c, bios_video_test_fail_3
 
         ld      hl, (x86_reg_ax)
