@@ -114,7 +114,7 @@ x86_real_alu_modrm16:
         cp      #10
         jr      z, .capture_carry
         cp      #18
-        jr      nz, .execute
+        jp      nz, x86_real_alu_execute
 .capture_carry:
         ld      a, (x86_reg_flags)
         and     1
