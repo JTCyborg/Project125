@@ -368,6 +368,10 @@ x86_real_dispatch:
         cp      #A4
         jp      c, x86_real_moffs
 .not_moffs:
+        cp      #04
+        jp      z, x86_real_alu8_accumulator_immediate
+        cp      #05
+        jp      z, x86_real_alu_accumulator_immediate
         cp      #00
         jp      z, x86_real_alu8_modrm
         cp      #02
