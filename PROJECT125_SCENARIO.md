@@ -1708,3 +1708,17 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Build: собрать `build_project125.bat`; проверить отсутствие ошибок и `ProgramEnd <= #A800`.
 - [ ] Runtime: проверить `[NLOAD E1]`, `[NLOAD T0]`, `[NLOAD T1]`, затем `[NLOAD 02]`. Если поиск вернётся, продолжить descriptor/sector tests.
 - **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT VERIFIED.
+
+
+## A1.34 — возврат к проверенному TR-DOS open из Project124 (2026-11-04)
+
+- [x] Сверен архивный рабочий файл `Project125/neogs_driver.asm` из ветки `main` (blob `156f64798ccc9feb5f0fdaa242fd8b246ce9231a`) с активным `zx_main/neogs_driver.asm`.
+- [x] В `neo_fw_open_file` восстановлена последовательность рабочего драйвера: копирование имени в `#5CDD`, `A=9`, `#5D06=9`, `C=10`, прямой `CALL #3D13`; затем descriptor через `C=8` без изменения остальных возвращённых регистров.
+- [x] Удалены из критического пути открытия: DOSEN trampoline, диагностический `C=#14` probe, дополнительная инициализация DOSENV/ERR_SP, сохранение/подмена HL и trace-вызовы между подготовкой и ROM API.
+- [x] Остальная логика чтения первого сектора, потоковой передачи NeoGS, RTC и экранный код не менялись.
+- [x] Driver banner A54; host build marker A31.
+- [ ] Build: собрать проект и проверить SjASMPlus, размер resident image и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить возврат каталожного поиска `C=#0A`, descriptor `C=#08`, чтение первого сектора, затем полный запуск NeoGS.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Это восстановление известной рабочей последовательности, а не заявление о подтверждённом runtime.
+
+| 2026-11-04 | A1.34 Legacy TR-DOS open restore | SOURCE COMMITTED | Restore the exact archived Project124 TR-DOS open sequence in the active driver; remove added pre-call probes/trampoline/environment writes from this critical path. Build/runtime pending. |
