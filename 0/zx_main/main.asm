@@ -70,11 +70,36 @@ Init_Z80_System:
         ld      hl, #C000
         ld      de, (neo_fw_file_length)
         call    upload_firmware
+        jr      c, .firmware_upload_error
+        ; This milestone is emitted only after the NeoGS ready ACK and the
+        ; byte-count cross-check have both succeeded.
         ld      hl, trace_81_fw_upload_done
         call    p125_trace_port
-        jr      nc, .firmware_ready
+        jp      .firmware_ready
+
+.firmware_upload_error:
         ld      hl, msg_fw_upload_error
         call    p125_trace_port
+        ld      hl, msg_fw_file_error_code
+        call    p125_trace_port
+        ld      a, (neo_fw_file_error)
+        call    p125_trace_hex8
+        ld      hl, msg_fw_dir_length
+        call    p125_trace_port
+        ld      a, (#5CE9)
+        call    p125_trace_hex8
+        ld      a, (#5CE8)
+        call    p125_trace_hex8
+        ld      hl, msg_fw_dir_sectors
+        call    p125_trace_port
+        ld      a, (#5CEA)
+        call    p125_trace_hex8
+        ld      hl, msg_fw_dir_start
+        call    p125_trace_port
+        ld      a, (#5CEC)
+        call    p125_trace_hex8
+        ld      a, (#5CEB)
+        call    p125_trace_hex8
         ld      a, (neo_fw_timeout_phase)
         call    p125_trace_hex8
         ld      hl, msg_fw_status
@@ -190,14 +215,31 @@ Init_Z80_System:
 .video_crc_ok:
         ld      hl, msg_video_crc_ok
         call    p125_print_string
+        ; Verify the reverse NeoGS -> ATM DMA direction before BIOS execution.
+        call    p125_dma_reverse_selftest
+        jr      c, .dma_reverse_failed
+        ld      hl, msg_dma_reverse_ok
+        call    p125_print_string
+        jr      .dma_reverse_done
+.dma_reverse_failed:
+        ld      hl, msg_dma_reverse_failed
+        call    p125_print_string
+        ld      a, (bios_host_transfer_error)
+        call    p125_print_hex8
+        ld      a, 13
+        call    p125_emit_char
+        ld      a, 10
+        call    p125_emit_char
+.dma_reverse_done:
         ld      hl, msg_bios_valid
         call    p125_print_string
 
         ; Stage 3: execute the BIOS from the architectural 8086 reset vector.
         ld      hl, msg_bios_run
         call    p125_print_string
-        ld      hl, trace_B0_bios_exec_begin
-        call    p125_trace_port
+        ; BIOS EXEC BEGIN trace disabled to keep the debug log compact.
+        ; ld      hl, trace_B0_bios_exec_begin
+        ; call    p125_trace_port
         call    neogs_bios_boot_and_get_result
         ld      hl, trace_B1_bios_exec_return
         call    p125_trace_port
@@ -413,10 +455,14 @@ trace_B0_bios_exec_begin:     defb "[TRACE B0] BIOS EXEC BEGIN", 13, 10, 0
 trace_B1_bios_exec_return:    defb "[TRACE B1] BIOS EXEC RETURN", 13, 10, 0
 
 msg_p125_start:       defb "[P125] ATM HOST START", 13, 10, 0
-msg_p125_build_id:    defb "[P125] BUILD 20261104-A47 MOV-SREG RTC-QUIET", 13, 10, 0
+msg_p125_build_id:    defb "[P125] BUILD 20261104-A49 48K-TRDOS-FIX", 13, 10, 0
 msg_fw_load:          defb "[P125] LOAD NEOGS FIRMWARE", 13, 10, 0
 msg_fw_file_error:    defb "[P125] ERROR: NEOLOAD.C FILE #", 0
 msg_fw_upload_error:  defb "[P125] ERROR: NEOGS FIRMWARE UPLOAD PHASE #", 0
+msg_fw_file_error_code: defb " FILEERR #", 0
+msg_fw_dir_length: defb " DIRLEN #", 0
+msg_fw_dir_sectors: defb " DIRSECTORS #", 0
+msg_fw_dir_start: defb " DIRSTART T/S #", 0
 msg_fw_status:        defb " GSSTAT #", 0
 msg_fw_txstate:       defb " TXSTATE #", 0
 msg_fw_txphase:       defb " TXPHASE #", 0
@@ -434,6 +480,8 @@ msg_bios_run_error:   defb "[P125] ERROR: BIOS EXECUTION IPC #", 0
 msg_bios_result:      defb "[P125] BIOS RETURN STATUS/AX: ", 0
 msg_video_crc_error:  defb "[P125] VIDEO CRC SELFTEST FAILED #", 0
 msg_video_crc_ok:     defb "[P125] VIDEO CRC SELFTEST PASS", 13, 10, 0
+msg_dma_reverse_ok: defb "[P125] DMA REVERSE SELFTEST PASS", 13, 10, 0
+msg_dma_reverse_failed: defb "[P125] DMA REVERSE SELFTEST FAIL #", 0
 
 P125_OLD_SP: dw 0
 p125_log_line_start: db 1
@@ -485,7 +533,7 @@ p125_bios_image_end:
         ASSERT NEOLOAD_FILE_SIZE >= 1
         ASSERT NEOLOAD_FILE_SIZE <= #0800
         ASSERT NEOFW_FILE_SIZE >= 1
-        ASSERT NEOFW_FILE_SIZE <= #4000
+        ASSERT NEOFW_FILE_SIZE <= #C010
 
         PAGE 1
         ORG #C000
@@ -495,12 +543,48 @@ p125_neoload_end:
         ASSERT p125_neoload_end - p125_neoload_start = NEOLOAD_FILE_SIZE
         SAVETRD "disk_A.trd", "NEOLOAD.C", #C000, NEOLOAD_FILE_SIZE
 
+; SAVETRD reads from a single 16-KiB mapped RAM page. The 48-KiB
+; package is therefore staged in up to three physical pages and appended
+; sector-aligned to one NEOFW.C directory entry. V1 host streaming sees one
+; ordinary sequential file and needs no knowledge of the disk-side chunks.
+        IF NEOFW_FILE_SIZE > #4000
+NEOFW_CHUNK0_SIZE EQU #4000
+        ELSE
+NEOFW_CHUNK0_SIZE EQU NEOFW_FILE_SIZE
+        ENDIF
+
         PAGE 3
         ORG #C000
-p125_neofw_start:
-        INCBIN "zx_main/neofw.bin"
-p125_neofw_end:
-        ASSERT p125_neofw_end - p125_neofw_start = NEOFW_FILE_SIZE
-        SAVETRD "disk_A.trd", "NEOFW.C", #C000, NEOFW_FILE_SIZE
+p125_neofw_chunk0_start:
+        INCBIN "zx_main/neofw.bin", 0, NEOFW_CHUNK0_SIZE
+p125_neofw_chunk0_end:
+        ASSERT p125_neofw_chunk0_end - p125_neofw_chunk0_start = NEOFW_CHUNK0_SIZE
+        SAVETRD "disk_A.trd",|"NEOFW.C",#C000,NEOFW_CHUNK0_SIZE
+
+        IF NEOFW_FILE_SIZE > #4000
+                IF NEOFW_FILE_SIZE > #8000
+NEOFW_CHUNK1_SIZE EQU #4000
+                ELSE
+NEOFW_CHUNK1_SIZE EQU NEOFW_FILE_SIZE - #4000
+                ENDIF
+                PAGE 1
+                ORG #C000
+p125_neofw_chunk1_start:
+                INCBIN "zx_main/neofw.bin", #4000, NEOFW_CHUNK1_SIZE
+p125_neofw_chunk1_end:
+                ASSERT p125_neofw_chunk1_end - p125_neofw_chunk1_start = NEOFW_CHUNK1_SIZE
+                SAVETRD "disk_A.trd",&"NEOFW.C",#C000,NEOFW_CHUNK1_SIZE
+        ENDIF
+
+        IF NEOFW_FILE_SIZE > #8000
+NEOFW_CHUNK2_SIZE EQU NEOFW_FILE_SIZE - #8000
+                PAGE 2
+                ORG #C000
+p125_neofw_chunk2_start:
+                INCBIN "zx_main/neofw.bin", #8000, NEOFW_CHUNK2_SIZE
+p125_neofw_chunk2_end:
+                ASSERT p125_neofw_chunk2_end - p125_neofw_chunk2_start = NEOFW_CHUNK2_SIZE
+                SAVETRD "disk_A.trd",&"NEOFW.C",#C000,NEOFW_CHUNK2_SIZE
+        ENDIF
 
         PAGE 0

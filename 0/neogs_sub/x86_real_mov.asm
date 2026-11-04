@@ -140,6 +140,27 @@ x86_real_mov_segment_invalid:
         scf
         ret
 
+; 8D LEA r16,m — return the effective offset without reading memory.
+x86_real_lea:
+        call    x86_real_fetch8
+        ret     c
+        call    x86_real_mov_decode_modrm
+        ret     c
+        ld      a, (x86_mov_is_reg)
+        or      a
+        jr      z, .lea_memory_operand
+        ld      a, #8D
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+.lea_memory_operand:
+        ld      hl, (x86_mov_offset)
+        ld      a, (x86_mov_reg)
+        call    x86_alu_write_reg16
+        jp      x86_real_next
+
 x86_real_mov_modrm:
         ld      (x86_mov_opcode), a
         call    x86_real_fetch8

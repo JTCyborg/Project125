@@ -215,14 +215,31 @@ Init_Z80_System:
 .video_crc_ok:
         ld      hl, msg_video_crc_ok
         call    p125_print_string
+        ; Verify the reverse NeoGS -> ATM DMA direction before BIOS execution.
+        call    p125_dma_reverse_selftest
+        jr      c, .dma_reverse_failed
+        ld      hl, msg_dma_reverse_ok
+        call    p125_print_string
+        jr      .dma_reverse_done
+.dma_reverse_failed:
+        ld      hl, msg_dma_reverse_failed
+        call    p125_print_string
+        ld      a, (bios_host_transfer_error)
+        call    p125_print_hex8
+        ld      a, 13
+        call    p125_emit_char
+        ld      a, 10
+        call    p125_emit_char
+.dma_reverse_done:
         ld      hl, msg_bios_valid
         call    p125_print_string
 
         ; Stage 3: execute the BIOS from the architectural 8086 reset vector.
         ld      hl, msg_bios_run
         call    p125_print_string
-        ld      hl, trace_B0_bios_exec_begin
-        call    p125_trace_port
+        ; BIOS EXEC BEGIN trace disabled to keep the debug log compact.
+        ; ld      hl, trace_B0_bios_exec_begin
+        ; call    p125_trace_port
         call    neogs_bios_boot_and_get_result
         ld      hl, trace_B1_bios_exec_return
         call    p125_trace_port
@@ -463,6 +480,8 @@ msg_bios_run_error:   defb "[P125] ERROR: BIOS EXECUTION IPC #", 0
 msg_bios_result:      defb "[P125] BIOS RETURN STATUS/AX: ", 0
 msg_video_crc_error:  defb "[P125] VIDEO CRC SELFTEST FAILED #", 0
 msg_video_crc_ok:     defb "[P125] VIDEO CRC SELFTEST PASS", 13, 10, 0
+msg_dma_reverse_ok: defb "[P125] DMA REVERSE SELFTEST PASS", 13, 10, 0
+msg_dma_reverse_failed: defb "[P125] DMA REVERSE SELFTEST FAIL #", 0
 
 P125_OLD_SP: dw 0
 p125_log_line_start: db 1

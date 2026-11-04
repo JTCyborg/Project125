@@ -37,9 +37,10 @@ x86_real_string_instruction:
         ld      a, h
         and     #07
         jr      nz, .x86_string_no_progress
+        ; REP progress heartbeat disabled; keep the execution-budget flag active.
         ld      a, (x86_real_progress_enable)
         or      a
-        call    nz, bios_progress_emit
+        ; call  nz, bios_progress_emit
 .x86_string_no_progress:
         ; F2/F3 test ZF only for CMPS and SCAS; other string forms repeat
         ; unconditionally. F3 continues while ZF=1, F2 while ZF=0.

@@ -139,11 +139,17 @@ neogs_bios_transfer_finish:
 
 ; Run BIOS and drain the NeoGS debug stream while CBIT remains asserted.
 ; Every received byte is mirrored to the ATM/emulator debug port #EF.
+; BIOS POST performs extensive memory sweeps. A full pass through the
+; Turbo XT BIOS can take several minutes on the current Z80 interpreter.
+; Use a 16-bit outer timeout (2048 x 65535 polls), while continuing to drain
+; DBIT whenever the NeoGS firmware emits progress. This is a watchdog, not
+; an instruction budget; normal completion is still signalled by CBIT=0.
 ; OUT: carry clear when the NeoGS command completes; call get_result next.
 neogs_bios_boot_and_wait:
         ld      a, CMD_BOOT_BIOS
         out     (GSCOM), a
-        ld      d, 16
+        ld      hl, #0800
+        ld      (bios_boot_timeout_outer), hl
 .bios_boot_outer:
         ld      bc, BIOS_HOST_WAIT_LIMIT
 .bios_boot_inner:
@@ -160,7 +166,11 @@ neogs_bios_boot_and_wait:
         ld      a, b
         or      c
         jr      nz, .bios_boot_inner
-        dec     d
+        ld      hl, (bios_boot_timeout_outer)
+        dec     hl
+        ld      (bios_boot_timeout_outer), hl
+        ld      a, h
+        or      l
         jr      nz, .bios_boot_outer
         ld      a, 7
         ld      (bios_host_transfer_error), a
@@ -322,6 +332,8 @@ bios_host_tail_prefix:
         defb    "[BIOS DST FFF0] ", 0
 bios_host_tail_error:
         defb    "[BIOS DST FFF0] !", 0
+bios_boot_timeout_outer: dw 0
+
 bios_host_tail_data:
         defs    5, 0
 
@@ -331,3 +343,83 @@ bios_host_transfer_error: db 0
 bios_host_result_signature: db 0
 bios_host_result_status:    db 0
 bios_host_result_ax:        dw 0
+
+; -------------------------------------------------------------------------
+; Reverse-DMA transport self-test.
+; The host reads a 00..FF pattern from the NeoGS DMA window into #C000.
+; The payload itself never uses GSDAT/DBIT; GSCOM is only the command/doorbell.
+; OUT: carry clear on a byte-perfect 256-byte transfer.
+; -------------------------------------------------------------------------
+p125_dma_reverse_selftest:
+        xor     a
+        ld      (bios_host_transfer_error), a
+        ld      a, CMD_DMA_READ_TEST
+        out     (GSCOM), a
+
+        ld      bc, BIOS_HOST_WAIT_LIMIT
+.dma_reverse_ready_wait:
+        in      a, (GSSTAT)
+        bit     B_CBIT, a
+        jr      z, .dma_reverse_ready
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .dma_reverse_ready_wait
+        ld      a, 8
+        ld      (bios_host_transfer_error), a
+        scf
+        ret
+
+.dma_reverse_ready:
+        ; NeoGS ZX DMA documentation: the first ROM-window read is a
+        ; pipeline/dummy byte. It starts the DMA read cycle but is invalid.
+        ; The NEXT read returns the byte at the programmed HAD/MAD/LAD address.
+        ; Keep the dummy read separate from the 256-byte payload.
+        ld      hl, 0
+        di
+        ld      a, (hl)                 ; mandatory dummy read; discard result
+
+        ; Read the complete block beginning at the exact programmed DMA address.
+        ld      hl, 0
+        ld      de, NGS_DMA_TEST_HOST_ADDR
+        ld      bc, NGS_DMA_TEST_LENGTH
+        ldir
+
+        ; End marker is control only; the 256-byte payload travelled via DMA.
+        ld      a, #FF
+        out     (GSCOM), a
+        ld      bc, BIOS_HOST_WAIT_LIMIT
+.dma_reverse_done_wait:
+        in      a, (GSSTAT)
+        bit     B_CBIT, a
+        jr      z, .dma_reverse_validate
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .dma_reverse_done_wait
+        ld      a, 9
+        ld      (bios_host_transfer_error), a
+        scf
+        ret
+
+.dma_reverse_validate:
+        ld      hl, NGS_DMA_TEST_HOST_ADDR
+        ld      b, 0
+        xor     a
+.dma_reverse_compare:
+        cp      (hl)
+        jr      nz, .dma_reverse_bad_data
+        inc     hl
+        inc     a
+        djnz    .dma_reverse_compare
+        xor     a
+        ld      (bios_host_transfer_error), a
+        or      a
+        ret
+
+.dma_reverse_bad_data:
+        ld      a, 10
+        ld      (bios_host_transfer_error), a
+        scf
+        ret
+

@@ -109,6 +109,21 @@ x86_io_read8:
         or      a
         sbc     hl, de
         jr      z, x86_pit_read_channel0
+        ; IBM PC/XT 8255: PA keyboard data, PB system control,
+        ; PC memory-size/cassette sense, and control-word latch.
+        ld      a, (x86_io_port+1)
+        or      a
+        jr      nz, .read8_open_bus
+        ld      a, (x86_io_port)
+        cp      #60
+        jp      z, x86_ppi_read_port_a
+        cp      #61
+        jp      z, x86_ppi_read_port_b
+        cp      #62
+        jp      z, x86_ppi_read_port_c
+        cp      #63
+        jp      z, x86_ppi_read_control
+.read8_open_bus:
         ld      a, #FF
         jp      x86_io_trace_read8
 
@@ -144,15 +159,6 @@ x86_pit_read_channel0:
         ret
 
 x86_io_trace_read8:
-        ld      (x86_io_trace_value), a
-        xor     a
-        ld      (x86_io_trace_value+1), a
-        ld      a, 'R'
-        ld      (x86_io_trace_kind), a
-        ld      a, '8'
-        ld      (x86_io_trace_width), a
-        call    x86_io_trace_event
-        ld      a, (x86_io_trace_value)
         ret
 
 x86_io_write8:
@@ -174,7 +180,7 @@ x86_io_write8:
         ld      de, #0021
         or      a
         sbc     hl, de
-        jr      z, x86_pic_write_data
+        jp      z, x86_pic_write_data
         ld      hl, (x86_io_port)
         ld      de, #0043
         or      a
@@ -185,6 +191,15 @@ x86_io_write8:
         or      a
         sbc     hl, de
         jp      z, x86_pit_write_channel0
+        ld      a, (x86_io_port+1)
+        or      a
+        jr      nz, .write8_unmapped
+        ld      a, (x86_io_port)
+        cp      #61
+        jp      z, x86_ppi_write_port_b
+        cp      #63
+        jp      z, x86_ppi_write_control
+.write8_unmapped:
         jp      x86_io_trace_write8
 
 ; Master 8259, single-controller PC/XT subset. IRQ0 is fully serviced.
@@ -352,15 +367,7 @@ x86_pit_activate:
         ret
 
 x86_io_trace_write8:
-        ld      a, (x86_io_value)
-        ld      (x86_io_trace_value), a
-        xor     a
-        ld      (x86_io_trace_value+1), a
-        ld      a, 'W'
-        ld      (x86_io_trace_kind), a
-        ld      a, '8'
-        ld      (x86_io_trace_width), a
-        jp      x86_io_trace_event
+        ret
 
 ; Called once per guest instruction. Delivers the unmasked IRQ0 only when IF=1.
 x86_io_tick:
@@ -426,6 +433,54 @@ x86_io_tick:
         call    x86_int_enter
         ret
 
+; IBM PC/XT 8255/PPI model used by the 5150 BIOS.
+; PA (60h) is the XT keyboard data latch. A PB6 low-to-high transition
+; resets the keyboard interface and makes the XT BAT byte AAh available.
+; PB (61h) resets to 40h. PC (62h) reports 640KB as 12h, multiplexed
+; by PB2 into the high/low memory-size nibble. No cassette is attached.
+x86_ppi_read_port_a:
+        ld      a, (x86_ppi_keyboard_data)
+        ret
+
+x86_ppi_read_port_b:
+        ld      a, (x86_ppi_port_b)
+        ret
+
+x86_ppi_read_port_c:
+        ld      a, (x86_ppi_port_b)
+        bit     2, a
+        ld      a, 1
+        ret     z
+        inc     a
+        ret
+
+x86_ppi_read_control:
+        ld      a, (x86_ppi_control)
+        ret
+
+x86_ppi_write_port_b:
+        ; The keyboard interface's PB latch powers up low on the 5150,
+        ; independently of the externally visible PPI reset value (40h).
+        ld      a, (x86_ppi_keyboard_pb)
+        bit     6, a
+        ld      b, a
+        ld      a, (x86_io_value)
+        ld      (x86_ppi_port_b), a
+        ld      (x86_ppi_keyboard_pb), a
+        bit     6, b
+        ret     nz
+        bit     6, a
+        ret     z
+        ; Keyboard reset edge: XT keyboard performs BAT and returns AAh.
+        ld      a, #AA
+        ld      (x86_ppi_keyboard_data), a
+        ret
+
+x86_ppi_write_control:
+        ld      a, (x86_io_value)
+        ld      (x86_ppi_control), a
+        ret
+
 x86_io_read16:
         ld      hl, (x86_io_port)
         ld      de, #00E0
@@ -466,46 +521,6 @@ x86_io_write16:
 ; BIOS-only diagnostic for unmapped guest I/O accesses. First 64 events
 ; are forwarded to the existing host console, e.g. [IO] R8 0060=FF.
 x86_io_trace_event:
-        ld      a, (x86_real_progress_enable)
-        or      a
-        ret     z
-        ld      a, (x86_io_trace_count)
-        cp      64
-        ret     nc
-        inc     a
-        ld      (x86_io_trace_count), a
-        push    af
-        push    bc
-        push    de
-        push    hl
-        ld      hl, x86_io_trace_prefix
-        call    neo_debug_send_string
-        ld      a, (x86_io_trace_kind)
-        call    neo_send_data_byte
-        ld      a, (x86_io_trace_width)
-        call    neo_send_data_byte
-        ld      a, ' '
-        call    neo_send_data_byte
-        ld      hl, (x86_io_port)
-        ld      a, h
-        call    neo_debug_hex8
-        ld      a, l
-        call    neo_debug_hex8
-        ld      a, '='
-        call    neo_send_data_byte
-        ld      hl, (x86_io_trace_value)
-        ld      a, h
-        call    neo_debug_hex8
-        ld      a, l
-        call    neo_debug_hex8
-        ld      a, 13
-        call    neo_send_data_byte
-        ld      a, 10
-        call    neo_send_data_byte
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
         ret
 
 x86_io_trace_prefix: db "[IO] ", 0
@@ -699,6 +714,13 @@ x86_io_trace_count:  db 0
 x86_io_test_ip:      dw 0
 x86_io_test_ax:      dw 0
 x86_io_test_dx:      dw 0
+
+; PC/XT 8255 state. IBM 5150 reset values and empty keyboard.
+x86_ppi_port_b:          db #40
+x86_ppi_port_c:          db 0
+x86_ppi_control:         db #99
+x86_ppi_keyboard_data:   db 0
+x86_ppi_keyboard_pb:     db 0
 
 x86_io_guest_imm8:
         db #B0,#5A,#E6,#E0,#B0,#00,#E4,#E0,#F4

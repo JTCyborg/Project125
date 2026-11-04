@@ -152,6 +152,29 @@ Block request должен содержать device ID, operation, LBA/CHS со
 
 INT 13h может быть диагностическим/временным host-assisted путём только если это явно выбрано платформенным профилем; он не должен незаметно подменять эмуляцию FDC, если BIOS ожидает реальный контроллер.
 
+## DMA-only boundary (Project125 implementation rule)
+
+NeoGS has no guest-facing physical ports or peripheral devices. The x86 I/O
+space is a software-visible bus implemented by the emulator. A guest IN/OUT
+must never be translated into a direct access to an ATM or NeoGS hardware port.
+
+All payload exchanged with the external ATM host or physical resources is
+transferred through the NeoGS ZX DMA window. GSCOM/CBIT may be used only as a
+command/doorbell and transfer-completion handshake; they are not a payload
+channel. DBIT/GSDAT byte streaming (including debug text, BIOS results, and
+device payloads) is legacy transport and must be removed from runtime paths as
+those services migrate to DMA frames.
+
+The first reverse-direction transport probe is command `CMD_DMA_READ_TEST`
+(`0Fh`): NeoGS stages the byte sequence 00h..FFh at physical address 00E000h,
+arms ZX DMA, and the ATM host reads 256 bytes from the DMA window at 0000h.
+The host validates every byte. The probe's source code and CI build do not
+constitute a hardware PASS; the runtime log must report
+`[P125] DMA REVERSE SELFTEST PASS`.
+
+See [Project125 DMA/IPC contract](PROJECT125_DMA_IPC.md) for the frame ABI and
+migration requirements.
+
 ## 11. IPC NeoGS <-> ATM
 
 IPC — самостоятельный транспорт, независимый от CPU opcode и моделей устройств.

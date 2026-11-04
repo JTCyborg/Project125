@@ -21,6 +21,61 @@ load_neogs_bootstrap_file::
 load_neogs_firmware_file::
         ld      hl, neo_fw_firmware_filename
         call    neo_fw_open_file
+        ret     c
+
+        ; NEOFw is a P125 segmented package. Its TR-DOS byte-length field
+        ; may still contain the first 16-KiB chunk length after SAVETRD '&'.
+        ; The 16-byte manifest is authoritative: total = 16 + three WORD sizes.
+        ld      a, (#C000)
+        cp      'P'
+        jp      nz, .firmware_bad_manifest
+        ld      a, (#C001)
+        cp      '1'
+        jp      nz, .firmware_bad_manifest
+        ld      a, (#C002)
+        cp      '2'
+        jp      nz, .firmware_bad_manifest
+        ld      a, (#C003)
+        cp      '5'
+        jp      nz, .firmware_bad_manifest
+
+        ld      hl, (#C004)
+        ld      de, (#C006)
+        add     hl, de
+        ld      de, (#C008)
+        add     hl, de
+        ld      de, 16
+        add     hl, de
+        ld      (neo_fw_file_length), hl
+
+        ; Enforce the full 48-KiB payload plus 16-byte manifest limit.
+        ld      de, #C010
+        or      a
+        sbc     hl, de
+        jr      c, .firmware_manifest_length_ok
+        jp      nz, .firmware_bad_manifest
+.firmware_manifest_length_ok:
+        ld      hl, (neo_fw_file_length)
+        ld      de, 255
+        add     hl, de
+        ld      a, h                 ; ceil(package_length / 256)
+        ld      b, a
+        ld      a, (neo_fw_file_sector_count)
+        cp      b
+        jr      c, .firmware_bad_manifest
+
+        ; First sector has already been read. Continue with exactly the
+        ; manifest-derived number of sectors, not the stale directory length.
+        dec     b
+        ld      a, b
+        ld      (neo_fw_load_remaining), a
+        xor     a
+        ret
+
+.firmware_bad_manifest:
+        ld      a, 5
+        ld      (neo_fw_file_error), a
+        scf
         ret
 
 ; HL points to an eight-character TR-DOS filename (extension is always C).
@@ -75,21 +130,39 @@ neo_fw_open_file:
         or      b
         jp      nz, .bad_descriptor
 
+        ; Keep the directory allocation count independently from its byte length.
+        ; The byte length can be stale for files appended with SAVETRD '&'.
+        ld      a, (#5CEA)
+        or      a
+        jp      z, .bad_descriptor
+        ld      (neo_fw_file_sector_count), a
+
         ; Store the exact standalone file length.
         ld      hl, (#5CE8)
         ld      (neo_fw_file_length), hl
         ld      a, h
         or      l
         jp      z, .bad_length
-        ; Verify sector count = ceil(file_length / 256).
+        ; The TR-DOS descriptor sector-count byte is not authoritative for
+        ; appended SAVETRD files. The 48-KiB package is written in several
+        ; sector-aligned chunks and the exact byte length is finalized later.
+        ; Derive the number of sectors from the exact 16-bit file length.
+        ; Supported maximum: 0xC010 bytes = 193 sectors.
+        ld      hl, (neo_fw_file_length)
+        ld      de, #C010
+        or      a
+        sbc     hl, de
+        jr      c, .firmware_length_in_range
+        jp      nz, .bad_length
+.firmware_length_in_range:
         ld      hl, (neo_fw_file_length)
         ld      de, 255
         add     hl, de
-        ld      a, (#5CEA)
-        cp      h
-        jp      nz, .bad_descriptor
+        ld      a, h
         or      a
         jp      z, .bad_descriptor
+        cp      #C2
+        jp      nc, .bad_length
         ld      (neo_fw_load_remaining), a
 
         ld      a, (#5CEB)
@@ -400,13 +473,15 @@ upload_firmware::
         ld      a, h
         or      l
         jp      z, .upload_failed
+        ; P125 segmented image: up to 48 KiB payload plus 16-byte manifest.
+        ; The original V1 #14/#13 and DBIT transport is unchanged.
         ld      a, h
-        cp      #40
+        cp      #C0
         jr      c, .firmware_file_length_ok
         jp      nz, .upload_failed
         ld      a, l
-        or      a
-        jp      nz, .upload_failed
+        cp      #11
+        jp      nc, .upload_failed
 .firmware_file_length_ok:
         ld      hl, (neo_fw_file_length)
         ld      (neo_fw_length), hl
@@ -452,7 +527,7 @@ upload_firmware::
         cp      NGS_BOOTSTRAP_LENGTH_ACK
         jp      nz, .upload_failed
 
-        ; Phase 8: stream the custom firmware to RAM address $0000.
+        ; Phase 8: stream the complete P125 segmented package; bootstrap places its sections in pages 0, 68 and 69.
         ld      a, 8
         ld      (neo_fw_timeout_phase), a
         ld      hl, (neo_fw_source)
@@ -1353,6 +1428,7 @@ neo_fw_load_track:      db 0
 neo_fw_load_sector:     db 0
 neo_fw_file_error:      db 0
 neo_fw_file_length:     dw 0
+neo_fw_file_sector_count: db 0
 
 ; Stage 2 package parser and transfer state.
 neo_fw_package_source:  dw 0
@@ -1408,4 +1484,4 @@ trace_noload_03_descriptor_call:   defb "[NLOAD 03] DESCRIPTOR CALL", 13, 10, 0
 trace_noload_04_descriptor_return: defb "[NLOAD 04] DESCRIPTOR RETURN", 13, 10, 0
 trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 0
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A64 QUIET DISK LOG", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A50 MANIFEST-LENGTH 48K", 13, 10, 0
