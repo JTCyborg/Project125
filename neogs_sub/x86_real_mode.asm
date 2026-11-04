@@ -1,13 +1,14 @@
 ; =========================================================================
-; PROJECT 124 — 8086 real-mode fetch/execute core, Stage 2B
+; PROJECT 125 — 8086 real-mode fetch/execute core.
 ;
-; This bounded executable slice runs guest instructions through CS:IP and
-; the physical-memory backend. Supported: IN/OUT byte/word, NOP, register-direct 8/16-bit
-; arithmetic and logical subsets, PUSHF, INC/DEC r16, PUSH/POP r16,
-; near/far CALL and RET, far JMP, MOV r8/r16,imm, MOV r/m8/r/m16 register-memory forms,
-; short Jcc, LOOP/JCXZ, JMP rel8, HLT, INT imm8, INT3, IRET.
-; Arithmetic and 8/16-bit logical memory ModR/M operands support segment overrides.
-; It is intentionally not a general 8086 emulator.
+; Bounded guest execution through CS:IP and the NeoGS physical-memory backend.
+; Implemented groups include: register/immediate and ModR/M MOV, segment MOV,
+; moffs, LEA, XCHG, byte/word ALU and logic, INC/DEC, stack and segment-stack,
+; PUSHF/POPF, LAHF/SAHF, CBW/CWD, flag control, near/far CALL/RET/JMP,
+; short Jcc/LOOP, software interrupts/IRET/INTO, string operations with REP,
+; byte/word IN/OUT, XLAT, WAIT and LOCK-prefix handling.
+; Unsupported instructions still stop with the opcode and CS:IP for diagnosis;
+; this is an expanding 8086-compatible core, not yet a complete PC/XT machine.
 ;
 ; x86_real_mode_test installs a guest program at 0000:5002 and an interrupt
 ; handler at 0000:5100. The guest loads all eight general registers with
