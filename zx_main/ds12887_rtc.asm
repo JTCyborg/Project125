@@ -1,6 +1,6 @@
 ; =========================================================================
 ; PROJECT125 — Dallas DS12887 RTC driver for ATM Turbo 2+
-; Version: D1.05
+; Version: D1.06
 ;
 ; ATM710 dual interface:
 ;   Native GLUK: EFF7 bit 7 gate, DFF7 index, BFF7 data.
@@ -28,6 +28,11 @@ DS12887_PROBE::
         ld      (ds12887_backend), a
         call    DS12887_OPEN
         call    DS12887_READ_STATUS
+        ld      hl, ds12887_gluk_dump
+        call    p125_trace_port
+        call    DS12887_PRINT_STATUS
+        ld      hl, ds12887_crlf
+        call    p125_trace_port
 
         ; A floating/unimplemented port often reads FF. A valid DS12887
         ; has Status D exactly 80h and Status A divider bits 010b.
@@ -41,6 +46,11 @@ DS12887_PROBE::
         ld      (ds12887_backend), a
         call    DS12887_OPEN
         call    DS12887_READ_STATUS
+        ld      hl, ds12887_smuc_status_dump
+        call    p125_trace_port
+        call    DS12887_PRINT_STATUS
+        ld      hl, ds12887_crlf
+        call    p125_trace_port
         ; Read back the SMUC system port after selecting address mode.
         ; Unreal Speccy decodes SMUC only while CF_DOSPORTS is active;
         ; an FF readback therefore identifies a closed DOS-port gate.
@@ -77,6 +87,11 @@ ds12887_probe_status_ready:
         ld      hl, ds12887_crlf
         call    p125_trace_port
 
+        ld      hl, ds12887_selected_dump
+        call    p125_trace_port
+        call    DS12887_PRINT_STATUS
+        ld      hl, ds12887_crlf
+        call    p125_trace_port
         call    DS12887_VALIDATE_STATUS
         jp      c, ds12887_probe_invalid
 
@@ -191,6 +206,19 @@ DS12887_READ_STATUS:
         call    DS12887_READ_REG
         ld      (ds12887_status_b), a
         ret
+
+; Print the last captured Status D/A/B triplet.
+DS12887_PRINT_STATUS:
+        ld      a, (ds12887_status_d)
+        call    DS12887_PRINT_HEX8
+        ld      a, ' '
+        call    DS12887_PRINT_CHAR
+        ld      a, (ds12887_status_a)
+        call    DS12887_PRINT_HEX8
+        ld      a, ' '
+        call    DS12887_PRINT_CHAR
+        ld      a, (ds12887_status_b)
+        jp      DS12887_PRINT_HEX8
 
 ; Carry clear only for a plausible live DS12887 register set.
 DS12887_VALIDATE_STATUS:
@@ -442,9 +470,11 @@ DS12887_PRINT_CHAR:
         pop     bc
         ret
 
-ds12887_banner:      defb "[DS12887 D1.04] GLUK/SMUC AUTO", 13, 10, 0
+ds12887_banner:      defb "[DS12887 D1.06] GLUK/SMUC AUTO", 13, 10, 0
 ds12887_found:       defb "[DS12887] VRT OK; READ-ONLY CLOCK ACCESS", 13, 10, 0
-ds12887_status_dump: defb "[DS12887] STATUS D/A/B=", 0
+ds12887_gluk_dump:   defb "[DS12887] GLUK D/A/B=", 0
+ds12887_smuc_status_dump: defb "[DS12887] SMUC D/A/B=", 0
+ds12887_selected_dump: defb "[DS12887] SELECTED D/A/B=", 0
 ds12887_smuc_dump:   defb "[DS12887] SMUC ID #5FBE=", 0
 ds12887_invalid:     defb "[DS12887] VRT BIT 7 CLEAR (CHECK CMOS PORT/POWER)", 13, 10, 0
 ds12887_read_error:  defb "[DS12887] UIP/SNAPSHOT READ ERROR", 13, 10, 0
