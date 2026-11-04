@@ -90,6 +90,17 @@ x86_io_read8:
         ret     nc
         call    x86_resident_uart_read_dispatch
         ret     nc
+        ; IBM PC/XT gameport (joystick adapter) at 0201h.
+        ; With no joystick attached all four axis inputs and button inputs
+        ; are inactive/high. Keep the read visible in the existing unmapped
+        ; I/O diagnostic so we can correlate BIOS probes with the caller.
+        ld      hl, (x86_io_port)
+        ld      de, #0201
+        or      a
+        sbc     hl, de
+        jr      nz, .read8_check_e0
+        ld      a, #FF
+        jp      x86_io_trace_read8
 .read8_check_e0:
         ld      hl, (x86_io_port)
         ld      de, #00E0
@@ -171,6 +182,14 @@ x86_io_write8:
         ret     nc
         call    x86_resident_uart_write_dispatch
         ret     nc
+        ; The PC/XT gameport is triggered by reads; writes are ignored by
+        ; the no-adapter model. Do not forward this guest port to NeoGS I/O.
+        ld      hl, (x86_io_port)
+        ld      de, #0201
+        or      a
+        sbc     hl, de
+        jr      nz, .write8_check_e0
+        ret
 .write8_check_e0:
         ld      hl, (x86_io_port)
         ld      de, #00E0
