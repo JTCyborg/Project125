@@ -926,6 +926,21 @@ x86_real_loop_short:
         cp      #E3
         jr      z, x86_real_jcxz
 
+        ; Fast-forward the BIOS' pure LOOP $-2 delay idiom (E2 FE).
+        ; It has no memory/I/O side effects: regardless of the initial CX,
+        ; 1..65536 iterations leave CX=0, IP at the fall-through address,
+        ; and FLAGS unchanged. The interpreter has no cycle-accurate timing,
+        ; so executing every delay iteration only burns the global step budget.
+        cp      #E2
+        jr      nz, .loop_normal
+        ld      a, (x86_real_imm_byte)
+        cp      #FE
+        jr      nz, .loop_normal
+        ld      hl, 0
+        ld      (x86_reg_cx), hl
+        jp      x86_real_next
+
+.loop_normal:
         ; LOOP family decrements CX without changing any guest FLAGS bit.
         ld      hl, (x86_reg_cx)
         dec     hl
