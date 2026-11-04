@@ -316,6 +316,8 @@ x86_real_dispatch:
         jp      z, x86_real_prefix_ss
         cp      #3E
         jp      z, x86_real_prefix_ds
+        cp      #F0
+        jp      z, x86_real_prefix_lock
         cp      #F2
         jp      z, x86_real_prefix_repne
         cp      #F3
@@ -436,6 +438,8 @@ x86_real_dispatch:
         ; Segment-register MOV forms are separate from 88h..8Bh.
         cp      #8C
         jp      z, x86_real_mov_segment
+        cp      #8D
+        jp      z, x86_real_lea
         cp      #8E
         jp      z, x86_real_mov_segment
         cp      #C6
@@ -586,6 +590,10 @@ x86_real_prefix_set:
         jp      x86_real_dispatch
 
 ; F2=REPNE, F3=REPE/REP. The string opcode decides whether ZF is tested.
+; LOCK is accepted as a bus-lock hint; the guest has no competing bus master.
+x86_real_prefix_lock:
+        jp      x86_real_dispatch
+
 x86_real_prefix_repne:
         ld      a, 2
         jr      x86_real_prefix_rep_set
