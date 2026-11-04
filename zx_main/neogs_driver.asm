@@ -63,6 +63,7 @@ neo_fw_open_file:
         ; The DOSEN trampoline leaves BC=#0177 (B=1). The TR-DOS
         ; catalogue API expects the original Project124 entry context with
         ; BC=#000A; setting only C would accidentally pass B=1.
+        ld      a, 9
         ld      bc, 10
         call    #3D13
         ld      hl, trace_noload_02_search_return
