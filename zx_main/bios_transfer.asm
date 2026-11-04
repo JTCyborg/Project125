@@ -155,11 +155,14 @@ neogs_bios_boot_and_wait:
 .bios_boot_inner:
         ; Poll the physical ATM keyboard while the 8086 BIOS is executing.
         ; A matrix snapshot is sent only when one of the 40 keys changes.
-        ld      a, (bios_kbd_poll_divider)
-        inc     a
-        and     #0F
-        ld      (bios_kbd_poll_divider), a
+        ld      hl, (bios_kbd_poll_counter)
+        dec     hl
+        ld      (bios_kbd_poll_counter), hl
+        ld      a, h
+        or      l
         jr      nz, .bios_kbd_poll_done
+        ld      hl, #4000
+        ld      (bios_kbd_poll_counter), hl
         call    atm_keyboard_poll_and_send
 .bios_kbd_poll_done:
         in      a, (GSSTAT)
@@ -342,7 +345,7 @@ bios_host_tail_prefix:
 bios_host_tail_error:
         defb    "[BIOS DST FFF0] !", 0
 bios_boot_timeout_outer: dw 0
-bios_kbd_poll_divider: db 0
+bios_kbd_poll_counter: dw #4000
 
 ; -------------------------------------------------------------------------
 ; ATM physical keyboard scanner and DMA event transport.
