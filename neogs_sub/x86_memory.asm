@@ -189,6 +189,20 @@ x86_mem_write8:
 .write_allowed:
         call    x86_mem_map_addr
         ret     c
+        ; Trace writes to the BIOS error byte candidate at physical 003F95h.
+        ; The first read was 00 and the later BIOS TEST observed 02; identify
+        ; the exact instruction that changes this byte before altering memory
+        ; semantics. This diagnostic is independent of the BDA watch budget.
+        ld      a, (x86_mem_addr+2)
+        or      a
+        jr      nz, .check_bda
+        ld      a, (x86_mem_addr+1)
+        cp      #3F
+        jr      nz, .check_bda
+        ld      a, (x86_mem_addr)
+        cp      #95
+        call    z, x86_mem_watch_3f95_write
+.check_bda:
         ; Trace only changed writes in the BDA (00400h-004FFh).
         ; Conventional-memory POST writes must not consume the diagnostic
         ; budget before BIOS error flags such as 00415h are reached.
@@ -207,6 +221,63 @@ x86_mem_write8:
 .write_protected:
         scf
         ret
+
+; Trace every write to physical 003F95h with old/new byte and guest CS:IP.
+; Preserve the mapped pointer in HL and all guest-visible state.
+x86_mem_watch_3f95_write:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      b, (hl)
+        ld      hl, x86_mem_3f95_prefix
+        call    x86_mem_watch_string
+        ld      a, '0'
+        out     (#EF), a
+        ld      a, '0'
+        out     (#EF), a
+        ld      a, '3'
+        out     (#EF), a
+        ld      a, 'F'
+        out     (#EF), a
+        ld      a, '9'
+        out     (#EF), a
+        ld      a, '5'
+        out     (#EF), a
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, b
+        call    x86_mem_watch_hex8
+        ld      a, '>'
+        out     (#EF), a
+        ld      a, (x86_mem_value)
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_mem_3f95_prefix:
+        db      "[MEMW] ", 0
 
 ; Log up to 64 changed writes in physical BDA range 00400h-004FFh.
 ; The trace includes physical address, old/new values and guest CS:IP.
