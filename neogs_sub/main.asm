@@ -1109,7 +1109,7 @@ x86_io_tick:
         dec     bc
         ld      a, b
         or      c
-        jr      nz, .pit_elapsed_loop
+        jp      nz, .pit_elapsed_loop
 .pit_elapsed_done:
         pop     bc
 .check_irq:
