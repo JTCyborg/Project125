@@ -25,6 +25,10 @@ load_neogs_firmware_file::
 
 ; HL points to an eight-character TR-DOS filename (extension is always C).
 neo_fw_open_file:
+        push    hl
+        ld      hl, trace_noload_00_entry
+        call    p125_trace_port
+        pop     hl
         ld      (neo_fw_requested_name_ptr), hl
         ld      hl, (neo_fw_requested_name_ptr)
         ; Search the requested exact 8.3 catalogue name.
@@ -36,7 +40,11 @@ neo_fw_open_file:
         ld      a, 9
         ld      (#5D06), a
         ld      c, 10
+        ld      hl, trace_noload_01_search_call
+        call    p125_trace_port
         call    #3D13
+        ld      hl, trace_noload_02_search_return
+        call    p125_trace_port
         ld      a, c
         cp      #FF
         jp      z, .file_not_found
@@ -48,7 +56,11 @@ neo_fw_open_file:
         ld      (#5D10), a
         pop     af
         ld      c, 8
+        ld      hl, trace_noload_03_descriptor_call
+        call    p125_trace_port
         call    #3D13
+        ld      hl, trace_noload_04_descriptor_return
+        call    p125_trace_port
         ld      a, (#5D0F)
         ld      b, a
         ld      a, (#5D10)
@@ -83,7 +95,11 @@ neo_fw_open_file:
 
         ; Read only the first sector now. Later sectors are fetched on demand
         ; by the active transfer after the preceding buffer bytes have been sent.
+        ld      hl, trace_noload_05_sector_call
+        call    p125_trace_port
         call    neo_fw_read_next_sector
+        ld      hl, trace_noload_06_sector_return
+        call    p125_trace_port
         jp      c, .sector_read_failed
         xor     a
         ret
@@ -1334,4 +1350,4 @@ trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
 trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
 trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A54 LEGACY TRDOS OPEN", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A55 TRDOS OPEN TRACE", 13, 10, 0
