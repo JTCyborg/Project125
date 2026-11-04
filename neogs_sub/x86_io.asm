@@ -111,8 +111,10 @@ x86_io_write8:
         ld      (x86_io_test_latch), a
         ret
 .write8_unmapped:
-        ld      hl, (x86_io_value)
-        ld      (x86_io_trace_value), hl
+        ld      a, (x86_io_value)
+        ld      (x86_io_trace_value), a
+        xor     a
+        ld      (x86_io_trace_value+1), a
         ld      a, 'W'
         ld      (x86_io_trace_kind), a
         ld      a, '8'
