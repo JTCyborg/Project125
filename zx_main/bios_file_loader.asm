@@ -208,9 +208,6 @@ bios_trdos_read_next_sector:
         or      b
         jr      nz, .bios_sector_io_error
 
-        ; Dump the just-read sector from its unique staging address.
-        call    bios_trdos_debug_dump_sector
-
         ; Advance the host staging pointer by one sector.
         ld      hl, (bios_trdos_read_buffer)
         ld      de, BIOS_TRDOS_SECTOR_SIZE
@@ -235,7 +232,6 @@ bios_trdos_read_next_sector:
         dec     a
         ld      (bios_trdos_sectors_left), a
         or      a
-        call    z, bios_trdos_debug_dump_tail
         ld      a, (bios_trdos_sectors_left)
         or      a
         ret
@@ -278,98 +274,6 @@ bios_trdos_debug_dump_position:
         pop     af
         ret
 
-; Dump all 256 bytes of the just-read sector as sixteen HEX rows.
-; Format: [BIOS DATA] 00: xx xx ... (16 bytes)
-; Uses D as row offset; wrap from F0 to 00 terminates after sixteen rows.
-bios_trdos_debug_dump_sector:
-        push    af
-        push    bc
-        push    de
-        push    hl
-        ld      hl, bios_trdos_data_prefix
-.bios_data_prefix_loop:
-        ld      a, (hl)
-        inc     hl
-        or      a
-        jr      z, .bios_data_prefix_done
-        ld      bc, #00EF
-        out     (c), a
-        jr      .bios_data_prefix_loop
-.bios_data_prefix_done:
-        ld      hl, (bios_trdos_last_buffer)
-        ld      d, 0
-.bios_data_row:
-        ld      a, d
-        call    bios_trdos_debug_hex8
-        ld      a, ':'
-        ld      bc, #00EF
-        out     (c), a
-        ld      a, ' '
-        out     (c), a
-        ld      e, 16
-.bios_data_byte:
-        ld      a, (hl)
-        call    bios_trdos_debug_hex8
-        ld      a, ' '
-        ld      bc, #00EF
-        out     (c), a
-        inc     hl
-        dec     e
-        jr      nz, .bios_data_byte
-        ld      a, 13
-        ld      bc, #00EF
-        out     (c), a
-        ld      a, 10
-        out     (c), a
-        ld      a, d
-        add     a, 16
-        ld      d, a
-        jr      nz, .bios_data_row
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
-        ret
-
-; Emit BIOS file bytes at offsets 1FF0..1FF4 from the final sector.
-; Output is hexadecimal on host debug port #EF.
-bios_trdos_debug_dump_tail:
-        push    bc
-        push    de
-        push    hl
-        ld      hl, bios_trdos_debug_prefix
-.bios_debug_prefix_loop:
-        ld      a, (hl)
-        inc     hl
-        or      a
-        jr      z, .bios_debug_prefix_done
-        ld      bc, #00EF
-        out     (c), a
-        jr      .bios_debug_prefix_loop
-.bios_debug_prefix_done:
-        ld      hl, (bios_trdos_last_buffer)
-        ld      de, #00F0
-        add     hl, de
-        ld      e, 5
-.bios_debug_tail_loop:
-        ld      a, (hl)
-        call    bios_trdos_debug_hex8
-        ld      a, ' '
-        ld      bc, #00EF
-        out     (c), a
-        inc     hl
-        dec     e
-        jr      nz, .bios_debug_tail_loop
-        ld      a, 13
-        ld      bc, #00EF
-        out     (c), a
-        ld      a, 10
-        out     (c), a
-        pop     hl
-        pop     de
-        pop     bc
-        ret
-
 ; IN A=byte. Print two uppercase hexadecimal digits to port #EF.
 bios_trdos_debug_hex8:
         push    af
@@ -393,8 +297,6 @@ bios_trdos_debug_hex_nibble:
 
 bios_trdos_position_prefix:
         defb    "[BIOS READ] ", 0
-bios_trdos_data_prefix:
-        defb    "[BIOS DATA] ", 0
 bios_trdos_debug_prefix:
         defb    "[BIOS SRC FFF0] ", 0
 
