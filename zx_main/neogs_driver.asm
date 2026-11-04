@@ -81,6 +81,36 @@ neo_fw_open_file:
         ; restore that paging state for every ROM API entry, then restore the
         ; host's #18 alternate-screen state after the ROM call.
         call    neo_fw_trdos_legacy_map
+
+        ; A1.42: non-disk TR-DOS dispatcher preflight under the exact same
+        ; #7FFD/BANKM=#10 mapping as the catalogue search. C=#14 copies the
+        ; current 16-byte descriptor into a private buffer and does not touch
+        ; the disk. Preserve the complete C=#0A input register set around it.
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, trace_noload_api_probe_begin
+        call    p125_trace_port
+        ld      hl, neo_fw_trdos_probe_buffer
+        ld      c, 14
+        call    #3D13
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, trace_noload_api_probe_return
+        call    p125_trace_port
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+
+        ; The original catalogue request (C=#0A) is now issued unchanged.
         call    #3D13
         push    af
         push    bc
@@ -1418,4 +1448,4 @@ trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
 trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
 trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A57 LEGACY 7FFD DURING TRDOS", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A58 TRDOS DISPATCH PREFLIGHT", 13, 10, 0
