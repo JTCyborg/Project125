@@ -1438,3 +1438,15 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Rebuild with `build.bat` / project build script; confirm no further assembler diagnostics.
 - [ ] Runtime verification remains pending.
 - **Status:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
+
+
+## A1.11 — локализация сбоя при открытии NEOLOAD.C (2026-11-04)
+
+- [x] Runtime A1.10: после `[TRACE 70] NEOLOAD READ BEGIN` экран исчезает и ATM перезагружается; `[TRACE 71]` отсутствует.
+- [x] По исходнику подтверждено: `load_neogs_bootstrap_file` входит в `neo_fw_open_file`: поиск каталога TR-DOS через `#3D13`, чтение дескриптора, затем чтение первого сектора в #C000. Передача данных NeoGS на этом этапе ещё не начинается.
+- [x] В `neogs_driver.asm` добавлены независимые маркеры порта #EF вокруг входа в `neo_fw_open_file`, обоих вызовов TR-DOS каталога/дескриптора и чтения первого сектора. Функциональные команды, адреса портов и порядок загрузки не изменены.
+- [ ] Сборка через `build_project125.bat`; проверить SjASMPlus и размер host image.
+- [ ] Runtime: прислать лог с последним достигнутым маркером `[NLOAD xx]`. Это разделит поиск каталога, чтение дескриптора и чтение сектора.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.11 NEOLOAD.C TR-DOS boundary tracing | SOURCE COMMITTED | Added port-#EF checkpoints around TR-DOS open/descriptor/first-sector calls; no loader protocol or data path changed. |
