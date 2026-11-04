@@ -9,35 +9,6 @@ IPC_BYTE_TIMEOUT EQU #FFFF
 IPC_CMD_TIMEOUT EQU #FFFF
 
 ; -------------------------------------------------------------------------
-; ATM paging compatibility around the native TR-DOS ROM API.
-; Project125's proven disk startup entered TR-DOS with #7FFD/BANKM=#10.
-; The ATM text console uses #18 to select physical video pages 7/3. Keep the
-; alternate screen active between disk calls, but use the exact legacy paging
-; byte while executing the TR-DOS dispatcher/FDC services.
-; Both helpers preserve AF and BC so the caller's TR-DOS ABI is unchanged.
-neo_fw_trdos_legacy_map:
-        push    af
-        push    bc
-        ld      a, #10
-        ld      bc, #7FFD
-        out     (c), a
-        ld      (#5C3B), a
-        pop     bc
-        pop     af
-        ret
-
-neo_fw_trdos_host_map:
-        push    af
-        push    bc
-        ld      a, #18
-        ld      bc, #7FFD
-        out     (c), a
-        ld      (#5C3B), a
-        pop     bc
-        pop     af
-        ret
-
-; -------------------------------------------------------------------------
 ; Open either standalone NeoGS file on TR-DOS and read its first sector to #C000.
 ; The same 256-byte buffer is reused for every following sector while the
 ; firmware is streamed to NeoGS. The complete file is NEVER staged in host RAM.
@@ -73,27 +44,13 @@ neo_fw_open_file:
         ; catalogue search (8-byte name plus extension) immediately before
         ; the ROM call. This is outside the API call and preserves all regs.
         call    neo_fw_trace_search_name
-        ; Keep the C=#0A call path otherwise identical to Project124.
-        ; Select the legacy #7FFD/BANKM value used by Project124 first.
-        call    neo_fw_trdos_legacy_map
+        ; Keep the archived Project124 C=#0A ABI and disk map unchanged.
+        ; Diagnostic helpers preserve AF/BC/DE/HL; no paging changes occur
+        ; between preparing C=#0A and entering the TR-DOS dispatcher.
         ld      hl, trace_noload_01_search_call
         call    p125_trace_port
-        ; A1.49: sample the ROM only AFTER legacy paging is selected.
-        ; The bytes printed are those visible at #3D13 immediately before
-        ; the actual C=#0A dispatcher call, not the ATM UI mapping.
-        ; This helper preserves AF/BC/DE/HL and performs no paging writes.
         call    neo_diag_search_state
-        ; No paging writes or other TR-DOS calls between probe and dispatch.
         call    #3D13
-        push    af
-        push    bc
-        push    de
-        push    hl
-        call    neo_fw_trdos_host_map
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
         ld      hl, trace_noload_02_search_return
         call    p125_trace_port
         ld      a, c
@@ -109,17 +66,7 @@ neo_fw_open_file:
         ld      c, 8
         ld      hl, trace_noload_03_descriptor_call
         call    p125_trace_port
-        call    neo_fw_trdos_legacy_map
         call    #3D13
-        push    af
-        push    bc
-        push    de
-        push    hl
-        call    neo_fw_trdos_host_map
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
         ld      hl, trace_noload_04_descriptor_return
         call    p125_trace_port
         ld      a, (#5D0F)
@@ -263,17 +210,7 @@ neo_fw_read_next_sector:
         ld      hl, trace_noload_07_trdos_read_call
         call    p125_trace_port
         pop     hl
-        call    neo_fw_trdos_legacy_map
         call    #3D13
-        push    af
-        push    bc
-        push    de
-        push    hl
-        call    neo_fw_trdos_host_map
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
         ld      hl, trace_noload_08_trdos_read_return
         call    p125_trace_port
         ld      a, (#5D0F)
@@ -1477,4 +1414,4 @@ trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
 trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
 trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A62 POST-MAP ROM DIAG", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A63 LEGACY TRDOS BOOT ORDER", 13, 10, 0
