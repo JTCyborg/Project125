@@ -527,6 +527,55 @@ command_boot_bios:
         out     (CLRCBIT), a
         jp      main_loop
 
+; Dump five bytes at the stopped guest CS:IP through the same physical
+; memory mapper used by instruction fetch. This distinguishes a bad BIOS image
+; from a page-mapping/fetch problem without changing guest registers.
+bios_stop_dump_bytes:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, bios_stop_mem_prefix
+        call    neo_debug_send_string
+        ld      hl, (x86_reg_cs)
+        ld      (x86_mem_segment), hl
+        ld      hl, (x86_reg_ip)
+        ld      (x86_mem_offset_work), hl
+        ld      a, 5
+        ld      (bios_stop_dump_count), a
+.loop:
+        ld      hl, (x86_mem_offset_work)
+        call    x86_mem_calc_phys
+        call    x86_mem_read8
+        jr      c, .bad_byte
+        call    neo_debug_hex8
+        jr      .next
+.bad_byte:
+        ld      a, '?'
+        call    neo_send_data_byte
+        ld      a, '?'
+        call    neo_send_data_byte
+.next:
+        ld      a, ' '
+        call    neo_send_data_byte
+        ld      hl, (x86_mem_offset_work)
+        inc     hl
+        ld      (x86_mem_offset_work), hl
+        ld      a, (bios_stop_dump_count)
+        dec     a
+        ld      (bios_stop_dump_count), a
+        jr      nz, .loop
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+bios_stop_mem_prefix:
+        defb    " MEM=", 0
+bios_stop_dump_count:
+        db      0
+
 ; Dump physical page-75 bytes at image offset 1FF0 (guest FFFF0..FFFF4).
 ; This is deliberately performed after DMA is disabled and before validation.
 bios_rom_debug_dump_tail:
