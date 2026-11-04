@@ -1843,3 +1843,14 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME PENDING. Причина является сильной аппаратно-документальной гипотезой, пока не подтверждена runtime.
 
 | 2026-11-04 | A1.44 SMUC FFBA fixed-bit correction | SOURCE COMMITTED | Replace invalid FFBA=#00 with documented #71 RTC address/read mode; validate TR-DOS search and RTC. |
+
+
+## A1.45 — явная маркировка RTC D1.07 / проверка SMUC FFBA (2026-11-04)
+
+- Runtime A39/A59 повторяет остановку после [NLOAD 01]. В присланном логе RTC banner показывает D1.06, поэтому по нему нельзя однозначно определить версию RTC исходника, собранную в бинарный файл.
+- Текущий исходник `zx_main/ds12887_rtc.asm` уже содержит исправление A1.44: при SMUC fallback процедура `DS12887_OPEN` записывает `#71` в `#FFBA`, а не `#00`. Само чтение DS12887 через `#DFBA` не меняется.
+- Обновлены только диагностические версии: RTC banner D1.07, host A40, NeoGS driver A60. Логика RTC, TR-DOS ABI, видеорежим и NeoGS transport не изменялись.
+- Цель следующего запуска — однозначно подтвердить выполнение именно RTC D1.07 / FFBA=#71 и проверить, вернётся ли TR-DOS search C=#0A.
+- [ ] Build: проверить SjASMPlus и `ASSERT ProgramEnd <= #A800`.
+- [ ] Runtime: подтвердить строки BUILD A40, DRIVER A60, DS12887 D1.07; затем проверить [NLOAD 02].
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
