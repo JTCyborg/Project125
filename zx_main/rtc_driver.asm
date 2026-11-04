@@ -192,6 +192,9 @@ write_byte_raw
         JR      Z, .return_address_ok
         LD      HL, rtc_trace_13_return_bad
         CALL    p125_trace_port
+        ; Print both addresses so the stack mismatch is measurable.
+        ; DE = actual word read from stack, HL = expected continuation.
+        CALL    rtc_trace_return_addresses
         RET
 .return_address_ok:
         LD      HL, rtc_trace_12_return_ok
@@ -205,6 +208,75 @@ rtc_trace_10_data_out_done:   DEFB "[RTC 10] DATA OUT DONE", 13, 10, 0
 rtc_trace_11_write_ret:        DEFB "[RTC 11] WRITE RET", 13, 10, 0
 rtc_trace_12_return_ok:        DEFB "[RTC 12] RETURN ADDRESS OK", 13, 10, 0
 rtc_trace_13_return_bad:       DEFB "[RTC 13] RETURN ADDRESS BAD", 13, 10, 0
+rtc_trace_actual_prefix:       DEFB " ACTUAL=", 0
+rtc_trace_expected_prefix:     DEFB " EXPECTED=", 0
+rtc_trace_hex_nl:              DEFB 13, 10, 0
+
+; Emit actual DE and expected HL as four hexadecimal digits each.
+; This routine preserves all caller registers and does not touch the stack
+; contents below its own return address.
+rtc_trace_return_addresses:
+        PUSH    AF
+        PUSH    BC
+        PUSH    DE
+        PUSH    HL
+
+        LD      HL, rtc_trace_actual_prefix
+        CALL    p125_trace_port
+        POP     HL
+        PUSH    HL
+        LD      A, H
+        CALL    rtc_trace_hex8
+        LD      A, L
+        CALL    rtc_trace_hex8
+
+        LD      HL, rtc_trace_expected_prefix
+        CALL    p125_trace_port
+        POP     HL
+        PUSH    HL
+        ; Expected address is stored in the saved caller HL slot.
+        ; Recover actual DE from its saved caller slot without changing it.
+        POP     HL
+        POP     DE
+        PUSH    DE
+        PUSH    HL
+        LD      A, H
+        CALL    rtc_trace_hex8
+        LD      A, L
+        CALL    rtc_trace_hex8
+
+        LD      HL, rtc_trace_hex_nl
+        CALL    p125_trace_port
+        POP     HL
+        POP     DE
+        POP     BC
+        POP     AF
+        RET
+
+; A = byte. Emits two uppercase hexadecimal digits to port #EF.
+rtc_trace_hex8:
+        PUSH    AF
+        RRCA
+        RRCA
+        RRCA
+        RRCA
+        AND     #0F
+        CALL    rtc_trace_hex_digit
+        POP     AF
+        AND     #0F
+        CALL    rtc_trace_hex_digit
+        RET
+
+; A = nibble 0..15.
+rtc_trace_hex_digit:
+        ADD     A, '0'
+        CP      '9'+1
+        JR      C, .digit_ready
+        ADD     A, 7
+.digit_ready:
+        LD      BC, #00EF
+        OUT     (C), A
+        RET
 
 open_cmos
         LD      BC, #EFF7
