@@ -151,10 +151,7 @@ neogs_bios_boot_and_wait:
         bit     B_DBIT, a
         jr      z, .bios_boot_no_data
         in      a, (GSDAT)
-        push    bc
-        ld      bc, #00EF
-        out     (c), a
-        pop     bc
+        call    p125_debug_stream_char
         jr      .bios_boot_inner
 .bios_boot_no_data:
         bit     B_CBIT, a
