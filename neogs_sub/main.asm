@@ -1140,9 +1140,11 @@ x86_uart_com2_regs:
         db 0,0,0,0,0,0,0,0
 
 x86_resident_io_trace_read8:
+        ; Keep the first 16 unmapped reads, not just the first one.
+        ; This reveals the complete BIOS probe sequence before System error.
         ld      a, (x86_io_trace_count)
-        or      a
-        ret     nz
+        cp      16
+        ret     nc
         inc     a
         ld      (x86_io_trace_count), a
         push    af
