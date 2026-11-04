@@ -1197,6 +1197,20 @@ neo_diag_search_state:
         call    p125_trace_port
         ld      a, (#5D06)
         call    neo_diag_hex8
+        ld      hl, trace_noload_diag_sp
+        call    p125_trace_port
+        ; Record the live stack pointer at the TR-DOS search boundary.
+        ld      hl, 0
+        add     hl, sp
+        ld      a, h
+        call    neo_diag_hex8
+        ld      a, l
+        call    neo_diag_hex8
+        ld      a, 13
+        ld      c, #EF
+        out     (c), a
+        ld      a, 10
+        out     (c), a
         ; ATM710 has no ATM3 #0CBE/#BF readback registers in Unreal Speccy.
         ; Read the actual bytes visible at the TR-DOS entry address instead.
         ; If ROM0 is not mapped, this signature will not match the TR-DOS ROM.
@@ -1319,6 +1333,7 @@ msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
 trace_noload_diag_prefix:          defb "[NLOAD D] BANKM=", 0
 trace_noload_diag_ext:             defb " EXT=", 0
 trace_noload_diag_mode:            defb " MODE=", 0
+trace_noload_diag_sp:              defb " SP=", 0
 trace_noload_diag_rom:             defb " ATM710 ROM@3D13=", 0
 trace_noload_diag_name:            defb " NAME=", 0
 trace_noload_00_entry:             defb "[NLOAD 00] OPEN ENTRY", 13, 10, 0
@@ -1330,4 +1345,4 @@ trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
 trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
 trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A45 ATM710 ROM MAP DIAG", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A46 NEOLOAD STACK DIAG", 13, 10, 0
