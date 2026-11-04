@@ -1971,11 +1971,12 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Runtime: confirm BIOS passes FA and capture the next stop/instruction.
 - **Status:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
 
-## A1.56 — broad 8086 base-instruction expansion (2026-11-04)
+## A1.56/A1.57 — broad 8086 base-instruction expansion (2026-11-04)
 
 Reference: Project124/PCem PCem/808x.c, PCem/x86.h (I_FLAG=0200h) and the XT BIOS opcode audit. Project124 remains read-only; only Project125 is modified.
 
-Added active decode/execute paths in neogs_sub/x86_real_mode.asm for:
+Added active decode/execute paths in neogs_sub/x86_real_mode.asm and x86_real_mov.asm for:
+- 06h/07h, 0Eh/0Fh, 16h/17h, 1Eh/1Fh: PUSH/POP ES, CS, SS, DS.
 - 91h..97h: XCHG AX,r16 (90h remains NOP).
 - 98h/99h: CBW/CWD.
 - 9Bh: WAIT as a no-op because no 8087 device is attached.
@@ -1983,7 +1984,9 @@ Added active decode/execute paths in neogs_sub/x86_real_mode.asm for:
 - 9Eh/9Fh: SAHF/LAHF.
 - A0h..A3h: accumulator/moffs byte and word MOV, including segment overrides.
 - C2h/CAh: near/far RET with immediate stack adjustment.
-- F8h..FDh: CLC/STC/CLI/STI/CLD/STD.
+- CEh: INTO when OF is set; D7h: XLAT with DS/segment override.
+- F0h LOCK accepted as a single-CPU bus-lock hint; F5h CMC; F8h..FDh CLC/STC/CLI/STI/CLD/STD.
+- 8Dh: LEA r16,m using the existing effective-address decoder.
 
 Existing support retained: segment MOV 8C/8E, immediate MOV C6/C7, string/REP, ALU/logical ModR/M, near/far control transfer, interrupts, I/O, memory and video/RTC services.
 
