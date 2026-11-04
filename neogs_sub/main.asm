@@ -982,6 +982,229 @@ x86_real_unsupported_opcode: db 0
 x86_real_bounds_enable:      db 0
 x86_real_task_end:           dw 0
 
+
+; -------------------------------------------------------------------------
+; ATM keyboard DMA service and virtual XT keyboard FIFO.
+; Kept resident so the bank-68 interpreter can call it without consuming
+; scarce overlay space. The host DMA mailbox is WIN1/page 03 at 7000h.
+; -------------------------------------------------------------------------
+; -------------------------------------------------------------------------
+; Host input mailbox. The ATM writes an eight-byte active-low Spectrum
+; keyboard matrix through ZX DMA to page 03:3000 (logical 7000h).
+; GSCOM is a doorbell only; the matrix payload never uses DBIT/GSDAT.
+; -------------------------------------------------------------------------
+X86_KBD_DMA_WAIT EQU #FFFF
+
+x86_host_input_service_poll:
+        in      a, (ZXSTAT)
+        bit     B_CBIT, a
+        ret     z
+        in      a, (ZXCMD)
+        cp      CMD_HOST_INPUT
+        ret     nz
+
+        ld      a, C_DMA_ZX
+        out     (DMA_MOD), a
+        xor     a
+        out     (DMA_HAD), a
+        ld      a, #F0
+        out     (DMA_MAD), a
+        xor     a
+        out     (DMA_LAD), a
+        ld      a, #80
+        out     (DMA_CST), a
+        xor     a
+        out     (CLRCBIT), a
+
+        ld      d, 8
+.kbd_dma_outer:
+        ld      bc, X86_KBD_DMA_WAIT
+.kbd_dma_wait:
+        in      a, (ZXSTAT)
+        bit     B_CBIT, a
+        jr      nz, .kbd_dma_done
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .kbd_dma_wait
+        dec     d
+        jr      nz, .kbd_dma_outer
+        xor     a
+        out     (DMA_CST), a
+        out     (CLRCBIT), a
+        ret
+.kbd_dma_done:
+        xor     a
+        out     (DMA_CST), a
+        out     (CLRCBIT), a
+        call    x86_kbd_process_matrix
+        ret
+
+; Compare the eight 5-bit rows and enqueue XT make/break scan codes.
+x86_kbd_process_matrix:
+        xor     a
+        ld      (x86_kbd_matrix_index), a
+        ld      (x86_kbd_row_index), a
+.row:
+        ld      a, (x86_kbd_row_index)
+        ld      e, a
+        ld      d, 0
+        ld      hl, #7000
+        add     hl, de
+        ld      a, (hl)
+        ld      (x86_kbd_new_row), a
+        ld      hl, x86_kbd_matrix_previous
+        add     hl, de
+        ld      a, (hl)
+        ld      (x86_kbd_old_row), a
+        ld      a, (x86_kbd_new_row)
+        ld      (hl), a
+        ld      b, 5
+.bit:
+        ld      a, (x86_kbd_new_row)
+        and     1
+        ld      (x86_kbd_new_bit), a
+        ld      a, (x86_kbd_old_row)
+        and     1
+        ld      c, a
+        ld      a, (x86_kbd_new_bit)
+        cp      c
+        jr      z, .bit_advance
+
+        ld      a, (x86_kbd_matrix_index)
+        ld      e, a
+        ld      d, 0
+        ld      hl, x86_kbd_scancode_table
+        add     hl, de
+        ld      a, (hl)
+        ld      (x86_kbd_key_code), a
+        ld      a, (x86_kbd_new_bit)
+        or      a
+        jr      z, .key_make
+        ld      a, (x86_kbd_key_code)
+        or      #80
+        ld      (x86_kbd_key_code), a
+.key_make:
+        call    x86_kbd_enqueue
+
+.bit_advance:
+        ld      a, (x86_kbd_new_row)
+        srl     a
+        ld      (x86_kbd_new_row), a
+        ld      a, (x86_kbd_old_row)
+        srl     a
+        ld      (x86_kbd_old_row), a
+        ld      a, (x86_kbd_matrix_index)
+        inc     a
+        ld      (x86_kbd_matrix_index), a
+        djnz    .bit
+        ld      a, (x86_kbd_row_index)
+        inc     a
+        ld      (x86_kbd_row_index), a
+        cp      8
+        jr      nz, .row
+        ret
+
+; A bounded 32-byte FIFO. Overflow drops newest events rather than corrupting
+; the active byte or overwriting unread keyboard data.
+x86_kbd_enqueue:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      a, (x86_kbd_queue_count)
+        cp      32
+        jr      nc, .enqueue_done
+        ld      a, (x86_kbd_queue_write)
+        ld      e, a
+        ld      d, 0
+        ld      hl, x86_kbd_queue
+        add     hl, de
+        ld      a, (x86_kbd_key_code)
+        ld      (hl), a
+        ld      a, (x86_kbd_queue_write)
+        inc     a
+        and     #1F
+        ld      (x86_kbd_queue_write), a
+        ld      a, (x86_kbd_queue_count)
+        inc     a
+        ld      (x86_kbd_queue_count), a
+        call    x86_kbd_load_latch
+.enqueue_done:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_kbd_load_latch:
+        ld      a, (x86_ppi_keyboard_ready)
+        or      a
+        ret     nz
+        ld      a, (x86_kbd_queue_count)
+        or      a
+        ret     z
+        ld      a, (x86_kbd_queue_read)
+        ld      e, a
+        ld      d, 0
+        ld      hl, x86_kbd_queue
+        add     hl, de
+        ld      a, (hl)
+        ld      (x86_ppi_keyboard_data), a
+        ld      a, 1
+        ld      (x86_ppi_keyboard_ready), a
+        ld      a, (x86_pic_pending)
+        set     1, a
+        ld      (x86_pic_pending), a
+        ret
+
+x86_kbd_acknowledge:
+        ld      a, (x86_ppi_keyboard_ready)
+        or      a
+        ret     z
+        xor     a
+        ld      (x86_ppi_keyboard_ready), a
+        ld      a, (x86_pic_pending)
+        res     1, a
+        ld      (x86_pic_pending), a
+        ld      a, (x86_kbd_queue_count)
+        or      a
+        jr      z, .ack_empty
+        dec     a
+        ld      (x86_kbd_queue_count), a
+        ld      a, (x86_kbd_queue_read)
+        inc     a
+        and     #1F
+        ld      (x86_kbd_queue_read), a
+.ack_empty:
+        jp      x86_kbd_load_latch
+
+x86_kbd_scancode_table:
+        db #2A,#2C,#2D,#2E,#2F
+        db #1E,#1F,#20,#21,#22
+        db #10,#11,#12,#13,#14
+        db #02,#03,#04,#05,#06
+        db #0B,#0A,#09,#08,#07
+        db #19,#18,#17,#16,#15
+        db #1C,#26,#25,#24,#23
+        db #39,#1D,#32,#31,#30
+
+x86_kbd_matrix_previous: defs 8, #1F
+x86_kbd_matrix_index: db 0
+x86_kbd_row_index: db 0
+x86_kbd_new_row: db 0
+x86_kbd_old_row: db 0
+x86_kbd_new_bit: db 0
+x86_kbd_key_code: db 0
+x86_kbd_queue: defs 32, 0
+x86_kbd_queue_read: db 0
+x86_kbd_queue_write: db 0
+x86_kbd_queue_count: db 0
+
+
+x86_ppi_keyboard_ready: db 0
+x86_io_irq_index: db 0
+
 neogs_resident_end:
 
 ; Overlay bank 68: complete 8086 interpreter and instruction implementation.
