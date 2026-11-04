@@ -980,17 +980,53 @@ x86_reg_ds:    dw 0
 x86_reg_ip:    dw 0
 x86_reg_flags: dw 0
 
-; Minimal PC/XT LPT1 data-register loopback used by BIOS adapter detection.
-; Guest port 03BCh is a software register; no physical NeoGS I/O is involved.
-x86_lpt1_data_latch: db 0
+; PC/XT parallel-port data-register latches for the three standard
+; BIOS probe addresses. These are guest-side software devices, not NeoGS I/O.
+x86_lpt1_data_latch: db 0       ; 03BCh
+x86_lpt2_data_latch: db 0       ; 0378h
+x86_lpt3_data_latch: db 0       ; 0278h
 
 x86_resident_lpt_read_data:
+        ld      hl, (x86_io_port)
+        ld      de, #03BC
+        or      a
+        sbc     hl, de
+        jr      z, .lpt1_read
+        ld      hl, (x86_io_port)
+        ld      de, #0378
+        or      a
+        sbc     hl, de
+        jr      z, .lpt2_read
+        ld      a, (x86_lpt3_data_latch)
+        ret
+.lpt1_read:
         ld      a, (x86_lpt1_data_latch)
+        ret
+.lpt2_read:
+        ld      a, (x86_lpt2_data_latch)
         ret
 
 x86_resident_lpt_write_data:
+        ld      hl, (x86_io_port)
+        ld      de, #03BC
+        or      a
+        sbc     hl, de
+        jr      z, .lpt1_write
+        ld      hl, (x86_io_port)
+        ld      de, #0378
+        or      a
+        sbc     hl, de
+        jr      z, .lpt2_write
+        ld      a, (x86_io_value)
+        ld      (x86_lpt3_data_latch), a
+        ret
+.lpt1_write:
         ld      a, (x86_io_value)
         ld      (x86_lpt1_data_latch), a
+        ret
+.lpt2_write:
+        ld      a, (x86_io_value)
+        ld      (x86_lpt2_data_latch), a
         ret
 
 ; Resident one-shot trace for the first unmapped BIOS I/O read.
