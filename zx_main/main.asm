@@ -21,7 +21,8 @@
 
 HOST_PROGRAM_START EQU 24576
 HOST_ENTRY_POINT   EQU 24585
-HOST_STACK_TOP     EQU #BFFF
+; Match Project124's proven TR-DOS call stack placement. Resident screen code ends <= #A800.
+HOST_STACK_TOP     EQU #AFFF
 
         PAGE 0
         ORG HOST_PROGRAM_START
