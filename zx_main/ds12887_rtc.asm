@@ -336,7 +336,7 @@ DS12887_PRINT_CHAR:
         pop     bc
         ret
 
-ds12887_banner:      defb "[DS12887 D1.00] RTC DRIVER PORTS #DFF7/#BFF7", 13, 10, 0
+ds12887_banner:      defb "[DS12887 D1.01] RTC DRIVER PORTS #DFF7/#BFF7", 13, 10, 0
 ds12887_found:       defb "[DS12887] VRT OK; READ-ONLY CLOCK ACCESS", 13, 10, 0
 ds12887_status_dump: defb "[DS12887] STATUS D/A/B=", 0
 ds12887_invalid:     defb "[DS12887] VRT BIT 7 CLEAR (CHECK CMOS PORT/POWER)", 13, 10, 0
