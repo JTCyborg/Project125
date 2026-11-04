@@ -1058,6 +1058,72 @@ x86_resident_lpt_write_dispatch:
 ; Resident one-shot trace for the first unmapped BIOS I/O read.
 ; The interpreter calls this from overlay68; keeping the logger resident
 ; avoids consuming the already-full 16 KiB interpreter overlay.
+; Minimal PC/XT COM1 8250 UART register bank. The BIOS probes 03FBh.
+; All state is guest-side software; NeoGS has no physical UART.
+x86_resident_uart_read_dispatch:
+        ld      a, (x86_io_port+1)
+        cp      3
+        jr      nz, .uart_read_unmapped
+        ld      a, (x86_io_port)
+        cp      #F8
+        jr      c, .uart_read_unmapped
+        sub     #F8
+        ld      b, a
+        cp      2
+        jr      z, .uart_read_iir
+        cp      5
+        jr      z, .uart_read_lsr
+        cp      6
+        jr      z, .uart_read_msr
+        ld      a, b
+        ld      e, a
+        ld      d, 0
+        ld      hl, x86_uart_com1_regs
+        add     hl, de
+        ld      a, (hl)
+        or      a
+        ret
+.uart_read_iir:
+        ld      a, 1
+        or      a
+        ret
+.uart_read_lsr:
+        ld      a, #60
+        or      a
+        ret
+.uart_read_msr:
+        xor     a
+        ret
+.uart_read_unmapped:
+        scf
+        ret
+
+x86_resident_uart_write_dispatch:
+        ld      a, (x86_io_port+1)
+        cp      3
+        jr      nz, .uart_write_unmapped
+        ld      a, (x86_io_port)
+        cp      #F8
+        jr      c, .uart_write_unmapped
+        sub     #F8
+        cp      2
+        jr      z, .uart_write_done
+        ld      e, a
+        ld      d, 0
+        ld      hl, x86_uart_com1_regs
+        add     hl, de
+        ld      a, (x86_io_value)
+        ld      (hl), a
+.uart_write_done:
+        or      a
+        ret
+.uart_write_unmapped:
+        scf
+        ret
+
+x86_uart_com1_regs:
+        db 0,0,0,0,0,0,0,0
+
 x86_resident_io_trace_read8:
         ld      a, (x86_io_trace_count)
         or      a
