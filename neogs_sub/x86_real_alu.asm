@@ -86,7 +86,7 @@ x86_real_group1_word_immediate:
         cp      #10
         jr      z, .word_capture_carry
         cp      #18
-        jr      nz, x86_real_alu_execute
+        jp      nz, x86_real_alu_execute
 .word_capture_carry:
         ld      a, (x86_reg_flags)
         and     1
