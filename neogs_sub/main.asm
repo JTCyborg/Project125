@@ -1180,6 +1180,150 @@ x86_resident_io_trace_read8:
 
 x86_io_trace_count: db 0
 
+; One-shot BIOS MEMTST mismatch trace. Called after each SCASB compare from
+; the overlay interpreter; it emits only the first failed REP SCASB in BIOS
+; segment F000h while testing guest RAM at ES >= 0080h.
+x86_resident_memtest_scas_trace:
+        ld      a, (x86_memtest_scas_trace_done)
+        or      a
+        ret     nz
+        ld      a, (x86_string_opcode)
+        cp      #AE
+        ret     nz
+        ld      a, (x86_real_rep_mode)
+        or      a
+        ret     z
+        ld      a, (x86_reg_flags)
+        bit     6, a
+        ret     nz
+        ld      hl, (x86_reg_cs)
+        ld      de, #F000
+        or      a
+        sbc     hl, de
+        ret     nz
+        ld      hl, (x86_reg_es)
+        ld      a, h
+        or      a
+        jr      nz, .segment_valid
+        ld      a, l
+        cp      #80
+        ret     c
+.segment_valid:
+        ld      a, 1
+        ld      (x86_memtest_scas_trace_done), a
+        push    af
+        push    bc
+        push    de
+        push    hl
+
+        ld      a, '['
+        out     (#EF), a
+        ld      a, 'S'
+        out     (#EF), a
+        ld      a, 'C'
+        out     (#EF), a
+        ld      a, 'A'
+        out     (#EF), a
+        ld      a, 'S'
+        out     (#EF), a
+        ld      a, ']'
+        out     (#EF), a
+        ld      a, ' '
+        out     (#EF), a
+
+        ld      hl, (x86_reg_cs)
+        call    x86_resident_memtest_hex16
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        call    x86_resident_memtest_hex16
+
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'E'
+        out     (#EF), a
+        ld      a, 'S'
+        out     (#EF), a
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_es)
+        call    x86_resident_memtest_hex16
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_di)
+        call    x86_resident_memtest_hex16
+
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'P'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      a, (x86_mem_addr+2)
+        call    x86_mem_watch_hex8
+        ld      a, (x86_mem_addr+1)
+        call    x86_mem_watch_hex8
+        ld      a, (x86_mem_addr)
+        call    x86_mem_watch_hex8
+
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'C'
+        out     (#EF), a
+        ld      a, 'X'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      hl, (x86_reg_cx)
+        call    x86_resident_memtest_hex16
+
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'A'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      a, (x86_string_value)
+        call    x86_mem_watch_hex8
+
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'M'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      a, (x86_string_other)
+        call    x86_mem_watch_hex8
+
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'F'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      hl, (x86_reg_flags)
+        call    x86_resident_memtest_hex16
+
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+; IN: HL=word. Preserves HL; emits four uppercase hexadecimal digits.
+x86_resident_memtest_hex16:
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        jp      x86_mem_watch_hex8
+
+x86_memtest_scas_trace_done:
+        db      0
+
 ; Shared bounds/diagnostic state accessed by resident BIOS and overlay CPU.
 x86_real_unsupported_opcode: db 0
 x86_real_bounds_enable:      db 0
