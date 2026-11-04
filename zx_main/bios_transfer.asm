@@ -139,11 +139,13 @@ neogs_bios_transfer_finish:
 
 ; Run BIOS and drain the NeoGS debug stream while CBIT remains asserted.
 ; Every received byte is mirrored to the ATM/emulator debug port #EF.
+; BIOS POST performs large REP string sweeps over guest RAM, so this wait
+; allows up to 96 x 65535 status polls (~6x the former 21-second window).
 ; OUT: carry clear when the NeoGS command completes; call get_result next.
 neogs_bios_boot_and_wait:
         ld      a, CMD_BOOT_BIOS
         out     (GSCOM), a
-        ld      d, 16
+        ld      d, 96
 .bios_boot_outer:
         ld      bc, BIOS_HOST_WAIT_LIMIT
 .bios_boot_inner:
