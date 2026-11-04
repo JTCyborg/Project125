@@ -35,6 +35,10 @@ neo_fw_open_file:
         ld      de, #5CDD
         ld      bc, 8
         ldir
+        ; Preserve the exact post-LDIR HL value used by Project124's TR-DOS ABI.
+        ; Diagnostic helpers use HL for text pointers, so restore this value
+        ; immediately before the catalogue API call.
+        ld      (neo_fw_trdos_search_hl), hl
         ld      a, 'C'
         ld      (#5CE5), a
         ld      a, 9
@@ -45,7 +49,30 @@ neo_fw_open_file:
         ; A1.13: capture the exact TR-DOS search environment immediately
         ; before entering ROM. This routine writes only to diagnostic port #EF.
         call    neo_diag_search_state
+        ; A1.27: repeat the documented ATM710 DOSEN gate activation immediately
+        ; before the catalogue API. #0177: A8=1 enables ATM memory; A9=0
+        ; keeps DOSEN active. #2A53 is the TR-DOS OUT (C),A; RET trampoline.
+        ld      hl, trace_noload_gate_begin
+        call    p125_trace_port
+        ld      bc, .search_gate_ready
+        push    bc
+        ld      bc, #2A53
+        push    bc
+        ld      bc, #0177
+        ld      a, #C3
+        jp      #3D2F
+.search_gate_ready:
+        ld      hl, trace_noload_gate_done
+        call    p125_trace_port
+        ; The DOSEN trampoline leaves BC=#0177 (B=1). The TR-DOS
+        ; catalogue API expects the original Project124 entry context with
+        ; BC=#000A; setting only C would accidentally pass B=1.
+        ld      a, 9
+        ld      bc, 10
+        ld      hl, (neo_fw_trdos_search_hl)
         call    #3D13
+        ; Preserve the API's returned HL across the trace and descriptor setup.
+        ld      (neo_fw_trdos_search_hl), hl
         ld      hl, trace_noload_02_search_return
         call    p125_trace_port
         ld      a, c
@@ -61,6 +88,8 @@ neo_fw_open_file:
         ld      c, 8
         ld      hl, trace_noload_03_descriptor_call
         call    p125_trace_port
+        ; Project124 changes only C here: preserve B and returned HL.
+        ld      hl, (neo_fw_trdos_search_hl)
         call    #3D13
         ld      hl, trace_noload_04_descriptor_return
         call    p125_trace_port
@@ -1197,6 +1226,40 @@ neo_diag_search_state:
         call    p125_trace_port
         ld      a, (#5D06)
         call    neo_diag_hex8
+        ld      hl, trace_noload_diag_sp
+        call    p125_trace_port
+        ; Record the live stack pointer at the TR-DOS search boundary.
+        ld      hl, 0
+        add     hl, sp
+        ld      a, h
+        call    neo_diag_hex8
+        ld      a, l
+        call    neo_diag_hex8
+        ld      a, 13
+        ld      c, #EF
+        out     (c), a
+        ld      a, 10
+        out     (c), a
+        ; ATM710 has no ATM3 #0CBE/#BF readback registers in Unreal Speccy.
+        ; Read the actual bytes visible at the TR-DOS entry address instead.
+        ; If ROM0 is not mapped, this signature will not match the TR-DOS ROM.
+        ld      hl, trace_noload_diag_rom
+        call    p125_trace_port
+        ld      hl, #3D13
+        ld      b, 8
+.neo_diag_rom_loop:
+        ld      a, (hl)
+        call    neo_diag_hex8
+        ld      a, ' '
+        ld      c, #EF
+        out     (c), a
+        inc     hl
+        djnz    .neo_diag_rom_loop
+        ld      a, 13
+        ld      c, #EF
+        out     (c), a
+        ld      a, 10
+        out     (c), a
         ld      hl, trace_noload_diag_name
         call    p125_trace_port
         ld      hl, #5CDD
@@ -1253,6 +1316,7 @@ neo_diag_hex_nibble:
 neo_fw_loader_filename:  db "NEOLOAD "
 neo_fw_firmware_filename: db "NEOFW   "
 neo_fw_requested_name_ptr: dw 0
+neo_fw_trdos_search_hl:  dw 0
 neo_fw_load_buffer:     dw 0
 neo_fw_load_remaining:  db 0
 neo_fw_buffer_remaining: dw 0
@@ -1299,9 +1363,13 @@ msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
 trace_noload_diag_prefix:          defb "[NLOAD D] BANKM=", 0
 trace_noload_diag_ext:             defb " EXT=", 0
 trace_noload_diag_mode:            defb " MODE=", 0
+trace_noload_diag_sp:              defb " SP=", 0
+trace_noload_diag_rom:             defb " ATM710 ROM@3D13=", 0
 trace_noload_diag_name:            defb " NAME=", 0
 trace_noload_00_entry:             defb "[NLOAD 00] OPEN ENTRY", 13, 10, 0
 trace_noload_01_search_call:       defb "[NLOAD 01] CATALOG SEARCH CALL", 13, 10, 0
+trace_noload_gate_begin:           defb "[NLOAD D1] DOSEN REARM BEGIN", 13, 10, 0
+trace_noload_gate_done:            defb "[NLOAD D2] DOSEN REARM DONE", 13, 10, 0
 trace_noload_02_search_return:     defb "[NLOAD 02] CATALOG SEARCH RETURN", 13, 10, 0
 trace_noload_03_descriptor_call:   defb "[NLOAD 03] DESCRIPTOR CALL", 13, 10, 0
 trace_noload_04_descriptor_return: defb "[NLOAD 04] DESCRIPTOR RETURN", 13, 10, 0
@@ -1309,4 +1377,4 @@ trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
 trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
 trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A43 TRDOS STATE DIAG", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A50 TRDOS HL ABI FIX", 13, 10, 0

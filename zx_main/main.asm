@@ -21,7 +21,7 @@
 
 HOST_PROGRAM_START EQU 24576
 HOST_ENTRY_POINT   EQU 24585
-HOST_STACK_TOP     EQU #AFFF
+HOST_STACK_TOP     EQU #BFFF
 
         PAGE 0
         ORG HOST_PROGRAM_START
@@ -56,8 +56,8 @@ Init_Z80_System:
 
         ld      hl, trace_30_rtc_init_begin
         call    p125_trace_port
-        ; Probe and read the Dallas DS12887 through the ATM3 CMOS port pair.
-        ; The driver is read-only; no RTC time/control register is written.
+        ; Probe and read the Dallas DS12887 through the native GLUK interface,
+        ; with automatic SMUC CMOS fallback for ATM710 emulator configurations.
         call    DS12887_PROBE
 
         ld      hl, trace_31_rtc_init_done
@@ -393,7 +393,7 @@ trace_B1_bios_exec_return:    defb "[TRACE B1] BIOS EXEC RETURN", 13, 10, 0
 
 msg_rtc_ready:        defb "[RTC] DALLAS DS12887 PROBE COMPLETE", 13, 10, 0
 msg_p125_start:       defb "[P125] ATM HOST START", 13, 10, 0
-msg_p125_build_id:    defb "[P125] BUILD 20261104-A15 DS12887-RTC", 13, 10, 0
+msg_p125_build_id:    defb "[P125] BUILD 20261104-A27 TRDOS HL ABI FIX", 13, 10, 0
 msg_fw_load:          defb "[P125] LOAD NEOGS FIRMWARE", 13, 10, 0
 msg_fw_file_error:    defb "[P125] ERROR: NEOLOAD.C FILE #", 0
 msg_fw_upload_error:  defb "[P125] ERROR: NEOGS FIRMWARE UPLOAD PHASE #", 0
@@ -435,7 +435,7 @@ p125_log_line_start: db 1
         ORG #A000
         INCLUDE "p125_screen_console.asm"
 
-; Keep the resident host image below the stack at AFFFh.
+; Keep the resident host image below the expanded stack at BFFFh.
 ProgramEnd:
         ASSERT ProgramEnd <= #A800
 

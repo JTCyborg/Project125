@@ -1478,3 +1478,204 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING. Источник портов проверен статически по эмулятору; физическая плата и сборка не проверены.
 
 | 2026-11-04 | D1.00 Dallas DS12887 RTC | SOURCE COMMITTED | Implemented ATM3 #DFF7/#BFF7 read-only DS12887 driver, mode-aware time conversion and timestamp API; build/runtime pending. |
+
+## A1.14 / D1.01 — ATM3 map and Dallas status diagnostics (2026-11-04)
+
+- [x] Added raw DS12887 Status D/A/B dump before VRT decision; VRT check now tests bit 7 rather than requiring the entire register to equal `#80`.
+- [x] RTC diagnostic identifies the actual raw register values, allowing distinction between a dead/disabled CMOS interface and a Dallas VRT condition.
+- [x] Added ATM3 live mapping dump before `CALL #3D13`: port `#0CBE` (bit 4 = `CF_TRDOS`, low nibble = FF77 mode) and port `#00BF` (`pBF`, bit 0 = DOS-port decode enable).
+- [x] NeoGS driver marker advanced to A44; RTC driver marker advanced to D1.01; host build ID advanced to A16.
+- [ ] Build and verify assembler output / `ProgramEnd <= #A800`.
+- [ ] Runtime inspect `[DS12887] STATUS D/A/B=...`; status D bit 7 must be set for valid clock/battery state.
+- [ ] Runtime inspect `[NLOAD D] ... ATM3MAP=xx PBF=xx`; ATM3MAP bit 4 should be set while TR-DOS ROM is active, and PBF bit 0 indicates DOS-port decoding.
+- [ ] Confirm `[NLOAD 02] CATALOG SEARCH RETURN` appears.
+- **Status:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
+
+| 2026-11-04 | A1.14 / D1.01 RTC + ATM3 mapping diagnostics | SOURCE COMMITTED | Added DS12887 raw status and ATM3 TR-DOS map register diagnostics; build/runtime pending. |
+
+
+## A1.15 — ATM710-specific TR-DOS ROM mapping diagnostic (2026-11-04)
+
+- [x] Повторно проверен Unreal Speccy io.cpp: ATM710 обрабатывает запись в xx77 через set_atm_FF77, но не имеет ATM3 readback-портов #0CBE/#00BF; ATM3 диагностические чтения A44 для ATM710 неприменимы и возвращают FF.
+- [x] Проверен Unreal Speccy atm.cpp: set_atm_FF77 сохраняет полный адрес OUT-порта в comp.aFF77; для ATM710 бит 8 адреса включает ATM memory, бит 9 управляет CPM/TR-DOS mapping. memory.cpp формирует CF_TRDOS при нулевом бите 9.
+- [x] Подтверждено, что Project125 устанавливает FF77 через trampoline по адресу порта #0177 (ATM memory enabled, CPM bit clear), затем сохраняет BANKM при переключении #7FFD.
+- [x] Удалены невалидные ATM3 readback-пробы из neo_diag_search_state.
+- [x] Добавлен безопасный read-only dump первых 8 байт, реально видимых по адресу TR-DOS entry #3D13, непосредственно перед вызовом ROM. Это проверяет содержимое отображённого ROM без записи в ATM mapping ports.
+- [x] Driver marker обновлён до A45 ATM710 ROM MAP DIAG.
+- [ ] Build: выполнить build_project125.bat; проверить ошибки SjASMPlus и ProgramEnd <= #A800.
+- [ ] Runtime: проверить [NLOAD D] ... ATM710 ROM@3D13=...; сопоставить восемь байт с ROM TR-DOS, затем проверить появление [NLOAD 02] CATALOG SEARCH RETURN.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.15 ATM710 TR-DOS ROM mapping diagnostic | SOURCE COMMITTED | Replaced invalid ATM3-only port probes with a read-only dump of the bytes visible at the TR-DOS entry address #3D13. Build/runtime remain pending. |
+
+
+## D1.04 / A1.18 — SMUC DOS-port gate readback (2026-11-04)
+
+- [x] По актуальному Unreal Speccy `io.cpp` подтверждено: ATM710 не входит в декодер GLUK `#DFF7/#BFF7`; этот путь разрешён для Pentagon с CMOS gate или ATM3.
+- [x] Подтверждено: SMUC `#DFBA/#FFBA` обслуживается только внутри `CF_DOSPORTS` и при `SMUC=enable`. Запись в `#FFBA` задаёт `pFFBA`; bit 7=0 выбирает запись адреса CMOS через `#DFBA`, bit 7=1 — запись данных.
+- [x] В RTC probe добавлен readback системного порта `#FFBA` после выбора address mode. Значение выводится как `[DS12887] SMUC FFBA READBACK=xx`.
+- [x] RTC banner обновлён до D1.04; host build marker обновлён до A19.
+- [ ] Build: выполнить `build_project125.bat`; проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: если `FFBA READBACK=FF`, SMUC decoder не активен в момент RTC probe (проверить `CF_DOSPORTS`/ROM mapping); если читается не-FF, но Status D/A/B остаются FF, исследовать адресный/данный цикл CMOS отдельно.
+- [ ] Runtime PASS только при валидных Status D/A/B и корректном времени.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | D1.04 / A1.18 SMUC gate readback | SOURCE COMMITTED | Added read-only `#FFBA` system-port readback to distinguish an inactive SMUC/DOS-port decoder from an RTC register-access fault; build/runtime remain unverified. |
+
+
+## D1.05 / A1.19 — достоверная проверка SMUC decoder (2026-11-04)
+
+- [x] Исправлена трактовка предыдущей диагностики: чтение `#FFBA` возвращает `comp.nvram.out`, поэтому значение `FF` не доказывает закрытый SMUC decoder.
+- [x] По `io.cpp` подтверждён фиксированный диагностический ответ `#57` для порта `#5FBE` при активных `CF_DOSPORTS` и `SMUC=enable`.
+- [x] В RTC probe заменено чтение `#FFBA` на read-only проверку `IN A,(#5FBE)`; ожидаемый ответ Unreal Speccy — `57`.
+- [x] RTC banner обновлён до D1.05; host build marker обновлён до A20.
+- [ ] Build: выполнить `build_project125.bat`; проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: `SMUC ID #5FBE=57` подтверждает активный декодер; иное значение указывает, что SMUC/DOS-port gate не активен. При `57` и статусах RTC `FF` проверить цикл записи адреса/чтения `#DFBA`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | D1.05 / A1.19 SMUC signature diagnostic | SOURCE COMMITTED | Replaced ambiguous FFBA NVRAM readback with the fixed #5FBE signature read (#57 when SMUC and DOS ports are decoded); build/runtime remain unverified. |
+
+
+## D1.06 / A1.20 — раздельная диагностика GLUK и SMUC (2026-11-04)
+
+- [x] Разобран runtime-лог A20: строка `[DS12887 D1.04]` была вызвана ошибочной строкой banner в исходнике; код уже содержал D1.05-проверку `#5FBE`. Это не свидетельствует о сборке старого RTC-модуля.
+- [x] Исправлен banner на D1.06.
+- [x] Добавлен отдельный вывод статусов `D/A/B` после чтения через GLUK и через SMUC, а также итогового выбранного backend. Теперь можно отличить неисправность/недоступность GLUK-пути от SMUC decoder gate.
+- [x] Удалён устаревший вывод статусов, заменённый раздельными диагностическими строками.
+- [x] Зафиксирован runtime результат пользователя: `SMUC ID #5FBE=FF`, итоговые статусы `FF FF FF`; RTC timestamp остаётся неизвестным.
+- [ ] Build: выполнить `build_project125.bat`; проверить отсутствие ошибок SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: получить строки `GLUK D/A/B`, `SMUC D/A/B`, `SMUC ID #5FBE` и `SELECTED D/A/B`.
+- [ ] Если `#5FBE=FF`, исследовать, почему SMUC/DOS-port decoder закрыт именно в момент RTC probe; не делать вывод о неисправности DS12887 по этому значению.
+- [ ] Если `#5FBE=57`, но SMUC D/A/B остаются FF, исследовать последовательность выбора адреса `#DFBA` и чтения данных `#DFBA`.
+- [ ] RTC PASS только после валидных Status D/A/B и корректного чтения времени.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | D1.06 / A1.20 GLUK + SMUC split diagnostics | SOURCE COMMITTED | Corrected the stale D1.04 banner and added separate register triplets for both backends. The supplied A20 runtime log shows #5FBE=FF and FF status bytes; no RTC PASS. Build and next runtime remain pending. |
+
+
+## A1.21 — исправление параметра SMUC в Unreal Speccy (2026-11-04)
+
+- [x] По исходнику Unreal Speccy `config.cpp` подтверждено, что `SMUC` читается через `GetPrivateProfileInt("MISC", "SMUC", 0, ...)`.
+- [x] Значение `SMUC=enable` не является допустимым числовым включением: Win32 `GetPrivateProfileInt` возвращает значение по умолчанию 0, поэтому `conf.smuc` остаётся выключенным.
+- [x] Правильная настройка эмулятора: секция `[MISC]`, параметр `SMUC=1`. `CMOS=DALLAS` остаётся строковым параметром и распознаётся отдельно.
+- [x] Runtime D1.06 после изменения конфигурации подтверждён: GLUK D/A/B=`FF FF FF`, SMUC D/A/B=`80 20 02`, SMUC ID `#5FBE=57`.
+- [x] DS12887 Status D bit 7 (VRT) установлен; драйвер выбрал SMUC backend и вывел `RAW H:M:S=10:59:21`.
+- [x] Временные метки RTC успешно появились в журнале Project125.
+- **Статус:** RTC PASS — CONFIGURATION + READ-ONLY CLOCK ACCESS RUNTIME VERIFIED. GLUK path is unavailable in this ATM710 setup; SMUC path is working.
+
+| 2026-11-04 | A1.21 SMUC numeric configuration | RTC PASS | `SMUC=1` activates the emulator SMUC decoder; signature #5FBE=57, Status D/A/B=80/20/02, VRT OK and DS12887 time 10:59:21 confirmed at runtime. |
+
+
+## A1.22 — TR-DOS NEOLOAD.C open/search boundary (2026-11-04)
+
+- [x] RTC work is closed as runtime PASS; subsequent work is isolated to TR-DOS/NeoGS loading.
+- [x] Runtime reaches `[NLOAD 00] OPEN ENTRY`, `[NLOAD 01] CATALOG SEARCH CALL`, and prints the exact search context: `BANKM=DC EXT=43 MODE=09`, visible bytes at `#3D13` = `00 18 E7 00 C3 69 2F CD`, filename `NEOLOAD `.
+- [x] Новый полный runtime log от 2026-11-04 снова заканчивается после `NAME=NEOLOAD`; `[NLOAD 02] CATALOG SEARCH RETURN` отсутствует. Подтверждено, что управление не возвращается из `CALL #3D13` (C=#0A) в текущей последовательности.
+- [x] Уточнена семантика TR-DOS shadow ROM: переход на opcode-fetch в диапазоне `#3D00..#3DFF` включает теневое DOS ROM; обычное чтение данных `(HL)` по `#3D13` не активирует переключение и показывает underlying ROM. Поэтому байты `00 18 E7 00 C3 69 2F CD` из A1.15/A1.22 не являются достоверной проверкой содержимого TR-DOS ROM и не должны сравниваться с его образом.
+- [ ] If the call does return, inspect returned C and TR-DOS error bytes `#5D0F/#5D10`, then proceed to descriptor and first-sector read.
+- [ ] Do not modify ATM video initialization, RTC, or the NeoGS upload protocol during this isolated loader diagnosis.
+- **Статус:** DIAGNOSTIC SOURCE PRESENT / RUNTIME BOUNDARY OBSERVED / ROOT CAUSE NOT YET ESTABLISHED.
+
+| 2026-11-04 | A1.22 NEOLOAD.C search boundary | DIAGNOSTIC | The captured excerpt reaches the pre-call ROM/name dump; the return trace is not present in the supplied excerpt, so the TR-DOS search outcome remains undetermined. |
+
+
+## A1.23 — корректная трактовка TR-DOS shadow ROM diagnostic (2026-11-04)
+
+- [x] По документации TR-DOS подтверждено: теневое DOS ROM включается при выборке команды (opcode fetch) по адресу в диапазоне `#3D00..#3DFF`; точка `#3D13` — машинный API dispatcher.
+- [x] Установлено, что диагностическое чтение `LD A,(HL)` при HL=`#3D13` не вызывает shadow-ROM переключение. Выведенные A45 байты относятся к underlying ROM и не доказывают, что TR-DOS ROM отсутствует или повреждён.
+- [x] В текущем коде есть корректная граница выполнения: `[NLOAD 01] CATALOG SEARCH CALL` выводится перед `CALL #3D13`, `[NLOAD 02] CATALOG SEARCH RETURN` — сразу после возврата. Именно эта пара, а не data dump, определяет, вернулось ли управление из TR-DOS.
+- [x] Runtime boundary повторён: вызов `CALL #3D13` не возвращает управление в наблюдаемом запуске; причина внутри ROM/API path или его вызывающего контекста пока не доказана.
+- [ ] При возврате проверить C, #5D0F/#5D10 и последующие descriptor/sector markers.
+- **Статус:** STATIC DOCUMENTATION CHECK COMPLETE / RUNTIME CALL OUTCOME NOT YET ESTABLISHED.
+
+| 2026-11-04 | A1.23 TR-DOS shadow ROM diagnostic semantics | STATIC PASS | Direct data reads at #3D13 do not activate the shadow ROM; only the instruction-fetch transition does. The A45 byte dump is not a ROM identity test. Runtime call return remains to be established. |
+
+
+## A1.24 — увеличение стека перед TR-DOS API (2026-11-04)
+
+- [x] Сопоставлена раскладка стека: Project124, где тот же TR-DOS API `CALL #3D13` используется в рабочем загрузчике, устанавливает `SP=#BFFF`; Project125 ранее устанавливал `SP=#AFFF` при `ProgramEnd <= #A800`, оставляя только 2 КБ между концом resident image и верхом стека.
+- [x] Project125 stack top увеличен до `#BFFF`, как в проверенной реализации Project124. Область `#A800..#BFFF` остаётся свободной под стек; буфер первого сектора остаётся в `#C000`.
+- [x] Добавлен вывод фактического SP в `[NLOAD D]` непосредственно перед `CALL #3D13`; driver banner повышен до A46, host build marker до A21.
+- [x] Runtime 2026-11-04: BUILD A21 / DRIVER A46 действительно загружены; диагностическая процедура показала `SP=BFF1`, как и ожидалось.
+- [x] После увеличения стека зависание на `CALL #3D13` осталось без изменений; нехватка стекового пространства не подтверждается как причина.
+- [ ] Выполнить `build_project125.bat` для следующей версии и проверить отсутствие ошибок сборки / assertion.
+- [ ] Runtime: проверить возврат `[NLOAD 02] CATALOG SEARCH RETURN`.
+- **Статус:** STACK PLACEMENT RUNTIME VERIFIED; STACK NOT ROOT CAUSE; TR-DOS MAPPING ROOT CAUSE UNDER INVESTIGATION.
+
+| 2026-11-04 | A1.24 NEOLOAD stack headroom | SOURCE COMMITTED | Increased Project125 SP from #AFFF to #BFFF to match Project124's proven TR-DOS loader stack placement; added live SP trace. Build/runtime pending. |
+
+
+## A1.25 — ATM710 #FFF7 mux enable / TR-DOS shadow-ROM selection (2026-11-04)
+
+- [x] Первоначально обнаружены значения D7=0 в `#FFF7`, но последующий runtime A22 показал, что это не исправляет зависание.
+- [x] Уточнена адресация: `#FFF7` выбирает окно 3 (`#C000–#FFFF`), тогда как TR-DOS shadow ROM расположен в окне 0 (`#0000–#3FFF`). Поэтому D7 в `#FFF7` не включает автоматическое переключение именно нижнего окна.
+- [x] Изменение A22 само по себе не считается исправлением причины; runtime A22 по-прежнему зависает после `NAME=NEOLOAD`.
+- [x] Host build marker повышен до `20261104-A22 TRDOS SHADOW MUX FIX`.
+- [ ] Сборка `build_project125.bat`: проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: подтвердить `[NLOAD 02] CATALOG SEARCH RETURN`; затем проверить descriptor (`[NLOAD 03/04]`) и первый sector (`[NLOAD 05/06]`).
+- **Статус:** A22 NOT EFFECTIVE; initial interpretation corrected in A1.26. D7 on window 3 does not establish lower-window TR-DOS mapping.
+
+| 2026-11-04 | A1.25 ATM710 #FFF7 mux attempt | NOT EFFECTIVE | A22 set D7 for window 3 (#C000–#FFFF); runtime still hangs at CALL #3D13. Corrected in A1.26. |
+
+
+## A1.26 — ATM710 lower ROM window #3FF7 mapping (2026-11-04)
+
+- [x] Повторно сверена адресация мультиплексора: `#3FF7` — окно 0 (`#0000–#3FFF`), `#7FF7` — окно 1, `#BFF7` — окно 2, `#FFF7` — окно 3.
+- [x] Установлено, что A22 меняла D7 только для окна 3; это не включает требуемый `#7FFD` mux для нижнего ROM-окна. Runtime A22 подтвердил отсутствие эффекта: зависание по-прежнему после `NAME=NEOLOAD`.
+- [x] В `p125_atm_video_init` добавлена настройка окна 0 через `OUT (#3FF7),#BF`: D7=1 (разрешить #7FFD ROM2 mux / TR-DOS auto-select), D6=0 (ROM), D0-D5=`#3F` (инверсный номер ROM page 0).
+- [x] Изменение выполняется после открытия ATM shadow ports через TR-DOS `#3D2F`; host code остаётся в окне 1, стек `#BFFF` — в окне 2.
+- [x] Убрана ошибочная установка D7 в `#FFF7`: окно 3 должно оставаться на фиксированной RAM page 0 (`#7F`), иначе при D7=1 его выбор страницы зависит от младших битов `#7FFD` (в текущем `BANKM=DC` это страница 4), а не от RAM page 0. `#7FF7`/`#FFF7` возвращены к исходным фиксированным страницам `#7A`/`#7F` и `#78`/`#7C`.
+- [x] Host build marker обновлён до `20261104-A23 LOWER ROM WINDOW MUX FIX`.
+- [ ] Сборка `build_project125.bat`: проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить, появился ли `[NLOAD 02] CATALOG SEARCH RETURN`; если появился — проверить descriptor и чтение первого сектора.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING. `#BF` следует из битовой карты ATM 7.10 (D7 mux, D6 ROM, инверсный номер ROM page 0); подтверждение только после сборки и runtime.
+
+| 2026-11-04 | A1.26 ATM710 lower ROM window mapping | SOURCE COMMITTED | Added `OUT (#3FF7),#BF` to enable ROM2/TR-DOS auto-select in window 0; build and runtime pending. |
+
+
+## A1.27 — повторная активация ATM710 DOSEN перед TR-DOS API (2026-11-04)
+
+- [x] Изучен документ Hardware «Описание архитектуры и портов ATM2+», разделы 3.1 и 4.1: адрес `#0177` задаёт A8=1 (ATM memory manager enabled), A9=0 (CPM/DOSEN gate); документ рекомендует `#0177` для включения теневых портов.
+- [x] Подтверждено, что A23 выставляет нижнее ROM-окно через `#3FF7=#BF`, а `BANKM=DC` сохраняет ROM2=1.
+- [x] Добавлен диагностический тест: непосредственно перед первым `CALL #3D13` повторно активировать gate через штатный TR-DOS trampoline `#3D2F` → `#2A53` (`OUT (C),A; RET`) с `BC=#0177`, `A=#C3`, затем восстановить `C=#0A`.
+- [x] Добавлены runtime markers `[NLOAD D1] DOSEN REARM BEGIN` и `[NLOAD D2] DOSEN REARM DONE`; driver marker A47, build marker A24.
+- [ ] Build: собрать `build_project125.bat`; проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [x] Runtime 2026-11-04 A24/A47: оба маркера D1 и D2 появились; следующий `[NLOAD 02]` отсутствует. Trampoline возвращается, повторная активация DOSEN не устранила зависание.
+- [ ] При появлении `[NLOAD 02]` проверить C, `#5D0F/#5D10`, затем descriptor и первый сектор; не объявлять загрузчик исправным только по возврату поиска.
+- **Статус:** DOSEN RE-ARM RUNTIME VERIFIED; НЕ ЯВЛЯЕТСЯ ИСПРАВЛЕНИЕМ. A24/A47 зависает после возврата из trampoline.
+
+| 2026-11-04 | A1.27 ATM710 DOSEN re-arm before TR-DOS API | SOURCE COMMITTED | Added a fresh documented `#0177` gate activation through the `#3D2F`/`#2A53` ROM trampoline immediately before the `C=#0A` catalogue search. Build and runtime pending. |
+
+
+## A1.28 — восстановление BC перед TR-DOS catalog API (2026-11-04)
+
+- [x] Runtime A24/A47 подтвердил, что DOSEN trampoline #3D2F -> #2A53 возвращается: присутствуют D1 и D2, но CALL #3D13 не возвращает управление.
+- [x] Сравнение с рабочим Project124 выявило отличие ABI: в Project124 перед поиском LDIR обнуляет BC, после чего LD C,10 формирует BC=#000A. В Project125 после trampoline остаётся BC=#0177; команда LD C,10 оставляла B=#01 и передавала в ROM BC=#010A.
+- [x] Исправлено: перед поиском задаётся LD BC,10; перед чтением descriptor задаётся LD BC,8. Sector read сохраняет отдельный штатный B=1.
+- [x] Driver banner повышен до A48; host build marker до A25.
+- [ ] Сборка build_project125.bat: проверить SjASMPlus и ProgramEnd <= #A800.
+- [ ] Runtime: подтвердить [NLOAD 02] CATALOG SEARCH RETURN; далее проверить descriptor и чтение первого сектора.
+- **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT YET VERIFIED. Исправление конкретного ABI-регистрового расхождения, выявленного сравнением с Project124.
+
+
+## A1.29 — восстановление A и BC перед TR-DOS search (2026-11-04)
+
+- [x] Runtime A25/A48: D1 и D2 присутствуют, но `[NLOAD 02]` отсутствует; исправление только BC не устранило зависание.
+- [x] Повторное сравнение с рабочим Project124: перед `CALL #3D13` там A сохраняет значение 9 (режим поиска), тогда как DOSEN trampoline Project125 устанавливает A=#C3 и оставляет его изменённым.
+- [x] Перед поиском теперь явно задаются `A=9` и `BC=10`; driver banner A49, host build marker A26.
+- [ ] Build: проверить `build_project125.bat` и `ProgramEnd <= #A800`.
+- [x] Runtime 2026-11-04 A26/A49: D1/D2 присутствуют, но `[NLOAD 02]` отсутствует; исправление A/BC не устранило зависание.
+- **Статус:** SOURCE COMMITTED / RUNTIME TESTED — NOT EFFECTIVE. A26/A49 всё ещё зависает внутри первого `CALL #3D13`.
+
+## A1.30 — восстановление HL и точного descriptor ABI TR-DOS (2026-11-04)
+
+- [x] Runtime A26/A49: D1/D2 присутствуют, но `[NLOAD 02]` отсутствует; восстановление A и BC не устранило зависание.
+- [x] При сравнении с Project124 найдено ещё одно отличие: Project124 входит в первый `CALL #3D13` с HL, оставшимся после `LDIR`. В Project125 диагностические сообщения заменяли HL адресом строки лога; сохранение HL внутри trace helper не возвращало исходный post-LDIR контекст.
+- [x] Перед первым поиском теперь сохраняется post-LDIR HL и восстанавливается непосредственно перед `CALL #3D13`; HL, возвращённый поиском, сохраняется для descriptor API и восстанавливается после trace.
+- [x] Исправлен также descriptor ABI: Project124 выполняет только `LD C,8`, сохраняя B, возвращённый поиском. Project125 ранее принудительно обнулял B через `LD BC,8`; теперь выполняется точное `LD C,8`.
+- [x] Driver banner A50; host build marker A27.
+- [ ] Build: проверить `build_project125.bat`, SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: подтвердить `[NLOAD 02] CATALOG SEARCH RETURN`; затем `[NLOAD 03/04]` и `[NLOAD 05/06]`.
+- **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT VERIFIED. Найдены и исправлены два дополнительных расхождения ABI по HL и сохранению B в descriptor вызове.
+
+| 2026-11-04 | A1.30 TR-DOS HL / descriptor ABI | SOURCE COMMITTED | Preserve Project124's post-LDIR HL for search, preserve returned HL for descriptor, and change only C to 8 as Project124 does. Build/runtime pending. |

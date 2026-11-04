@@ -24,6 +24,7 @@ P125_VIDEO_PAGE7   EQU #78          ; RAM page 7, inverted page number
 P125_VIDEO_PAGE3   EQU #7C          ; RAM page 3, inverted page number
 P125_HOST_PAGE5    EQU #7A          ; RAM page 5, host code at #6000
 P125_HOST_PAGE0    EQU #7F          ; RAM page 0, TR-DOS staging at #C000
+P125_ROM_PAGE0     EQU #BF          ; ROM page 0 + D7 auto-select for lower 16K
 
 Console_X: db 0
 Console_Y: db BIOS_DEBUG_TOP
@@ -59,8 +60,18 @@ p125_atm_ports_open_done:
         out     (c), a
         ld      (#5C3B), a
 
+        ; Configure window 0 (#0000-#3FFF), not window 3. D6=0 selects ROM,
+        ; D7=1 enables the #7FFD ROM2 mux and TR-DOS shadow-ROM auto-select
+        ; on opcode fetches at #3Dxx. Lower six bits select ROM page 0.
+        ; Host code is in window 1 and the stack is in window 2, so this
+        ; mapping change does not disturb the running host.
+        ld      a, P125_ROM_PAGE0
+        ld      bc, #3FF7
+        out     (c), a
+
         ; Map the alternate screen pages while the 32-byte mode trampoline
-        ; is installed at #FFEC, the safe ATM mode-switch address.
+        ; is installed at #FFEC. Window 3 uses a fixed RAM page here; the
+        ; TR-DOS auto-select mux is configured separately in window 0.
         ld      a, P125_VIDEO_PAGE7
         ld      bc, #7FF7
         out     (c), a
@@ -91,8 +102,8 @@ p125_atm_ports_open_done:
         jp      #FFEC
 
 p125_atm_video_mode_ready:
-        ; Restore CPU-visible host/staging pages. The video controller keeps
-        ; displaying alternate pages 7/3 selected by #7FFD bit 3.
+        ; Restore CPU-visible host/staging pages. Keep D7 clear on #FFF7 so
+        ; window 3 remains fixed to RAM page 0 for the TR-DOS staging buffer.
         ld      a, P125_HOST_PAGE5
         ld      bc, #7FF7
         out     (c), a
