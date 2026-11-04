@@ -183,7 +183,7 @@ p125_halt:
         halt
         jr      .p125_halt_loop
 
-; Timestamped diagnostics mirrored to port #EF and the 42x12 screen.
+; Z80 logs are RTC-timestamped; NeoGS stream is raw; screen is ATM-native 80x25.
 p125_print_string:
         ld      a, (hl)
         or      a
@@ -291,7 +291,7 @@ p125_debug_stream_char:
 
 msg_rtc_ready:        defb "[RTC] K512VI1 READY", 13, 10, 0
 msg_p125_start:       defb "[P125] ATM HOST START", 13, 10, 0
-msg_p125_build_id:    defb "[P125] BUILD 20261104-A12 RTC-SCREEN", 13, 10, 0
+msg_p125_build_id:    defb "[P125] BUILD 20261104-A13 ATM80 RTC-SPLIT", 13, 10, 0
 msg_fw_load:          defb "[P125] LOAD NEOGS FIRMWARE", 13, 10, 0
 msg_fw_file_error:    defb "[P125] ERROR: NEOLOAD.C FILE #", 0
 msg_fw_upload_error:  defb "[P125] ERROR: NEOGS FIRMWARE UPLOAD PHASE #", 0
