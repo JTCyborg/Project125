@@ -1184,20 +1184,22 @@ x86_io_trace_count: db 0
 ; the overlay interpreter; it emits only the first failed REP SCASB in BIOS
 ; segment F000h while testing guest RAM at ES >= 0080h.
 x86_resident_memtest_scas_trace:
-        ; Capture the first four SCAS iterations without assumptions about
-        ; REP, FLAGS, segment, or BIOS location. This proves whether the
-        ; interpreter reaches SCAS at all and records its actual operands.
+        ; Report only the first failed SCAS comparison. Successful REP SCAS
+        ; iterations are intentionally silent so the trace reaches the exact
+        ; byte/word that causes BIOS MEMTST to branch to BADRAM.
+        ld      a, (x86_reg_flags)
+        bit     6, a                    ; ZF=1 means the comparison matched
+        ret     nz
         ld      a, (x86_memtest_scas_trace_count)
-        cp      4
-        ret     nc
+        or      a
+        ret     nz
         ld      a, (x86_string_opcode)
         cp      #AE
         jr      z, .trace_scas_opcode_ok
         cp      #AF
         ret     nz
 .trace_scas_opcode_ok:
-        ld      a, (x86_memtest_scas_trace_count)
-        inc     a
+        ld      a, 1
         ld      (x86_memtest_scas_trace_count), a
         push    af
         push    bc
