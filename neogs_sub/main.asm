@@ -986,47 +986,73 @@ x86_lpt1_data_latch: db 0       ; 03BCh
 x86_lpt2_data_latch: db 0       ; 0378h
 x86_lpt3_data_latch: db 0       ; 0278h
 
-x86_resident_lpt_read_data:
-        ld      hl, (x86_io_port)
-        ld      de, #03BC
-        or      a
-        sbc     hl, de
-        jr      z, .lpt1_read
-        ld      hl, (x86_io_port)
-        ld      de, #0378
-        or      a
-        sbc     hl, de
-        jr      z, .lpt2_read
+; Dispatch all three LPT data ports in resident memory. Carry clear means
+; the port was handled; carry set means the caller should continue decoding.
+x86_resident_lpt_read_dispatch:
+        ld      a, (x86_io_port+1)
+        cp      3
+        jr      nz, .read_lpt3
+        ld      a, (x86_io_port)
+        cp      #BC
+        jr      z, .read_lpt1
+        cp      #78
+        jr      z, .read_lpt2
+        scf
+        ret
+.read_lpt3:
+        cp      2
+        jr      nz, .read_not_lpt
+        ld      a, (x86_io_port)
+        cp      #78
+        jr      nz, .read_not_lpt
         ld      a, (x86_lpt3_data_latch)
+        or      a
         ret
-.lpt1_read:
+.read_lpt1:
         ld      a, (x86_lpt1_data_latch)
+        or      a
         ret
-.lpt2_read:
+.read_lpt2:
         ld      a, (x86_lpt2_data_latch)
+        or      a
+        ret
+.read_not_lpt:
+        scf
         ret
 
-x86_resident_lpt_write_data:
-        ld      hl, (x86_io_port)
-        ld      de, #03BC
-        or      a
-        sbc     hl, de
-        jr      z, .lpt1_write
-        ld      hl, (x86_io_port)
-        ld      de, #0378
-        or      a
-        sbc     hl, de
-        jr      z, .lpt2_write
+x86_resident_lpt_write_dispatch:
+        ld      a, (x86_io_port+1)
+        cp      3
+        jr      nz, .write_lpt3
+        ld      a, (x86_io_port)
+        cp      #BC
+        jr      z, .write_lpt1
+        cp      #78
+        jr      z, .write_lpt2
+        scf
+        ret
+.write_lpt3:
+        cp      2
+        jr      nz, .write_not_lpt
+        ld      a, (x86_io_port)
+        cp      #78
+        jr      nz, .write_not_lpt
         ld      a, (x86_io_value)
         ld      (x86_lpt3_data_latch), a
+        or      a
         ret
-.lpt1_write:
+.write_lpt1:
         ld      a, (x86_io_value)
         ld      (x86_lpt1_data_latch), a
+        or      a
         ret
-.lpt2_write:
+.write_lpt2:
         ld      a, (x86_io_value)
         ld      (x86_lpt2_data_latch), a
+        or      a
+        ret
+.write_not_lpt:
+        scf
         ret
 
 ; Resident one-shot trace for the first unmapped BIOS I/O read.
