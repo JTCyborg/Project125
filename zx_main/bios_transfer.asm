@@ -153,6 +153,15 @@ neogs_bios_boot_and_wait:
 .bios_boot_outer:
         ld      bc, BIOS_HOST_WAIT_LIMIT
 .bios_boot_inner:
+        ; Poll the physical ATM keyboard while the 8086 BIOS is executing.
+        ; A matrix snapshot is sent only when one of the 40 keys changes.
+        ld      a, (bios_kbd_poll_divider)
+        inc     a
+        and     #0F
+        ld      (bios_kbd_poll_divider), a
+        jr      nz, .bios_kbd_poll_done
+        call    atm_keyboard_poll_and_send
+.bios_kbd_poll_done:
         in      a, (GSSTAT)
         bit     B_DBIT, a
         jr      z, .bios_boot_no_data
@@ -333,6 +342,147 @@ bios_host_tail_prefix:
 bios_host_tail_error:
         defb    "[BIOS DST FFF0] !", 0
 bios_boot_timeout_outer: dw 0
+bios_kbd_poll_divider: db 0
+
+; -------------------------------------------------------------------------
+; ATM physical keyboard scanner and DMA event transport.
+; The Spectrum/ATM keyboard is an 8x5 active-low matrix on port FEh.
+; Each snapshot is exactly eight bytes, one low-five-bit row per byte:
+;   FEFE,FDFE,FBFE,F7FE,EFFE,DFFE,BFFE,7FFE.
+; The host sends snapshots only after a state change. No keyboard payload
+; is sent through GSDAT/DBIT; the DMA window carries all eight bytes.
+; -------------------------------------------------------------------------
+atm_keyboard_poll_and_send:
+        push    af
+        push    bc
+        push    de
+        push    hl
+
+        ld      bc, #FEFE
+        in      a, (c)
+        and     #1F
+        ld      (atm_keyboard_matrix+0), a
+        ld      bc, #FDFE
+        in      a, (c)
+        and     #1F
+        ld      (atm_keyboard_matrix+1), a
+        ld      bc, #FBFE
+        in      a, (c)
+        and     #1F
+        ld      (atm_keyboard_matrix+2), a
+        ld      bc, #F7FE
+        in      a, (c)
+        and     #1F
+        ld      (atm_keyboard_matrix+3), a
+        ld      bc, #EFFE
+        in      a, (c)
+        and     #1F
+        ld      (atm_keyboard_matrix+4), a
+        ld      bc, #DFFE
+        in      a, (c)
+        and     #1F
+        ld      (atm_keyboard_matrix+5), a
+        ld      bc, #BFFE
+        in      a, (c)
+        and     #1F
+        ld      (atm_keyboard_matrix+6), a
+        ld      bc, #7FFE
+        in      a, (c)
+        and     #1F
+        ld      (atm_keyboard_matrix+7), a
+
+        ; Skip DMA entirely when the physical matrix is unchanged.
+        ld      hl, atm_keyboard_matrix
+        ld      de, atm_keyboard_previous
+        ld      b, NGS_KBD_MATRIX_SIZE
+.atm_kbd_compare:
+        ld      a, (hl)
+        ld      c, a
+        ld      a, (de)
+        cp      c
+        jr      nz, .atm_kbd_changed
+        inc     hl
+        inc     de
+        djnz    .atm_kbd_compare
+        jr      .atm_kbd_done
+
+.atm_kbd_changed:
+        ; Replace the current BIOS command with a short keyboard DMA request.
+        ; NeoGS notices it at an instruction boundary and clears CBIT when
+        ; its DMA receiver is armed.
+        ld      a, CMD_HOST_INPUT
+        out     (GSCOM), a
+        ld      d, 8
+.atm_kbd_ready_outer:
+        ld      bc, BIOS_HOST_WAIT_LIMIT
+.atm_kbd_ready_wait:
+        in      a, (GSSTAT)
+        bit     B_CBIT, a
+        jr      z, .atm_kbd_dma_ready
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .atm_kbd_ready_wait
+        dec     d
+        jr      nz, .atm_kbd_ready_outer
+        jr      .atm_kbd_timeout
+
+.atm_kbd_dma_ready:
+        ld      hl, atm_keyboard_matrix
+        ld      de, BIOS_HOST_DMA_WINDOW
+        ld      bc, NGS_KBD_MATRIX_SIZE
+        di
+        ldir
+        ; End marker is control-plane only; the eight matrix bytes above
+        ; were transferred exclusively through the ZX DMA memory window.
+        ld      a, #FF
+        out     (GSCOM), a
+
+        ld      d, 8
+.atm_kbd_done_outer:
+        ld      bc, BIOS_HOST_WAIT_LIMIT
+.atm_kbd_done_wait:
+        in      a, (GSSTAT)
+        bit     B_CBIT, a
+        jr      z, .atm_kbd_dma_done
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .atm_kbd_done_wait
+        dec     d
+        jr      nz, .atm_kbd_done_outer
+        jr      .atm_kbd_timeout
+
+.atm_kbd_dma_done:
+        ; Restore the long-running BIOS command token. The guest executor
+        ; ignores it while running; the outer command handler clears CBIT
+        ; only when the BIOS actually returns.
+        ld      a, CMD_BOOT_BIOS
+        out     (GSCOM), a
+
+        ld      hl, atm_keyboard_matrix
+        ld      de, atm_keyboard_previous
+        ld      bc, NGS_KBD_MATRIX_SIZE
+        ldir
+        jr      .atm_kbd_done
+
+.atm_kbd_timeout:
+        ; Do not let a failed input transaction leave the command register
+        ; pointing at the keyboard service.
+        ld      a, CMD_BOOT_BIOS
+        out     (GSCOM), a
+
+.atm_kbd_done:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+atm_keyboard_matrix:
+        defs    NGS_KBD_MATRIX_SIZE, #1F
+atm_keyboard_previous:
+        defs    NGS_KBD_MATRIX_SIZE, #1F
 
 bios_host_tail_data:
         defs    5, 0

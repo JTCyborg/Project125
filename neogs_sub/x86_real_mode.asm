@@ -318,6 +318,11 @@ x86_real_dispatch:
         or      a
         ; call  nz, bios_progress_emit
 x86_real_dispatch_no_progress:
+        ; Service a pending ATM keyboard DMA snapshot every 256 guest
+        ; instructions. The mailbox is independent of the guest I/O bus.
+        ld      a, l
+        or      a
+        call    z, x86_host_input_service_poll
         call    x86_io_tick
         ret     c
         ; The IRQ-delivery marker is only consumed by the HLT wait loop.
@@ -1658,6 +1663,7 @@ x86_real_hlt:
         ; HLT suspends guest execution until a maskable interrupt is accepted.
         ; The deterministic PIT clock continues while halted.
 .hlt_wait:
+        call    x86_host_input_service_poll
         call    x86_io_tick
         ret     c
         ld      a, (x86_io_irq_delivered)
