@@ -1450,3 +1450,15 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.11 NEOLOAD.C TR-DOS boundary tracing | SOURCE COMMITTED | Added port-#EF checkpoints around TR-DOS open/descriptor/first-sector calls; no loader protocol or data path changed. |
+
+
+## A1.12 — сохранить выбранный TR-DOS ROM при инициализации ATM-видео (2026-11-04)
+
+- [x] Runtime A1.11: выводится `[NLOAD 01] CATALOG SEARCH CALL`, но отсутствует `[NLOAD 02] CATALOG SEARCH RETURN`; сбой происходит внутри `CALL #3D13` (TR-DOS C=10), до чтения дескриптора и сектора.
+- [x] В `p125_atm_video_init` найдено несоответствие комментарию: запись `#18` в `#7FFD` принудительно устанавливала bit 4 (ROM select), вместо сохранения текущего ROM. Это могло отключать отображённый TR-DOS ROM перед последующим вызовом `#3D13`.
+- [x] Исправлено: брать текущее значение из системной копии `BANKM` по `#5C3B`, устанавливать только bit 3 (`OR #08`) для выбора альтернативного экрана и записывать полученное значение обратно в `#5C3B`.
+- [ ] Сборка `build_project125.bat`; подтвердить отсутствие ошибок ассемблера и проверить `ProgramEnd <= #A800`.
+- [ ] Runtime: после `[NLOAD 01]` должен появиться `[NLOAD 02]`; далее проверить descriptor и первый sector markers.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING. Причина является сильной гипотезой, пока не подтверждена повторным запуском.
+
+| 2026-11-04 | A1.12 Preserve TR-DOS ROM across ATM video init | SOURCE COMMITTED | Replaced hardcoded #7FFD=#18 with BANKM-preserving update that sets only screen bit 3. Build/runtime pending. |
