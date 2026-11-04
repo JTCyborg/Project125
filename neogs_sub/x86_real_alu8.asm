@@ -495,6 +495,82 @@ x86_real_alu8_update_flags:
         ld      (x86_reg_flags), hl
         ret
 
+; -------------------------------------------------------------------------
+; Group-1 byte immediate: 80/82 r/m8,imm8.
+; Register-direct forms are fully decoded for all eight ALU operations.
+; Memory forms stop explicitly until the immediate-memory writeback path is
+; enabled; this avoids silently corrupting a guest operand.
+; -------------------------------------------------------------------------
+x86_real_group1_byte_immediate:
+        ld      (x86_real_opcode), a
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_group1_byte_modrm), a
+        and     #C0
+        cp      #C0
+        jp      nz, x86_real_group1_byte_unsupported
+
+        ld      a, (x86_group1_byte_modrm)
+        and     #38
+        ld      (x86_alu8_mode), a
+        ld      a, (x86_group1_byte_modrm)
+        and     7
+        ld      (x86_alu8_dst_reg), a
+        call    x86_alu8_read_reg
+        ld      (x86_alu8_dst), a
+
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_alu8_src), a
+
+        xor     a
+        ld      (x86_alu8_dst_is_mem), a
+        ld      (x86_alu8_no_write), a
+        ld      (x86_alu8_is_logic), a
+        ld      (x86_alu8_carry_in), a
+
+        ld      a, (x86_alu8_mode)
+        cp      #08
+        jr      z, .byte_logic
+        cp      #20
+        jr      z, .byte_logic
+        cp      #30
+        jr      z, .byte_logic
+        cp      #38
+        jr      z, .byte_compare
+        cp      #10
+        jr      z, .byte_carry
+        cp      #18
+        jr      z, .byte_carry
+        jr      .byte_execute
+.byte_logic:
+        ld      a, 1
+        ld      (x86_alu8_is_logic), a
+        jr      .byte_execute
+.byte_compare:
+        ld      a, 1
+        ld      (x86_alu8_no_write), a
+        ; The byte core identifies CMP by the arithmetic opcode field.
+        ld      a, #3C
+        ld      (x86_real_opcode), a
+        jr      .byte_execute
+.byte_carry:
+        ld      a, (x86_reg_flags)
+        and     1
+        ld      (x86_alu8_carry_in), a
+.byte_execute:
+        jp      x86_real_alu8_execute_core
+
+x86_real_group1_byte_unsupported:
+        ld      a, (x86_real_opcode)
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
+x86_group1_byte_modrm: db 0
+
 ; XOR AX,imm16 (35). Logical FLAGS: CF/AF/OF cleared, PF/ZF/SF set.
 x86_real_logic16_accumulator_immediate:
         call    x86_real_fetch8
