@@ -179,13 +179,13 @@ x86_real_alu8_modrm:
 .mark_logic:
         ld      a, 1
         ld      (x86_alu8_is_logic), a
-        jp      .carry_ready
+        jp      x86_real_alu8_execute_core
 .force_test:
         ld      a, #20
         ld      (x86_alu8_mode), a
         ld      a, 1
         ld      (x86_alu8_is_logic), a
-        jp      .carry_ready
+        jp      x86_real_alu8_execute_core
 
 .capture_carry:
         xor     a
@@ -194,7 +194,7 @@ x86_real_alu8_modrm:
         cp      #10
         jr      z, .read_carry
         cp      #18
-        jr      nz, .carry_ready
+        jp      nz, x86_real_alu8_execute_core
 .read_carry:
         ld      a, (x86_reg_flags)
         and     1
