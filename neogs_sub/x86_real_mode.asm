@@ -2212,16 +2212,70 @@ x86_real_shift_cl_unsupported:
         scf
         ret
 
-; F6 D0: NOT AL. NOT changes no FLAGS bits.
+; F6 /0 TEST r/m8,imm8 and F6 D0 NOT AL.
+; BIOS paths observed here use direct [disp16] and register-direct operands.
 x86_real_group_f6:
         call    x86_real_fetch8
         ret     c
+        ld      (x86_f6_modrm), a
         cp      #D0
+        jp      z, x86_real_f6_not_al
+        ld      a, (x86_f6_modrm)
+        and     #38
+        jp      nz, x86_real_group_f6_unsupported ; only /0 TEST is implemented
+
+        ld      a, (x86_f6_modrm)
+        and     #C0
+        cp      #C0
+        jp      z, x86_real_f6_test_register
+        or      a
         jp      nz, x86_real_group_f6_unsupported
+        ld      a, (x86_f6_modrm)
+        and     7
+        cp      6
+        jp      nz, x86_real_group_f6_unsupported
+        call    x86_real_mov_fetch16
+        ret     c
+        ld      (x86_mem_offset), hl
+        ld      (x86_mem_offset_work), hl
+        ld      hl, (x86_reg_ds)
+        ld      a, (x86_real_seg_override_active)
+        or      a
+        jr      z, .f6_segment_ready
+        ld      hl, (x86_real_seg_override)
+.f6_segment_ready:
+        ld      (x86_mem_segment), hl
+        call    x86_mem_calc_phys
+        call    x86_mem_read8
+        ret     c
+        ld      (x86_f6_operand), a
+        jp      x86_real_f6_test_immediate
+
+x86_real_f6_test_register:
+        ld      a, (x86_f6_modrm)
+        and     7
+        call    x86_alu8_read_reg
+        ld      (x86_f6_operand), a
+
+x86_real_f6_test_immediate:
+        call    x86_real_fetch8
+        ret     c
+        ld      b, a
+        ld      a, (x86_f6_operand)
+        and     b
+        ld      (x86_shift_result), a
+        call    x86_real_test8_update_flags
+        jp      x86_real_next
+
+x86_real_f6_not_al:
         ld      a, (x86_reg_ax)
         cpl
         ld      (x86_reg_ax), a
         jp      x86_real_next
+
+x86_f6_modrm: db 0
+x86_f6_operand: db 0
+
 x86_real_group_f6_unsupported:
         ld      a, #F6
         ld      (x86_real_unsupported_opcode), a
@@ -2415,13 +2469,42 @@ x86_real_test_al_immediate:
         ld      a, (x86_shift_result)
         bit     7, a
         jr      z, .test_al_merge
-        ld      hl, x86_shift_new_flags+1
+        ld      hl, x86_shift_new_flags
         set     7, (hl)
 .test_al_merge:
-        ; Preserve AF and reserved/control bits; clear CF, OF and replace
-        ; PF/ZF/SF.
+        call    x86_real_test8_merge_flags
+        jp      x86_real_next
+
+; Shared TEST r/m8 flag calculation. Input: x86_shift_result.
+x86_real_test8_update_flags:
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, (x86_shift_result)
+        and     a
+        jp      pe, .test8_pf
+        jr      .test8_zero
+.test8_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.test8_zero:
+        ld      a, (x86_shift_result)
+        or      a
+        jr      nz, .test8_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.test8_sign:
+        ld      a, (x86_shift_result)
+        bit     7, a
+        jr      z, x86_real_test8_merge_flags
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+        jp      x86_real_test8_merge_flags
+
+; Clear CF/OF, replace PF/ZF/SF, preserve AF and all other FLAGS bits.
+x86_real_test8_merge_flags:
         ld      hl, (x86_reg_flags)
-        ld      de, #7F3A
+        ld      de, #F73A
         ld      a, h
         and     d
         ld      h, a
@@ -2436,7 +2519,7 @@ x86_real_test_al_immediate:
         or      e
         ld      l, a
         ld      (x86_reg_flags), hl
-        jp      x86_real_next
+        ret
 
 x86_real_group_f7_unsupported:
         ld      a, #F7
