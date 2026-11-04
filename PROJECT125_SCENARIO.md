@@ -1934,3 +1934,17 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
 
 | 2026-11-04 | A1.52 Quiet sector-read and RTC probe logs | SOURCE COMMITTED | Remove repetitive C=#05 trace messages and DS12887 startup diagnostics while preserving disk I/O, RTC probe, and timestamp functionality. |
+
+
+## A1.53 — 8086 MOV Sreg,r/m16 и тихие RTC timestamps (2026-11-04)
+
+- Runtime A46/A64: TR-DOS 5.03 открывает NEOLOAD.C и NEOFW.C; NeoGS firmware upload и BIOS.C staging завершаются. Видео CRC проходит. BIOS reset vector выполняет far JMP и останавливается на opcode 8Eh по адресу F000:E05F.
+- Найдена причина dispatch: диапазон общего MOV decoder в x86_real_mode.asm покрывал только 88h..8Bh; 8Ch и 8Eh не направлялись в обработчик. Сам x86_real_mov.asm реализовывал только 88h..8Bh.
+- Добавлена отдельная реализация 8Ch/8Eh: MOV r/m16,Sreg и MOV Sreg,r/m16. Для 8Eh разрешены ES, SS и DS; MOV CS (ModR/M /1) и зарезервированные /4../7 отвергаются как unsupported. Используется существующий декодер ModR/M и эффективного адреса, включая segment overrides.
+- В main.asm удалены TRACE 60/61 из каждого timestamp. p125_print_timestamp теперь проверяет ds12887_available и не выводит неизвестное время до успешного DS12887 probe. Сам DS12887_PROBE и последующее чтение времени не меняются.
+- Build marker A47. Driver A64 не изменён; TR-DOS startup order и disk routines не изменялись.
+- [ ] Build: SjASMPlus / build_firmware.asm и host build; проверить отсутствие ошибок, размер resident host и отсутствие конфликтов меток.
+- [ ] Runtime: подтвердить отсутствие TRACE 60/61 и ранних неизвестных timestamp; затем записать следующую BIOS instruction после F000:E05F.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.53 MOV segment registers and quiet RTC timestamps | SOURCE COMMITTED | Dispatch and implement 8Ch/8Eh segment-register MOV forms; suppress timestamp polling until DS12887 is available and remove per-line RTC trace noise. Build/runtime pending. |
