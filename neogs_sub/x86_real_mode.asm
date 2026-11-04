@@ -1350,8 +1350,22 @@ x86_real_int_imm8:
         ret     c
         ld      a, (x86_real_int_vector)
         cp      #10
-        jp      nz, x86_real_next
+        jp      z, x86_real_int10_service
+        cp      #16
+        jp      z, x86_real_int16_service
+        jp      x86_real_next
+
+x86_real_int10_service:
         call    bios_int10_dispatch
+        ret     c
+        call    x86_iret_return
+        ret     c
+        jp      x86_real_next
+
+; BIOS keyboard INT 16h is trapped in the same way as INT 10h. The service
+; updates the guest register/FLAGS frame, then the normal IRET restores CS:IP.
+x86_real_int16_service:
+        call    bios_int16_dispatch
         ret     c
         call    x86_iret_return
         ret     c
