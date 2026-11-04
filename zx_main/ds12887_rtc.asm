@@ -30,16 +30,30 @@ DS12887_PROBE::
         ld      a, #0D
         call    DS12887_READ_REG
         ld      (ds12887_status_d), a
-        cp      #80
-        jp      nz, ds12887_probe_invalid
+        ld      hl, ds12887_status_dump
+        call    p125_trace_port
+        ld      a, (ds12887_status_d)
+        call    DS12887_PRINT_HEX8
+        ld      a, ' '
+        call    DS12887_PRINT_CHAR
 
         ld      a, #0A
         call    DS12887_READ_REG
         ld      (ds12887_status_a), a
+        call    DS12887_PRINT_HEX8
+        ld      a, ' '
+        call    DS12887_PRINT_CHAR
 
         ld      a, #0B
         call    DS12887_READ_REG
         ld      (ds12887_status_b), a
+        call    DS12887_PRINT_HEX8
+        ld      hl, ds12887_crlf
+        call    p125_trace_port
+
+        ld      a, (ds12887_status_d)
+        bit     7, a
+        jp      z, ds12887_probe_invalid
 
         ld      a, 1
         ld      (ds12887_available), a
@@ -324,7 +338,8 @@ DS12887_PRINT_CHAR:
 
 ds12887_banner:      defb "[DS12887 D1.00] RTC DRIVER PORTS #DFF7/#BFF7", 13, 10, 0
 ds12887_found:       defb "[DS12887] VRT OK; READ-ONLY CLOCK ACCESS", 13, 10, 0
-ds12887_invalid:     defb "[DS12887] NOT DETECTED OR VRT INVALID (REG 0D)", 13, 10, 0
+ds12887_status_dump: defb "[DS12887] STATUS D/A/B=", 0
+ds12887_invalid:     defb "[DS12887] VRT BIT 7 CLEAR (CHECK CMOS PORT/POWER)", 13, 10, 0
 ds12887_read_error:  defb "[DS12887] UIP/SNAPSHOT READ ERROR", 13, 10, 0
 ds12887_raw_time:    defb "[DS12887] RAW H:M:S=", 0
 ds12887_crlf:        defb 13, 10, 0
