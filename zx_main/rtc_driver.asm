@@ -41,9 +41,107 @@ CHECK_AND_INIT_CMOS::
         LD      A, #11
         LD      L, #AA
         CALL    write_byte_raw
-        ; A1.91: take a non-invasive stack snapshot at procedure entry.
-        ; This is before any trace-helper CALL, so it isolates the caller's
-        ; return address from any later diagnostic activity.
+rtc_signature_write_return:
+        LD      HL, rtc_trace_06_signature_write_done
+        CALL    p125_trace_port
+
+        LD      HL, rtc_trace_07_reg_a_write_begin
+        CALL    p125_trace_port
+        LD      A, #0A
+        LD      L, #20
+        CALL    write_byte_raw
+        LD      HL, rtc_trace_08_reg_a_write_done
+        CALL    p125_trace_port
+
+        LD      HL, rtc_trace_09_reg_b_write_begin
+        CALL    p125_trace_port
+        LD      A, #0B
+        LD      L, #02
+        CALL    write_byte_raw
+        LD      HL, rtc_trace_0A_reg_b_write_done
+        CALL    p125_trace_port
+
+rtc_already_active:
+        LD      HL, rtc_trace_0B_close_begin
+        CALL    p125_trace_port
+        CALL    close_cmos
+        LD      HL, rtc_trace_0C_close_done
+        CALL    p125_trace_port
+        POP     BC: POP     AF
+        RET
+
+rtc_driver_version:              DEFB "[RTC DRIVER A1.91]", 13, 10, 0
+rtc_trace_01_open_begin:          DEFB "[RTC 01] OPEN BEGIN", 13, 10, 0
+rtc_trace_02_open_done:           DEFB "[RTC 02] OPEN DONE", 13, 10, 0
+rtc_trace_03_signature_read_begin: DEFB "[RTC 03] SIGNATURE READ BEGIN", 13, 10, 0
+rtc_trace_04_signature_read_done: DEFB "[RTC 04] SIGNATURE READ DONE", 13, 10, 0
+rtc_trace_05_signature_write_begin: DEFB "[RTC 05] SIGNATURE WRITE BEGIN", 13, 10, 0
+rtc_trace_06_signature_write_done: DEFB "[RTC 06] SIGNATURE WRITE DONE", 13, 10, 0
+rtc_trace_07_reg_a_write_begin:   DEFB "[RTC 07] REG A WRITE BEGIN", 13, 10, 0
+rtc_trace_08_reg_a_write_done:    DEFB "[RTC 08] REG A WRITE DONE", 13, 10, 0
+rtc_trace_09_reg_b_write_begin:   DEFB "[RTC 09] REG B WRITE BEGIN", 13, 10, 0
+rtc_trace_0A_reg_b_write_done:    DEFB "[RTC 0A] REG B WRITE DONE", 13, 10, 0
+rtc_trace_0B_close_begin:         DEFB "[RTC 0B] CLOSE BEGIN", 13, 10, 0
+rtc_trace_0C_close_done:          DEFB "[RTC 0C] CLOSE DONE", 13, 10, 0
+
+; =========================================================================
+; ПРОЦЕДУРА ЧТЕНИЯ ТЕКУЩЕГО ВРЕМЕНИ ИЗ ЧИПА RTC
+; =========================================================================
+READ_CURRENT_TIME::                     
+        PUSH    AF: PUSH BC: PUSH HL
+        LD      A, I
+        PUSH    AF
+        DI
+        CALL    open_cmos
+
+.wait_rtc
+        ; Контролируем флаг обновления UIP (битовая маска #80 в регистре #0A)
+        LD      A, #0A
+        CALL    read_byte_raw
+        RLA                             
+        JR      C, .wait_rtc            
+
+        ; Вычитываем BCD данные с атомарным сохранением в текстовые буферы
+        ; 1. Секунды (Ячейка #00)
+        LD      A, #00
+        CALL    read_byte_raw
+        CALL    split_bcd
+        LD      A, H: LD (txt_sec+0), A
+        LD      A, L: LD (txt_sec+1), A
+
+        ; 2. Минуты (Ячейка #02)
+        LD      A, #02
+        CALL    read_byte_raw
+        CALL    split_bcd
+        LD      A, H: LD (txt_min+0), A
+        LD      A, L: LD (txt_min+1), A
+
+        ; 3. Часы (Ячейка #04)
+        LD      A, #04
+        CALL    read_byte_raw
+        CALL    split_bcd
+        LD      A, H: LD (txt_hour+0), A
+        LD      A, L: LD (txt_hour+1), A
+
+        CALL    close_cmos
+        POP     AF
+        JP      PO, .interrupts_were_disabled
+        EI
+.interrupts_were_disabled:
+        POP     HL: POP BC: POP AF
+        RET
+
+; --- Атомарное низкоуровневое чтение байта из К512ВИ1 ---
+read_byte_raw
+        LD      BC, #DFF7
+        OUT     (C), A                  
+        LD      BC, #BFF7
+        IN      A, (C)                  
+        RET
+
+; --- Атомарная низкоуровневая запись байта в К512ВИ1 ---
+write_byte_raw
+        ; Snapshot the caller return word before any diagnostic CALL.
         CP      #11
         JR      NZ, .entry_probe_done
         LD      (rtc_saved_hl), HL
@@ -59,8 +157,7 @@ CHECK_AND_INIT_CMOS::
         LD      DE, (rtc_saved_de)
 .entry_probe_done:
 
-        ; Keep the two hardware writes separately observable. The trace helper
-        ; preserves AF/BC/HL, so A (register index) and L (data) remain intact.
+        ; Keep the two hardware writes separately observable.
         LD      HL, rtc_trace_0D_index_out_begin
         CALL    p125_trace_port
         LD      BC, #DFF7
@@ -76,7 +173,6 @@ CHECK_AND_INIT_CMOS::
         LD      HL, rtc_trace_10_data_out_done
         CALL    p125_trace_port
 
-        ; Raw one-byte port markers bracket the next trace-helper call.
         LD      BC, #00EF
         LD      A, '>'
         OUT     (C), A
@@ -96,7 +192,7 @@ CHECK_AND_INIT_CMOS::
         LD      A, 10
         OUT     (C), A
 
-        ; Capture the same stack words immediately before RET.
+        ; Snapshot the same stack word after all trace helper calls.
         LD      A, (rtc_write_index)
         CP      #11
         JR      NZ, .return_without_probe
@@ -144,8 +240,7 @@ rtc_trace_exit_ret_prefix:     DEFB " EXIT_RET=", 0
 rtc_trace_expected_prefix:     DEFB " EXPECTED=", 0
 rtc_trace_hex_nl:              DEFB 13, 10, 0
 
-; Print entry/exit SP and return-address snapshots captured without
-; modifying the live stack. Each word is emitted as four hex digits.
+; Print the saved entry/exit stack snapshots.
 rtc_trace_stack_snapshots:
         PUSH    AF
         PUSH    BC
