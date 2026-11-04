@@ -42,6 +42,10 @@ start_neoprogram:
         ; At this point the bootstrap stack is still in WIN3 at #FFFE.
         ld      a, #03
         call    neo_set_pg1
+        ; WIN2 defaults to firmware overlay page 68. Bank gateways switch
+        ; temporarily to page 69 and always restore this resident default.
+        ld      a, NGS_FW_BANK68_MPAG
+        out     (MPAG), a
         ld      sp, Z80_STACK_TOP     ; WIN1/page #03; DMA begins at #5000
         ; Fill the stack region with a canary before the first normal CALL/PUSH.
         ; The lower 128 bytes remain a guard; normal stack use grows down from #4FFE.
@@ -253,7 +257,7 @@ execute_neogs_x86_real:
         ld      hl, X86_RAM_RUN_ADDR
         ld      de, #5002
         ld      bc, (X86_DMA_HEADER_ADDR)
-        call    x86_real_copy_image
+        call    bank_call_x86_real_copy_image
         jp      c, .real_copy_failed
 
         ; Reset the guest register file to a deterministic real-mode entry.
@@ -279,7 +283,7 @@ execute_neogs_x86_real:
 
         ld      a, 1
         ld      (x86_real_bounds_enable), a
-        call    x86_real_execute
+        call    bank_call_x86_real_execute
         push    af
         ld      hl, (x86_reg_ax)
         ld      (saved_x86_ax), hl
@@ -323,21 +327,21 @@ command_bios_post:
 
 ; Stage 2A: validate 8086 INT/IRET stack-frame semantics.
 command_int_test:
-        call    x86_int_self_test
+        call    bank_call_x86_int_self_test
         xor     a
         out     (CLRCBIT), a
         jp      main_loop
 
 ; Stage 2B: execute a guest INT handler through CS:IP and return with IRET.
 command_int_guest_test:
-        call    x86_real_mode_test
+        call    bank_call_x86_real_mode_test
         xor     a
         out     (CLRCBIT), a
         jp      main_loop
 
 ; Stage 3A: guest INT 10h video BIOS service test.
 command_bios_video_test:
-        call    bios_int10_video_test
+        call    bank_call_bios_int10_video_test
         xor     a
         out     (CLRCBIT), a
         jp      main_loop
@@ -728,8 +732,40 @@ rom_return_trampoline_code:
         jp      0
 rom_return_trampoline_end:
 
+        ; Fixed resident services and shared architectural state.
         INCLUDE "x86_memory.asm"
         INCLUDE "bios/bios_core.asm"
+        INCLUDE "../shared/video_crc16.asm"
+        INCLUDE "bank_gateways.asm"
+
+; 8086 register file is resident so BIOS and banked CPU code share one state.
+x86_reg_ax:    dw 0
+x86_reg_cx:    dw 0
+x86_reg_dx:    dw 0
+x86_reg_bx:    dw 0
+x86_reg_sp:    dw 0
+x86_reg_bp:    dw 0
+x86_reg_si:    dw 0
+x86_reg_di:    dw 0
+x86_reg_es:    dw 0
+x86_reg_cs:    dw 0
+x86_reg_ss:    dw 0
+x86_reg_ds:    dw 0
+x86_reg_ip:    dw 0
+x86_reg_flags: dw 0
+
+; Shared bounds/diagnostic state accessed by resident BIOS and overlay CPU.
+x86_real_unsupported_opcode: db 0
+x86_real_bounds_enable:      db 0
+x86_real_task_end:           dw 0
+
+neogs_resident_end:
+
+; Overlay bank 68: complete 8086 interpreter and instruction implementation.
+; All intra-engine calls remain direct because this complete group is resident
+; in one physical bank while executing. WIN2 is mapped at logical $8000.
+        ORG     $8000
+neogs_overlay68_start:
         INCLUDE "x86_modrm.asm"
         INCLUDE "x86_interrupt.asm"
         INCLUDE "x86_real_mode.asm"
@@ -738,8 +774,14 @@ rom_return_trampoline_end:
         INCLUDE "x86_real_mov.asm"
         INCLUDE "x86_io.asm"
         INCLUDE "x86_strings.asm"
+neogs_overlay68_end:
+
+; Overlay bank 69: BIOS INT 10h service implementation and its test harness.
+; Cross-bank calls go through resident gateways in bank_gateways.asm.
+        ORG     $8000
+neogs_overlay69_start:
         INCLUDE "bios/bios_video.asm"
-        INCLUDE "../shared/video_crc16.asm"
+neogs_overlay69_end:
 
 ; WIN1 layout: trampoline $4000-$400F, guard $4800-$487F, stack grows
 ; down from $4FFE, and the DMA frame starts at $5000.
