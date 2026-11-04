@@ -1521,3 +1521,16 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | D1.04 / A1.18 SMUC gate readback | SOURCE COMMITTED | Added read-only `#FFBA` system-port readback to distinguish an inactive SMUC/DOS-port decoder from an RTC register-access fault; build/runtime remain unverified. |
+
+
+## D1.05 / A1.19 — достоверная проверка SMUC decoder (2026-11-04)
+
+- [x] Исправлена трактовка предыдущей диагностики: чтение `#FFBA` возвращает `comp.nvram.out`, поэтому значение `FF` не доказывает закрытый SMUC decoder.
+- [x] По `io.cpp` подтверждён фиксированный диагностический ответ `#57` для порта `#5FBE` при активных `CF_DOSPORTS` и `SMUC=enable`.
+- [x] В RTC probe заменено чтение `#FFBA` на read-only проверку `IN A,(#5FBE)`; ожидаемый ответ Unreal Speccy — `57`.
+- [x] RTC banner обновлён до D1.05; host build marker обновлён до A20.
+- [ ] Build: выполнить `build_project125.bat`; проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: `SMUC ID #5FBE=57` подтверждает активный декодер; иное значение указывает, что SMUC/DOS-port gate не активен. При `57` и статусах RTC `FF` проверить цикл записи адреса/чтения `#DFBA`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | D1.05 / A1.19 SMUC signature diagnostic | SOURCE COMMITTED | Replaced ambiguous FFBA NVRAM readback with the fixed #5FBE signature read (#57 when SMUC and DOS ports are decoded); build/runtime remain unverified. |
