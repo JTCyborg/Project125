@@ -96,18 +96,41 @@ bios_int10_dispatch:
         pop     af
         ret
 
-; BIOS video overlay -> interpreter overlay. Return to page 69.
-bank69_call_x86_real_copy_image:
-        push    af
-        ld      a, NGS_FW_BANK68_MPAG
-        out     (MPAG), a
-        pop     af
-        call    x86_real_copy_image
-        push    af
-        ld      a, NGS_FW_BANK69_MPAG
-        out     (MPAG), a
-        pop     af
-        ret
+; BIOS video overlay -> guest-memory copy. Keep WIN2 on page 69 so HL
+; continues to address the source image in the calling overlay. MPAGEX is
+; independent and is switched by x86_mem_write8 for each guest destination.
+bank69_copy_image_to_guest:
+        ld      (bank69_copy_source), hl
+        ld      (bank69_copy_dest), de
+        ld      (bank69_copy_count), bc
+.bank69_copy_loop:
+        ld      hl, (bank69_copy_count)
+        ld      a, h
+        or      l
+        ret     z
+        ld      hl, (bank69_copy_source)
+        ld      a, (hl)
+        ld      (x86_mem_value), a
+        ld      hl, (bank69_copy_dest)
+        ld      (x86_mem_addr), hl
+        xor     a
+        ld      (x86_mem_addr+2), a
+        call    x86_mem_write8
+        ret     c
+        ld      hl, (bank69_copy_source)
+        inc     hl
+        ld      (bank69_copy_source), hl
+        ld      hl, (bank69_copy_dest)
+        inc     hl
+        ld      (bank69_copy_dest), hl
+        ld      hl, (bank69_copy_count)
+        dec     hl
+        ld      (bank69_copy_count), hl
+        jr      .bank69_copy_loop
+
+bank69_copy_source: dw 0
+bank69_copy_dest:   dw 0
+bank69_copy_count:  dw 0
 
 bank69_call_x86_real_execute:
         push    af
