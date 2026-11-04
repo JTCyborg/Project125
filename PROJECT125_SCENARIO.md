@@ -1507,3 +1507,17 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.15 ATM710 TR-DOS ROM mapping diagnostic | SOURCE COMMITTED | Replaced invalid ATM3-only port probes with a read-only dump of the bytes visible at the TR-DOS entry address #3D13. Build/runtime remain pending. |
+
+
+## D1.04 / A1.18 — SMUC DOS-port gate readback (2026-11-04)
+
+- [x] По актуальному Unreal Speccy `io.cpp` подтверждено: ATM710 не входит в декодер GLUK `#DFF7/#BFF7`; этот путь разрешён для Pentagon с CMOS gate или ATM3.
+- [x] Подтверждено: SMUC `#DFBA/#FFBA` обслуживается только внутри `CF_DOSPORTS` и при `SMUC=enable`. Запись в `#FFBA` задаёт `pFFBA`; bit 7=0 выбирает запись адреса CMOS через `#DFBA`, bit 7=1 — запись данных.
+- [x] В RTC probe добавлен readback системного порта `#FFBA` после выбора address mode. Значение выводится как `[DS12887] SMUC FFBA READBACK=xx`.
+- [x] RTC banner обновлён до D1.04; host build marker обновлён до A19.
+- [ ] Build: выполнить `build_project125.bat`; проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: если `FFBA READBACK=FF`, SMUC decoder не активен в момент RTC probe (проверить `CF_DOSPORTS`/ROM mapping); если читается не-FF, но Status D/A/B остаются FF, исследовать адресный/данный цикл CMOS отдельно.
+- [ ] Runtime PASS только при валидных Status D/A/B и корректном времени.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | D1.04 / A1.18 SMUC gate readback | SOURCE COMMITTED | Added read-only `#FFBA` system-port readback to distinguish an inactive SMUC/DOS-port decoder from an RTC register-access fault; build/runtime remain unverified. |
