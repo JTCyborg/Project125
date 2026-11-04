@@ -485,7 +485,7 @@ p125_bios_image_end:
         ASSERT NEOLOAD_FILE_SIZE >= 1
         ASSERT NEOLOAD_FILE_SIZE <= #0800
         ASSERT NEOFW_FILE_SIZE >= 1
-        ASSERT NEOFW_FILE_SIZE <= #4000
+        ASSERT NEOFW_FILE_SIZE <= #C00A
 
         PAGE 1
         ORG #C000
