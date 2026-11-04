@@ -1892,3 +1892,18 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Build and verify marker A44 / driver A62.
 - [ ] Runtime: capture `[NLOAD D]` and `ATM710 ROM@3D13` from the post-map probe.
 - **Status:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. This isolates the mapping at the actual call boundary; it does not yet restore the full ATM window-0 configuration or claim the hang is fixed.
+
+
+## A1.50 — восстановление архивного TR-DOS startup до инициализации ATM UI (2026-11-04)
+
+- Runtime A44/A62: после переключения BANKM на #10 поиск всё ещё не возвращался. ROM boundary bytes 00 18 E7 00 C3 69 2F CD соответствуют исполняемому входному stub TR-DOS 5.03 по адресу #3D13; версия ROM и сама точка входа подтверждены, поэтому дальнейшая замена адреса/версии не обоснована.
+- Сопоставление с рабочим 0/zx_main/main.asm выявило главное архитектурное отличие: архив сначала выставляет #7FFD/BANKM=#10 и #EFF7=0, затем выполняет TR-DOS file I/O; ATM video init, DOSEN/window-0 mux #3FF7 и экранные страницы в архивном загрузочном пути до дисковых операций не включаются.
+- Host startup A45 теперь повторяет эту последовательность. Вся работа с TR-DOS (NEOLOAD.C, NEOF W.C, BIOS.C и секторное чтение) выполняется до p125_atm_video_init, #3FF7=#BF, RTC UI/log renderer.
+- Driver A63 удаляет временное переключение #7FFD=#10/#18 вокруг каждого API-вызова. Поиск C=#0A, descriptor C=#08 и sector read C=#05 используют один непрерывный архивный disk map; диагностические routines сохраняют входные регистры.
+- До инициализации экрана диагностические сообщения выводятся напрямую в #EF; после загрузки BIOS.C включаются ATM UI, DS12887 и обычные RTC timestamped screen logs. BIOS CRC selftest и запуск x86 выполняются после инициализации UI.
+- Это изолирующий перенос проверенной последовательности Project124/0, а не заявление, что runtime уже исправлен.
+- [ ] Build: SjASMPlus; проверить отсутствие ошибок и ProgramEnd <= #A800.
+- [ ] Runtime: ожидать [NLOAD 02] CATALOG SEARCH RETURN, затем descriptor/sector markers, firmware upload, BIOS.C load; после [TRACE A1] BIOS LOAD DONE должны начаться VIDEO INIT / RTC / UI markers.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.50 Archive-first TR-DOS boot order | SOURCE COMMITTED | Restore exact #7FFD/BANKM=#10 + #EFF7=0 startup and defer ATM video/window-0/DOSEN/RTC UI until NEOLOAD.C, NEOF W.C and BIOS.C disk I/O have completed. Remove per-call #10/#18 paging toggles. |
