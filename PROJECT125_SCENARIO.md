@@ -1373,3 +1373,80 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.92 restore missing RTC diagnostic workspace | SOURCE COMMITTED | Added the missing RAM labels referenced by the A1.91 stack-snapshot instrumentation; build/runtime remain unverified. |
+
+
+## A1.93 — обход trace helper после RTC DATA OUT (2026-11-04)
+
+- [x] Runtime A1.92: лог заканчивается после `[RTC 10] DATA OUT DONE`; прямой маркер `>` после вызова `p125_trace_port` не появляется.
+- [x] Участок сразу после записи CMOS data локализован как граница остановки: после вывода RTC 10 следующий шаг — возврат из trace helper и прямой `OUT (#EF)`.
+- [x] Вызов `p125_trace_port` для RTC 10 заменён inline-выводом той же строки через `OUT (C),A`, с сохранением AF/BC/HL и сбалансированным стеком. Остальные диагностические вызовы и CMOS порты не изменены.
+- [x] Runtime banner обновлён до `[RTC DRIVER A1.93]`.
+- [ ] Сборка `build_project125.bat`; проверить синтаксис и `ProgramEnd <= #A800`.
+- [ ] Runtime: если появляется `>` — остановка была связана с вызовом helper для RTC 10; затем проверить `[RTC 11]`, `<`, `ENTRY_RET/EXIT_RET`. Если `>` отсутствует — причина находится раньше либо в выводе/обработке порта `#EF`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.93 bypass RTC trace helper at stop boundary | SOURCE COMMITTED | Replaced the RTC 10 helper call with inline output to isolate the observed post-message stall; build/runtime remain unverified. |
+
+
+## A1.00 — read-only ATM keyboard-controller timer probe (2026-11-04)
+
+- [x] Добавлен отдельный модуль `zx_main/atm_kbd_rtc.asm` для независимой проверки таймера микроконтроллера XT/AT-клавиатуры.
+- [x] Вызов добавлен после инициализации K512VI1 CMOS RTC; существующий драйвер `rtc_driver.asm` не изменён.
+- [x] Проверка выполняет handshake `#55 -> #AA`, затем отдельный handshake перед командами чтения `#10/#50/#90/#D0`.
+- [x] Выводит сырые значения часов, минут, секунд и счётчика дней в порт `#EF`.
+- [x] Записывающие команды `#11/#51/#91/#D1` не используются; режим клавиатурного контроллера не переключается.
+- [ ] Сборка через `build_project125.bat`; проверить синтаксис SjASMPlus и ограничение `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить `[KBDRTC] CONTROLLER ACK #AA` либо `CONTROLLER NOT DETECTED`, затем получить строку `RAW H:M:S=...`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
+
+| 2026-11-04 | A1.00 | Added a non-invasive ATM keyboard MCU timer probe; no writes to the timer and no changes to the K512VI1 RTC or video subsystem. |
+
+
+## A1.94 — K512VI1 signature readback / port access diagnostic (2026-11-04)
+
+- [x] Runtime A1.93 подтверждает, что `write_byte_raw` проходит участок после записи: появились `>` и `[RTC 11] WRITE RET`; это подтверждает возврат кода, но не принятие записи CMOS.
+- [x] Добавлен вывод фактически прочитанного значения регистра подписи #11 сразу после открытия K512VI1.
+- [x] После холодной записи #AA добавлено повторное чтение того же регистра и сравнение с #AA.
+- [x] В лог выводится `SIGNATURE READ #11=xx`, затем `SIGNATURE READBACK #11=xx` и результат `WRITE VERIFIED` либо `WRITE MISMATCH`.
+- [x] Не меняются адреса портов #EFF7/#DFF7/#BFF7, видеорежим и ATM shadow-port setup.
+- [ ] Сборка через `build_project125.bat`; проверить синтаксис SjASMPlus и ограничение `ProgramEnd <= #A800`.
+- [ ] Runtime: прислать полный лог от `[RTC DRIVER A1.94]`; особенно значения `SIGNATURE READ` и `SIGNATURE READBACK`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
+
+| 2026-11-04 | A1.94 K512VI1 signature readback | SOURCE COMMITTED | Logs the CMOS signature value and verifies the cold-start signature write by reading register #11 back; build/runtime remain unverified. |
+
+
+## A1.10 — native ATM Turbo 2+ 8031 RTC driver (2026-11-04)
+
+- [x] Проверена документация ATM Turbo 2+ плат 7.00–7.10: протокол контроллера — `#55 -> #AA`, затем команда чтения через `IN A,(#FE)`.
+- [x] Подтверждены команды времени `#10/#50/#90` (секунды/минуты/часы) и даты `#12/#52/#92` (число/месяц/год).
+- [x] Исправлена прежняя ошибка в трактовке команд: `#D0` — счётчик дней RTC, а не дата месяца; дата читается командами `#12/#52/#92`.
+- [x] `atm_kbd_rtc.asm` заменён полноценным read-only драйвером A1.10: независимый handshake перед каждой командой, чтение времени/даты, диагностический вывод сырых байтов.
+- [x] Реализован API `READ_CURRENT_TIME` для существующего timestamp logger; значения преобразуются в десятичные ASCII-цифры.
+- [x] Startup Project125 больше не вызывает K512VI1 CMOS initialization на ATM; CMOS-драйвер `rtc_driver.asm` оставлен в проекте, его API чтения времени на ATM не используется.
+- [x] Не выполняются команды записи времени/даты; видеорежим, ATM shadow ports, клавиатурный режим и CMOS I/O не меняются.
+- [ ] Сборка через `build_project125.bat`; проверить SjASMPlus syntax и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить `[ATM RTC A1.10] 8031 RTC DRIVER`, `CONTROLLER ACK #AA`, строку TIME/DATE и появление корректных timestamp `[HH:MM:SS]`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
+
+| 2026-11-04 | A1.10 native ATM 8031 RTC | SOURCE COMMITTED | Replaced the non-invasive probe with a read-only RTC driver and routed the logger timestamp API to ATM's native controller. Build and runtime remain unverified. |
+
+
+## A1.10.1 — fix SjASMPlus branch range in ATM RTC driver (2026-11-04)
+
+- [x] Replaced relative `JR` branches in `atm_kbd_rtc.asm` with absolute `JP` branches. This removes the Z80 signed 8-bit displacement limit that caused assembler errors at the long probe/error paths.
+- [ ] Rebuild with `build.bat` / project build script; confirm no further assembler diagnostics.
+- [ ] Runtime verification remains pending.
+- **Status:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
+
+
+## A1.11 — локализация сбоя при открытии NEOLOAD.C (2026-11-04)
+
+- [x] Runtime A1.10: после `[TRACE 70] NEOLOAD READ BEGIN` экран исчезает и ATM перезагружается; `[TRACE 71]` отсутствует.
+- [x] По исходнику подтверждено: `load_neogs_bootstrap_file` входит в `neo_fw_open_file`: поиск каталога TR-DOS через `#3D13`, чтение дескриптора, затем чтение первого сектора в #C000. Передача данных NeoGS на этом этапе ещё не начинается.
+- [x] В `neogs_driver.asm` добавлены независимые маркеры порта #EF вокруг входа в `neo_fw_open_file`, обоих вызовов TR-DOS каталога/дескриптора и чтения первого сектора. Функциональные команды, адреса портов и порядок загрузки не изменены.
+- [ ] Сборка через `build_project125.bat`; проверить SjASMPlus и размер host image.
+- [ ] Runtime: прислать лог с последним достигнутым маркером `[NLOAD xx]`. Это разделит поиск каталога, чтение дескриптора и чтение сектора.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.11 NEOLOAD.C TR-DOS boundary tracing | SOURCE COMMITTED | Added port-#EF checkpoints around TR-DOS open/descriptor/first-sector calls; no loader protocol or data path changed. |

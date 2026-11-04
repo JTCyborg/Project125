@@ -30,8 +30,16 @@ CHECK_AND_INIT_CMOS::
         CALL    p125_trace_port
         LD      A, #11
         CALL    read_byte_raw
+        LD      (rtc_diag_value), A
         LD      HL, rtc_trace_04_signature_read_done
         CALL    p125_trace_port
+        LD      HL, rtc_trace_signature_value
+        CALL    p125_trace_port
+        LD      A, (rtc_diag_value)
+        CALL    rtc_trace_hex8
+        LD      HL, rtc_trace_line_end
+        CALL    p125_trace_port
+        LD      A, (rtc_diag_value)
         CP      #AA
         JP      Z, rtc_already_active
 
@@ -42,6 +50,27 @@ CHECK_AND_INIT_CMOS::
         LD      L, #AA
         CALL    write_byte_raw
 rtc_signature_write_return:
+        ; Read the same register back. OUT completion alone does not prove
+        ; that the CMOS decoder accepted the write.
+        LD      A, #11
+        CALL    read_byte_raw
+        LD      (rtc_diag_value), A
+        LD      HL, rtc_trace_signature_readback
+        CALL    p125_trace_port
+        LD      A, (rtc_diag_value)
+        CALL    rtc_trace_hex8
+        LD      HL, rtc_trace_line_end
+        CALL    p125_trace_port
+        LD      A, (rtc_diag_value)
+        CP      #AA
+        JR      Z, .signature_verified
+        LD      HL, rtc_trace_signature_bad
+        CALL    p125_trace_port
+        JR      .signature_check_done
+.signature_verified:
+        LD      HL, rtc_trace_signature_ok
+        CALL    p125_trace_port
+.signature_check_done:
         LD      HL, rtc_trace_06_signature_write_done
         CALL    p125_trace_port
 
@@ -70,7 +99,7 @@ rtc_already_active:
         POP     BC: POP     AF
         RET
 
-rtc_driver_version:              DEFB "[RTC DRIVER A1.92]", 13, 10, 0
+rtc_driver_version:              DEFB "[RTC DRIVER A1.94]", 13, 10, 0
 rtc_trace_01_open_begin:          DEFB "[RTC 01] OPEN BEGIN", 13, 10, 0
 rtc_trace_02_open_done:           DEFB "[RTC 02] OPEN DONE", 13, 10, 0
 rtc_trace_03_signature_read_begin: DEFB "[RTC 03] SIGNATURE READ BEGIN", 13, 10, 0
@@ -83,53 +112,16 @@ rtc_trace_09_reg_b_write_begin:   DEFB "[RTC 09] REG B WRITE BEGIN", 13, 10, 0
 rtc_trace_0A_reg_b_write_done:    DEFB "[RTC 0A] REG B WRITE DONE", 13, 10, 0
 rtc_trace_0B_close_begin:         DEFB "[RTC 0B] CLOSE BEGIN", 13, 10, 0
 rtc_trace_0C_close_done:          DEFB "[RTC 0C] CLOSE DONE", 13, 10, 0
+rtc_trace_signature_value:       DEFB "[RTC] SIGNATURE READ #11=", 0
+rtc_trace_signature_readback:    DEFB "[RTC] SIGNATURE READBACK #11=", 0
+rtc_trace_signature_ok:          DEFB "[RTC] SIGNATURE WRITE VERIFIED", 13, 10, 0
+rtc_trace_signature_bad:         DEFB "[RTC] SIGNATURE WRITE MISMATCH", 13, 10, 0
+rtc_trace_line_end:              DEFB 13, 10, 0
 
-; =========================================================================
-; ПРОЦЕДУРА ЧТЕНИЯ ТЕКУЩЕГО ВРЕМЕНИ ИЗ ЧИПА RTC
-; =========================================================================
-READ_CURRENT_TIME::                     
-        PUSH    AF: PUSH BC: PUSH HL
-        LD      A, I
-        PUSH    AF
-        DI
-        CALL    open_cmos
-
-.wait_rtc
-        ; Контролируем флаг обновления UIP (битовая маска #80 в регистре #0A)
-        LD      A, #0A
-        CALL    read_byte_raw
-        RLA                             
-        JR      C, .wait_rtc            
-
-        ; Вычитываем BCD данные с атомарным сохранением в текстовые буферы
-        ; 1. Секунды (Ячейка #00)
-        LD      A, #00
-        CALL    read_byte_raw
-        CALL    split_bcd
-        LD      A, H: LD (txt_sec+0), A
-        LD      A, L: LD (txt_sec+1), A
-
-        ; 2. Минуты (Ячейка #02)
-        LD      A, #02
-        CALL    read_byte_raw
-        CALL    split_bcd
-        LD      A, H: LD (txt_min+0), A
-        LD      A, L: LD (txt_min+1), A
-
-        ; 3. Часы (Ячейка #04)
-        LD      A, #04
-        CALL    read_byte_raw
-        CALL    split_bcd
-        LD      A, H: LD (txt_hour+0), A
-        LD      A, L: LD (txt_hour+1), A
-
-        CALL    close_cmos
-        POP     AF
-        JP      PO, .interrupts_were_disabled
-        EI
-.interrupts_were_disabled:
-        POP     HL: POP BC: POP AF
-        RET
+; READ_CURRENT_TIME is implemented by atm_kbd_rtc.asm for Project125.
+; The K512VI1 CMOS initialization and low-level routines below remain
+; available for the Pentagon/Project124 hardware path, but are not called
+; by the ATM Turbo 2+ startup sequence.
 
 ; --- Атомарное низкоуровневое чтение байта из К512ВИ1 ---
 read_byte_raw
@@ -170,8 +162,25 @@ write_byte_raw
         LD      BC, #BFF7
         OUT     (C), L
         LD      (rtc_write_index), A
+        ; A1.93: emit RTC 10 inline. This deliberately bypasses
+        ; p125_trace_port at the exact boundary where A1.92 stopped.
+        ; Preserve the live register set and keep the stack balanced.
+        PUSH    AF
+        PUSH    BC
+        PUSH    HL
         LD      HL, rtc_trace_10_data_out_done
-        CALL    p125_trace_port
+        LD      BC, #00EF
+.rtc10_inline_loop:
+        LD      A, (HL)
+        INC     HL
+        OR      A
+        JR      Z, .rtc10_inline_done
+        OUT     (C), A
+        JR      .rtc10_inline_loop
+.rtc10_inline_done:
+        POP     HL
+        POP     BC
+        POP     AF
 
         LD      BC, #00EF
         LD      A, '>'
@@ -352,5 +361,6 @@ rtc_write_index:    DEFB 0
 rtc_exit_sp:        DEFW 0
 rtc_exit_ret:       DEFW 0
 rtc_expected_addr:  DEFW 0
+rtc_diag_value:     DEFB 0
 
 ; =========================================================================

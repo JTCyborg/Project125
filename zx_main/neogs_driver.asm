@@ -25,6 +25,10 @@ load_neogs_firmware_file::
 
 ; HL points to an eight-character TR-DOS filename (extension is always C).
 neo_fw_open_file:
+        push    hl
+        ld      hl, trace_noload_00_entry
+        call    p125_trace_port
+        pop     hl
         ld      (neo_fw_requested_name_ptr), hl
         ld      hl, (neo_fw_requested_name_ptr)
         ; Search the requested exact 8.3 catalogue name.
@@ -36,7 +40,11 @@ neo_fw_open_file:
         ld      a, 9
         ld      (#5D06), a
         ld      c, 10
+        ld      hl, trace_noload_01_search_call
+        call    p125_trace_port
         call    #3D13
+        ld      hl, trace_noload_02_search_return
+        call    p125_trace_port
         ld      a, c
         cp      #FF
         jp      z, .file_not_found
@@ -48,7 +56,11 @@ neo_fw_open_file:
         ld      (#5D10), a
         pop     af
         ld      c, 8
+        ld      hl, trace_noload_03_descriptor_call
+        call    p125_trace_port
         call    #3D13
+        ld      hl, trace_noload_04_descriptor_return
+        call    p125_trace_port
         ld      a, (#5D0F)
         ld      b, a
         ld      a, (#5D10)
@@ -83,8 +95,12 @@ neo_fw_open_file:
 
         ; Read only the first sector now. Later sectors are fetched on demand
         ; by the active transfer after the preceding buffer bytes have been sent.
+        ld      hl, trace_noload_05_sector_call
+        call    p125_trace_port
         call    neo_fw_read_next_sector
         jp      c, .sector_read_failed
+        ld      hl, trace_noload_06_sector_return
+        call    p125_trace_port
         xor     a
         ret
 
@@ -126,7 +142,13 @@ neo_fw_read_next_sector:
         xor     a
         ld      (#5D0F), a
         ld      (#5D10), a
+        push    hl
+        ld      hl, trace_noload_07_trdos_read_call
+        call    p125_trace_port
+        pop     hl
         call    #3D13
+        ld      hl, trace_noload_08_trdos_read_return
+        call    p125_trace_port
         ld      a, (#5D0F)
         ld      b, a
         ld      a, (#5D10)
@@ -1197,4 +1219,13 @@ msg_p7_high_tx:        db "[P125] PH7 TX HIGH", 13, 10, 0
 msg_p7_high_ok:       db "[P125] PH7 HIGH ACK", 13, 10, 0
 msg_p7_wait_a3:        db "[P125] PH7 WAIT A3", 13, 10, 0
 msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261103-A41 TRACE", 13, 10, 0
+trace_noload_00_entry:             defb "[NLOAD 00] OPEN ENTRY", 13, 10, 0
+trace_noload_01_search_call:       defb "[NLOAD 01] CATALOG SEARCH CALL", 13, 10, 0
+trace_noload_02_search_return:     defb "[NLOAD 02] CATALOG SEARCH RETURN", 13, 10, 0
+trace_noload_03_descriptor_call:   defb "[NLOAD 03] DESCRIPTOR CALL", 13, 10, 0
+trace_noload_04_descriptor_return: defb "[NLOAD 04] DESCRIPTOR RETURN", 13, 10, 0
+trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 0
+trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
+trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
+trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A42 NEOLOAD TRACE", 13, 10, 0
