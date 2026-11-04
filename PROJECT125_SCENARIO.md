@@ -1400,3 +1400,17 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
 
 | 2026-11-04 | A1.00 | Added a non-invasive ATM keyboard MCU timer probe; no writes to the timer and no changes to the K512VI1 RTC or video subsystem. |
+
+
+## A1.94 — K512VI1 signature readback / port access diagnostic (2026-11-04)
+
+- [x] Runtime A1.93 подтверждает, что `write_byte_raw` проходит участок после записи: появились `>` и `[RTC 11] WRITE RET`; это подтверждает возврат кода, но не принятие записи CMOS.
+- [x] Добавлен вывод фактически прочитанного значения регистра подписи #11 сразу после открытия K512VI1.
+- [x] После холодной записи #AA добавлено повторное чтение того же регистра и сравнение с #AA.
+- [x] В лог выводится `SIGNATURE READ #11=xx`, затем `SIGNATURE READBACK #11=xx` и результат `WRITE VERIFIED` либо `WRITE MISMATCH`.
+- [x] Не меняются адреса портов #EFF7/#DFF7/#BFF7, видеорежим и ATM shadow-port setup.
+- [ ] Сборка через `build_project125.bat`; проверить синтаксис SjASMPlus и ограничение `ProgramEnd <= #A800`.
+- [ ] Runtime: прислать полный лог от `[RTC DRIVER A1.94]`; особенно значения `SIGNATURE READ` и `SIGNATURE READBACK`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
+
+| 2026-11-04 | A1.94 K512VI1 signature readback | SOURCE COMMITTED | Logs the CMOS signature value and verifies the cold-start signature write by reading register #11 back; build/runtime remain unverified. |
