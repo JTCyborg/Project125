@@ -48,9 +48,13 @@ p125_atm_video_init::
         jp      #3D2F
 
 p125_atm_ports_open_done:
-        ; Preserve ROM selection (bit 4) and select alternate screen pages
-        ; 7/3 (bit 3). The CPU still sees host pages 5/0 outside draw calls.
-        ld      a, #18
+        ; Preserve the active ROM selection from the Spectrum 128K BANKM
+        ; shadow. In particular, do NOT force bit 4: TR-DOS must remain mapped
+        ; after video init because later file operations call ROM entry #3D13.
+        ; Set only bit 3 to select the alternate screen while preserving all
+        ; other #7FFD latch bits, including the TR-DOS ROM selection.
+        ld      a, (#5C3B)
+        or      #08
         ld      bc, #7FFD
         out     (c), a
         ld      (#5C3B), a
