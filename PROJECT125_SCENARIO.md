@@ -1551,3 +1551,16 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | D1.06 / A1.20 GLUK + SMUC split diagnostics | SOURCE COMMITTED | Corrected the stale D1.04 banner and added separate register triplets for both backends. The supplied A20 runtime log shows #5FBE=FF and FF status bytes; no RTC PASS. Build and next runtime remain pending. |
+
+
+## A1.21 — исправление параметра SMUC в Unreal Speccy (2026-11-04)
+
+- [x] По исходнику Unreal Speccy `config.cpp` подтверждено, что `SMUC` читается через `GetPrivateProfileInt("MISC", "SMUC", 0, ...)`.
+- [x] Значение `SMUC=enable` не является допустимым числовым включением: Win32 `GetPrivateProfileInt` возвращает значение по умолчанию 0, поэтому `conf.smuc` остаётся выключенным.
+- [x] Правильная настройка для конфигурации эмулятора: секция `[MISC]`, параметр `SMUC=1`. `CMOS=DALLAS` остаётся строковым параметром и распознаётся отдельно.
+- [x] Runtime D1.06 зафиксирован: GLUK D/A/B=`FF FF FF`, SMUC D/A/B=`FF FF FF`, `#5FBE=FF`; результат согласуется с выключенным `conf.smuc`, а не доказывает неисправность DS12887.
+- [ ] После исправления `unreal.ini` перезапустить Unreal Speccy и проверить `SMUC ID #5FBE=57`.
+- [ ] При `#5FBE=57` проверить Status D/A/B и получить RAW H:M:S; только затем считать RTC доступным.
+- **Статус:** ROOT CAUSE IDENTIFIED / CONFIG CHANGE NOT YET RUNTIME VERIFIED.
+
+| 2026-11-04 | A1.21 SMUC numeric configuration | ROOT CAUSE IDENTIFIED | Unreal Speccy reads MISC/SMUC as an integer; `SMUC=enable` evaluates to the default 0. Use `[MISC]` and `SMUC=1`; runtime verification pending. |
