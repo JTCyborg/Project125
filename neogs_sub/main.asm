@@ -1186,20 +1186,15 @@ x86_io_trace_count: db 0
 ; calculated physical address. This distinguishes an uninitialized ES from
 ; an actual RAM data mismatch.
 x86_resident_memtest_scas_trace:
-        ; BIOS RAM sweeps use REPE SCAS. Ignore successful comparisons and
-        ; F2/REPNE searches; retain the first four actual REPE mismatches.
+        ; Capture the first twelve SCAS iterations, including successful
+        ; comparisons. This exposes the data stream and ZF before REP decides
+        ; whether to continue. Do not filter by REP mode or comparison result.
         ld      a, (x86_string_opcode)
         and     #FE
         cp      #AE
         ret     nz
-        ld      a, (x86_real_rep_mode)
-        cp      3
-        ret     nz
-        ld      a, (x86_reg_flags)
-        bit     6, a
-        ret     nz
         ld      a, (x86_memtest_scas_trace_count)
-        cp      4
+        cp      12
         ret     nc
         inc     a
         ld      (x86_memtest_scas_trace_count), a
