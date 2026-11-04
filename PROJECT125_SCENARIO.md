@@ -1349,3 +1349,15 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Сборка через `build_project125.bat`; проверить SjASMPlus syntax и размер resident host image.
 - [ ] Runtime: прислать строку `[RTC DRIVER A1.90]` и диагностическую строку `SP=xxxx ACTUAL=xxxx EXPECTED=67C0`.
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+## A1.91 — снимки стека на входе и выходе RTC write (2026-11-04)
+
+- [x] Runtime A1.90: `SP=AFF7 ACTUAL=0000 EXPECTED=67C0`; SP находится в ожидаемой верхней области host stack, но слово по вершине стека не совпадает с адресом возврата.
+- [x] В `write_byte_raw` добавлен снимок `SP` и двух байтов по `(SP)` непосредственно при входе, до первого вызова `p125_trace_port`.
+- [x] Добавлен второй снимок тех же значений непосредственно перед `RET`, после всех RTC trace helper вызовов.
+- [x] Диагностика выполняется только для записи регистра CMOS #11; снимки сохраняются в RAM, живой стек не модифицируется.
+- [ ] Сборка через `build_project125.bat`; проверить синтаксис SjASMPlus и ограничение resident host image.
+- [ ] Runtime: проверить `ENTRY_SP`, `ENTRY_RET`, `EXIT_SP`, `EXIT_RET`, `EXPECTED`. Если ENTRY_RET уже неверен — исследовать caller/call boundary; если ENTRY_RET верен, а EXIT_RET повреждён — локализовать изменение внутри trace helper path.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.91 RTC entry/exit stack snapshots | SOURCE COMMITTED | Captures stack pointer and return word before the first trace call and immediately before RET; build/runtime remain unverified. |
