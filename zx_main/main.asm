@@ -221,8 +221,9 @@ Init_Z80_System:
         ; Stage 3: execute the BIOS from the architectural 8086 reset vector.
         ld      hl, msg_bios_run
         call    p125_print_string
-        ld      hl, trace_B0_bios_exec_begin
-        call    p125_trace_port
+        ; BIOS EXEC BEGIN trace disabled to keep the debug log compact.
+        ; ld      hl, trace_B0_bios_exec_begin
+        ; call    p125_trace_port
         call    neogs_bios_boot_and_get_result
         ld      hl, trace_B1_bios_exec_return
         call    p125_trace_port
