@@ -304,6 +304,18 @@ x86_real_dispatch:
         dec     hl
         ld      (x86_real_steps), hl
 
+        ; Live BIOS progress: emit CS:IP/CX every 2048 guest instructions.
+        ; The host drains DBIT concurrently while CMD_BOOT_BIOS holds CBIT.
+        ld      a, l
+        or      a
+        jr      nz, x86_real_dispatch_no_progress
+        ld      a, h
+        and     #07
+        jr      nz, x86_real_dispatch_no_progress
+        ld      a, (x86_real_progress_enable)
+        or      a
+        call    nz, bios_progress_emit
+x86_real_dispatch_no_progress:
         call    x86_real_fetch8
         ret     c
 
