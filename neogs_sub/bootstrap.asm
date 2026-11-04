@@ -4,9 +4,9 @@
 ; GS105a command #14 (RECEIVE BLOCK) loads this raw Z80 image into fixed RAM
 ; at $4000. GS105a command #13 (JUMP TO ADDRESS) enters it at $4000.
 ;
-; The bootstrap maps RAM over the low ROM window, receives a 16-bit firmware
-; length and exactly that many bytes through the documented ZX data channel,
-; stores the custom firmware at RAM address $0000, then jumps to $0000.
+; The bootstrap maps RAM over the low ROM window, receives a 16-bit P125
+; package length and a three-segment manifest, stores the resident image in
+; page 0 and two overlays in physical pages 68/69, then jumps to $0000.
 ;
 ; It executes from fixed RAM window $4000-$7FFF. During bootstrap receive,
 ; its temporary stack is at $FFFE in WIN3/page #02. Before normal firmware
@@ -93,37 +93,143 @@ neogs_bootstrap_start:
         ld      a, '2'
         out     (#EF), a
 
-        ; Reject zero length and any image larger than the low 16-KiB window ($4000).
+        ; The package contains a 10-byte header plus at most 48 KiB of data.
+        ; V1's 16-bit length exchange is retained; only the payload format is
+        ; segmented. Maximum package size is 0xC00A bytes.
         ld      a, d
-        or      e
-        jr      z, bootstrap_error
-        ld      a, d
-        cp      #40
-        jr      c, bootstrap_length_ok
+        cp      #C0
+        jr      c, bootstrap_length_valid
         jr      nz, bootstrap_error
         ld      a, e
-        or      a
-        jr      nz, bootstrap_error
+        cp      #0B
+        jr      nc, bootstrap_error
 
-bootstrap_length_ok:
-        ; Explicitly acknowledge that the length is accepted before the host
-        ; starts streaming the firmware payload.
+bootstrap_length_valid:
+        ld      (bootstrap_total_length), de
+
+        ; Acknowledge the complete package length before payload streaming.
         ld      a, NGS_BOOTSTRAP_LENGTH_ACK
         call    bootstrap_send_data_byte
-        ld      hl, 0
 
-bootstrap_copy_loop:
+        ; Manifest: "P125", WORD resident_len, WORD page68_len, WORD page69_len.
+        call    bootstrap_receive_data_byte
+        cp      'P'
+        jr      nz, bootstrap_error
+        call    bootstrap_receive_data_byte
+        cp      '1'
+        jr      nz, bootstrap_error
+        call    bootstrap_receive_data_byte
+        cp      '2'
+        jr      nz, bootstrap_error
+        call    bootstrap_receive_data_byte
+        cp      '5'
+        jr      nz, bootstrap_error
+
+        call    bootstrap_read_word
+        ld      (bootstrap_resident_length), hl
+        call    bootstrap_read_word
+        ld      (bootstrap_overlay68_length), hl
+        call    bootstrap_read_word
+        ld      (bootstrap_overlay69_length), hl
+
+        ; Resident section must be 1..16 KiB.
+        ld      hl, (bootstrap_resident_length)
+        ld      a, h
+        cp      #40
+        jr      c, .resident_nonzero
+        jr      nz, bootstrap_error
+        ld      a, l
+        or      a
+        jr      nz, bootstrap_error
+.resident_nonzero:
+        ld      a, h
+        or      l
+        jr      z, bootstrap_error
+
+        ; Each overlay may be empty, but neither may exceed one 16-KiB page.
+        ld      hl, (bootstrap_overlay68_length)
+        call    bootstrap_validate_page_length
+        jr      c, bootstrap_error
+        ld      hl, (bootstrap_overlay69_length)
+        call    bootstrap_validate_page_length
+        jr      c, bootstrap_error
+
+        ; The three section lengths must account for the exact package size.
+        ld      hl, (bootstrap_resident_length)
+        ld      de, (bootstrap_overlay68_length)
+        add     hl, de
+        ld      de, (bootstrap_overlay69_length)
+        add     hl, de
+        ld      de, 10
+        add     hl, de
+        ld      de, (bootstrap_total_length)
+        or      a
+        sbc     hl, de
+        jr      nz, bootstrap_error
+
+        ; Resident firmware -> WIN0 / physical page 0.
+        ld      hl, 0
+        ld      de, (bootstrap_resident_length)
+        call    bootstrap_copy_segment
+
+        ; Overlay 1 -> WIN2 / physical page 68.
+        ld      a, #22                    ; ROR8(68)
+        out     (MPAG), a
+        ld      hl, #8000
+        ld      de, (bootstrap_overlay68_length)
+        call    bootstrap_copy_segment
+
+        ; Overlay 2 -> WIN2 / physical page 69.
+        ld      a, #A2                    ; ROR8(69)
+        out     (MPAG), a
+        ld      hl, #8000
+        ld      de, (bootstrap_overlay69_length)
+        call    bootstrap_copy_segment
+
+        ; Resident firmware expects page 68 to be the default WIN2 mapping.
+        ld      a, #22
+        out     (MPAG), a
+
+bootstrap_start_firmware:
+        jp      0
+
+; Read a little-endian WORD from the host data stream into HL.
+bootstrap_read_word:
+        call    bootstrap_receive_data_byte
+        ld      l, a
+        call    bootstrap_receive_data_byte
+        ld      h, a
+        ret
+
+; IN HL=length. Carry set if the section is larger than 16 KiB.
+bootstrap_validate_page_length:
+        ld      a, h
+        cp      #40
+        jr      c, .page_length_valid
+        jr      nz, .page_length_invalid
+        ld      a, l
+        or      a
+        jr      z, .page_length_valid
+.page_length_invalid:
+        scf
+        ret
+.page_length_valid:
+        or      a
+        ret
+
+; IN HL=destination, DE=section length. Receive exactly DE bytes.
+; The executing bootstrap and its stack are in WIN1/WIN3, so switching WIN2
+; cannot overwrite either one.
+bootstrap_copy_segment:
+.copy_loop:
         ld      a, d
         or      e
-        jr      z, bootstrap_start_firmware
+        ret     z
         call    bootstrap_receive_data_byte
         ld      (hl), a
         inc     hl
         dec     de
-        jr      bootstrap_copy_loop
-
-bootstrap_start_firmware:
-        jp      0
+        jr      .copy_loop
 
 bootstrap_error:
         ld      a, NGS_BOOTSTRAP_ERROR_ACK
@@ -248,6 +354,10 @@ bootstrap_send_data_byte:
 .tx_done:
         ret
 
+bootstrap_total_length:    dw 0
+bootstrap_resident_length: dw 0
+bootstrap_overlay68_length: dw 0
+bootstrap_overlay69_length: dw 0
 bootstrap_tx_byte:
         db      0
 bootstrap_trace_value:
