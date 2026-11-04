@@ -149,12 +149,18 @@ write_byte_raw
         OUT     (C), L
         LD      HL, rtc_trace_10_data_out_done
         CALL    p125_trace_port
+
+        ; Last checkpoint inside the callee. If this appears but RTC 06 does
+        ; not, investigate the RET target/stack rather than either OUT cycle.
+        LD      HL, rtc_trace_11_write_ret
+        CALL    p125_trace_port
         RET
 
 rtc_trace_0D_index_out_begin: DEFB "[RTC 0D] INDEX OUT BEGIN", 13, 10, 0
 rtc_trace_0E_index_out_done:  DEFB "[RTC 0E] INDEX OUT DONE", 13, 10, 0
 rtc_trace_0F_data_out_begin:  DEFB "[RTC 0F] DATA OUT BEGIN", 13, 10, 0
 rtc_trace_10_data_out_done:   DEFB "[RTC 10] DATA OUT DONE", 13, 10, 0
+rtc_trace_11_write_ret:        DEFB "[RTC 11] WRITE RET", 13, 10, 0
 
 open_cmos
         LD      BC, #EFF7
