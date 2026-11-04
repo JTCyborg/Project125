@@ -105,10 +105,18 @@ x86_io_read8:
         sbc     hl, de
         jr      z, x86_pic_read_data
         ld      hl, (x86_io_port)
-        ld      de, #0040
+        ld      a, h
         or      a
-        sbc     hl, de
-        jr      z, x86_pit_read_channel0
+        jr      nz, .read8_open_bus
+        ld      a, l
+        cp      #40
+        jr      c, .read8_after_pit
+        cp      #43
+        jr      nc, .read8_after_pit
+        sub     #40
+        ld      (x86_pit_channel), a
+        jp      x86_pit_read_selected
+.read8_after_pit:
         ; IBM PC/XT 8255: PA keyboard data, PB system control,
         ; PC memory-size/cassette sense, and control-word latch.
         ld      a, (x86_io_port+1)
@@ -187,10 +195,18 @@ x86_io_write8:
         sbc     hl, de
         jp      z, x86_pit_write_control
         ld      hl, (x86_io_port)
-        ld      de, #0040
+        ld      a, h
         or      a
-        sbc     hl, de
-        jp      z, x86_pit_write_channel0
+        jr      nz, .write8_after_pit
+        ld      a, l
+        cp      #40
+        jr      c, .write8_after_pit
+        cp      #43
+        jr      nc, .write8_after_pit
+        sub     #40
+        ld      (x86_pit_channel), a
+        jp      x86_pit_write_selected
+.write8_after_pit:
         ld      a, (x86_io_port+1)
         or      a
         jr      nz, .write8_unmapped
@@ -318,67 +334,181 @@ x86_pic_write_data:
         ld      (x86_pic_mask), a
         ret
 
-; PIT 8253 channel 0. Supports LSB/MSB and LSB-then-MSB, modes 0/2/3.
+; Three-channel 8253/8254 programming interface.
+; Each channel has independent reload/count, access sequencing and mode.
+; The common elapsed-time engine in main.asm currently clocks IRQ0/channel 0.
 x86_pit_write_control:
         ld      a, (x86_io_value)
+        ld      b, a
         and     #C0
-        ret     nz                      ; only channel 0
-        ld      a, (x86_io_value)
+        cp      #C0
+        ret     z                       ; read-back command handled below
+        rlca
+        rlca
+        and     3
+        ld      (x86_pit_channel), a
+        ld      a, b
         and     #30
-        ret     z                       ; latch command: preserve active count
-        ld      a, (x86_io_value)
-        and     #30
+        jr      z, x86_pit_latch_selected
         srl     a
         srl     a
         srl     a
         srl     a
         ld      (x86_pit_access), a
-        ld      a, (x86_io_value)
+        ld      a, b
         srl     a
         and     7
+        cp      6
+        jr      c, .mode_valid
+        sub     4                       ; 6->2, 7->3 aliases
+.mode_valid:
         ld      (x86_pit_mode), a
         xor     a
         ld      (x86_pit_write_phase), a
         ld      (x86_pit_read_phase), a
+        ld      a, (x86_pit_channel)
+        call    x86_pit_channel_ptr
+        ld      a, (x86_pit_mode)
+        ld      (hl), a
         ret
 
-x86_pit_write_channel0:
+x86_pit_latch_selected:
+        ; A count latch command is ignored if a previous latch is unread.
+        ld      a, (x86_pit_channel)
+        call    x86_pit_channel_word_ptr
+        inc     hl
+        inc     hl
+        ld      a, (hl)
+        or      a
+        ret     nz
+        dec     hl
+        dec     hl
+        ld      e, (hl)
+        inc     hl
+        ld      d, (hl)
+        inc     hl
+        ld      (hl), e
+        inc     hl
+        ld      (hl), d
+        inc     hl
+        ld      a, 1
+        ld      (hl), a
+        ret
+
+x86_pit_read_selected:
+        ld      a, (x86_pit_channel)
+        call    x86_pit_channel_word_ptr
+        ; HL points to reload; countdown follows at +2, latch at +4.
+        inc     hl
+        inc     hl
+        ld      a, (x86_pit_latched)
+        or      a
+        jr      z, .read_live
+        inc     hl
+        inc     hl
+.read_live:
+        ld      a, (x86_pit_read_phase)
+        or      a
+        jr      nz, .read_high
+        ld      a, (hl)
+        ld      b, a
+        ld      a, (x86_pit_access)
+        cp      2
+        jr      z, .read_done
+        ld      a, 1
+        ld      (x86_pit_read_phase), a
+        ld      a, b
+        ret
+.read_high:
+        inc     hl
+        ld      a, (hl)
+        xor     a
+        ld      (x86_pit_read_phase), a
+        ret
+.read_done:
+        xor     a
+        ld      (x86_pit_read_phase), a
+        ld      a, b
+        ret
+
+x86_pit_write_selected:
+        ld      a, (x86_pit_channel)
+        call    x86_pit_channel_word_ptr
         ld      a, (x86_pit_access)
         cp      1
-        jr      z, .lsb_only
+        jr      z, .write_lsb
         cp      2
-        jr      z, .msb_only
-        ; Access mode 3: low byte then high byte.
+        jr      z, .write_msb
         ld      a, (x86_pit_write_phase)
         or      a
         jr      nz, .write_high
         ld      a, (x86_io_value)
-        ld      (x86_pit_reload), a
+        ld      (hl), a
         ld      a, 1
         ld      (x86_pit_write_phase), a
         ret
 .write_high:
+        inc     hl
         ld      a, (x86_io_value)
-        ld      (x86_pit_reload+1), a
+        ld      (hl), a
         xor     a
         ld      (x86_pit_write_phase), a
-        jr      x86_pit_activate
-.lsb_only:
+        jr      .activate
+.write_lsb:
         ld      a, (x86_io_value)
-        ld      (x86_pit_reload), a
+        ld      (hl), a
+        inc     hl
         xor     a
-        ld      (x86_pit_reload+1), a
-        jr      x86_pit_activate
-.msb_only:
+        ld      (hl), a
+        jr      .activate
+.write_msb:
+        inc     hl
         ld      a, (x86_io_value)
-        ld      (x86_pit_reload+1), a
+        ld      (hl), a
+        dec     hl
         xor     a
-        ld      (x86_pit_reload), a
-x86_pit_activate:
+        ld      (hl), a
+.activate:
+        ld      a, (x86_pit_channel)
+        call    x86_pit_channel_word_ptr
+        inc     hl
+        inc     hl
+        ld      e, (hl)
+        inc     hl
+        ld      d, (hl)
+        inc     hl
+        ld      (hl), e
+        inc     hl
+        ld      (hl), d
+        ; Per-channel running flag.
+        inc     hl
+        ld      a, 1
+        ld      (hl), a
+        ; Preserve legacy channel-0 state used by the timer engine.
+        ld      a, (x86_pit_channel)
+        or      a
+        ret     nz
         ld      hl, (x86_pit_reload)
         ld      (x86_pit_countdown), hl
         ld      a, 1
         ld      (x86_pit_enabled), a
+        ret
+
+; HL -> per-channel mode byte. A=channel 0..2.
+x86_pit_channel_ptr:
+        ld      e, a
+        ld      d, 0
+        ld      hl, x86_pit_modes
+        add     hl, de
+        ret
+
+; HL -> reload word for selected channel. Channel records are parallel arrays.
+x86_pit_channel_word_ptr:
+        ld      e, a
+        ld      d, 0
+        ld      hl, x86_pit_reloads
+        add     hl, de
+        add     hl, de
         ret
 
 x86_io_trace_write8:
@@ -661,12 +791,20 @@ x86_pic_in_service:     db 0
 x86_pic_auto_eoi:       db 0
 x86_pic_read_isr:       db 0
 x86_io_irq_delivered:   db 0
+x86_pit_channel:        db 0
 x86_pit_access:         db 3
 x86_pit_mode:           db 3
 x86_pit_write_phase:    db 0
 x86_pit_read_phase:     db 0
 x86_pit_enabled:        db 0
+x86_pit_latched:        db 0
+x86_pit_modes:          db 3,3,3
+x86_pit_reloads:        dw 0,0,0
+x86_pit_counts:         dw 0,0,0
+x86_pit_latches:        dw 0,0,0
+x86_pit_running:        db 0,0,0
+; Channel-0 compatibility aliases used by the elapsed-time service.
 x86_pit_reload:         dw 0
 x86_pit_countdown:      dw 0
-x86_pit_last_tick:     dw 0
-x86_pit_fraction:      dw 0
+x86_pit_last_tick:      dw 0
+x86_pit_fraction:       dw 0
