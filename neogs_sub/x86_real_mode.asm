@@ -1377,6 +1377,7 @@ x86_real_moffs:
         ret     c
         jp      x86_real_next
 .moffs_read_byte:
+        call    x86_mem_calc_phys
         call    x86_mem_read8
         ret     c
         ld      (x86_reg_ax), a
@@ -1387,6 +1388,7 @@ x86_real_moffs:
         ld      (x86_reg_ax), hl
         jp      x86_real_next
 .moffs_write_byte:
+        call    x86_mem_calc_phys
         ld      a, (x86_reg_ax)
         ld      (x86_mem_value), a
         call    x86_mem_write8
