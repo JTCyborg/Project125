@@ -396,6 +396,10 @@ x86_real_dispatch:
         jp      z, x86_real_mov_segment
         cp      #8E
         jp      z, x86_real_mov_segment
+        cp      #C6
+        jp      z, x86_real_mov_immediate_rm
+        cp      #C7
+        jp      z, x86_real_mov_immediate_rm
         cp      #88
         jp      c, .not_mov_rm_reg
         cp      #8C
