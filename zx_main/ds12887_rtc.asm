@@ -1,6 +1,6 @@
 ; =========================================================================
 ; PROJECT125 — Dallas DS12887 RTC driver for ATM Turbo 2+
-; Version: D1.04
+; Version: D1.05
 ;
 ; ATM710 dual interface:
 ;   Native GLUK: EFF7 bit 7 gate, DFF7 index, BFF7 data.
@@ -47,7 +47,11 @@ DS12887_PROBE::
         ld      a, (ds12887_backend)
         or      a
         jr      z, ds12887_probe_status_ready
-        ld      bc, #FFBA
+        ; #5FBE is a fixed SMUC signature port in Unreal Speccy:
+        ; it returns #57 only when both CF_DOSPORTS and SMUC decode are active.
+        ; Unlike #FFBA (NVRAM output, which may legitimately be #FF),
+        ; this is a useful decoder-presence test.
+        ld      bc, #5FBE
         in      a, (c)
         ld      (ds12887_smuc_control), a
         ld      hl, ds12887_smuc_dump
@@ -441,7 +445,7 @@ DS12887_PRINT_CHAR:
 ds12887_banner:      defb "[DS12887 D1.04] GLUK/SMUC AUTO", 13, 10, 0
 ds12887_found:       defb "[DS12887] VRT OK; READ-ONLY CLOCK ACCESS", 13, 10, 0
 ds12887_status_dump: defb "[DS12887] STATUS D/A/B=", 0
-ds12887_smuc_dump:   defb "[DS12887] SMUC FFBA READBACK=", 0
+ds12887_smuc_dump:   defb "[DS12887] SMUC ID #5FBE=", 0
 ds12887_invalid:     defb "[DS12887] VRT BIT 7 CLEAR (CHECK CMOS PORT/POWER)", 13, 10, 0
 ds12887_read_error:  defb "[DS12887] UIP/SNAPSHOT READ ERROR", 13, 10, 0
 ds12887_raw_time:    defb "[DS12887] RAW H:M:S=", 0
