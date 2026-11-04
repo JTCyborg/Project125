@@ -1153,6 +1153,8 @@ x86_kbd_load_latch:
         ld      (x86_ppi_keyboard_data), a
         ld      a, 1
         ld      (x86_ppi_keyboard_ready), a
+        xor     a
+        ld      (x86_kbd_latch_from_queue), a
         ld      a, (x86_pic_pending)
         set     1, a
         ld      (x86_pic_pending), a
@@ -1203,6 +1205,7 @@ x86_kbd_queue_count: db 0
 
 
 x86_ppi_keyboard_ready: db 0
+x86_kbd_latch_from_queue: db 0
 x86_io_irq_index: db 0
 
 neogs_resident_end:

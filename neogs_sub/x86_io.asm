@@ -388,16 +388,13 @@ x86_io_trace_write8:
 x86_io_tick:
         ld      a, (x86_pit_enabled)
         or      a
-        jr      nz, .tick_timer
-        ret
-.tick_timer:
+        jr      z, .check_irq
         ld      hl, (x86_pit_countdown)
         dec     hl
         ld      (x86_pit_countdown), hl
         ld      a, h
         or      l
         jr      nz, .check_irq
-        ; Counter reached terminal count: latch IRQ0 and reload.
         ld      hl, (x86_pit_reload)
         ld      (x86_pit_countdown), hl
         ld      a, (x86_pic_pending)
@@ -411,40 +408,73 @@ x86_io_tick:
 .check_irq:
         ld      a, (x86_reg_flags+1)
         bit     1, a
-        jr      nz, .check_mask
-        or      a                       ; clear carry on no delivery
-        ret
-.check_mask:
-        ld      a, (x86_pic_mask)
-        bit     0, a
-        jr      z, .check_service
+        jr      nz, .if_enabled
         or      a
         ret
-.check_service:
-        ld      a, (x86_pic_in_service)
-        bit     0, a
-        jr      z, .check_pending
-        or      a
-        ret
-.check_pending:
+.if_enabled:
+        ; IRQ0 has priority over IRQ1.
         ld      a, (x86_pic_pending)
         bit     0, a
-        jr      nz, .deliver
+        jr      z, .try_irq1
+        ld      a, (x86_pic_mask)
+        bit     0, a
+        jr      nz, .try_irq1
+        ld      a, (x86_pic_in_service)
+        bit     0, a
+        jr      nz, .try_irq1
+        xor     a
+        jr      .deliver
+.try_irq1:
+        ld      a, (x86_pic_pending)
+        bit     1, a
+        jr      nz, .irq1_pending
         or      a
         ret
+.irq1_pending:
+        ld      a, (x86_pic_mask)
+        bit     1, a
+        jr      z, .irq1_unmasked
+        or      a
+        ret
+.irq1_unmasked:
+        ld      a, (x86_pic_in_service)
+        bit     1, a
+        jr      z, .irq1_ready
+        or      a
+        ret
+.irq1_ready:
+        ld      a, 1
 .deliver:
+        ld      (x86_io_irq_index), a
+        or      a
+        jr      nz, .deliver_irq1
+        ld      a, (x86_pic_pending)
         res     0, a
         ld      (x86_pic_pending), a
         ld      a, (x86_pic_auto_eoi)
         or      a
-        jr      nz, .auto_eoi
+        jr      nz, .deliver_vector
         ld      a, (x86_pic_in_service)
         set     0, a
         ld      (x86_pic_in_service), a
-.auto_eoi:
+        jr      .deliver_vector
+.deliver_irq1:
+        ld      a, (x86_pic_pending)
+        res     1, a
+        ld      (x86_pic_pending), a
+        ld      a, (x86_pic_auto_eoi)
+        or      a
+        jr      nz, .deliver_vector
+        ld      a, (x86_pic_in_service)
+        set     1, a
+        ld      (x86_pic_in_service), a
+.deliver_vector:
         ld      a, 1
         ld      (x86_io_irq_delivered), a
         ld      a, (x86_pic_vector)
+        ld      b, a
+        ld      a, (x86_io_irq_index)
+        add     a, b
         call    x86_int_enter
         ret
 
@@ -737,7 +767,6 @@ x86_ppi_port_c:          db 0
 x86_ppi_control:         db #99
 x86_ppi_keyboard_data:   db 0
 x86_ppi_keyboard_pb:     db 0
-x86_ppi_keyboard_ready:  db 0
 
 x86_io_guest_imm8:
         db #B0,#5A,#E6,#E0,#B0,#00,#E4,#E0,#F4
