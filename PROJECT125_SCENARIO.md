@@ -1478,3 +1478,17 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING. Источник портов проверен статически по эмулятору; физическая плата и сборка не проверены.
 
 | 2026-11-04 | D1.00 Dallas DS12887 RTC | SOURCE COMMITTED | Implemented ATM3 #DFF7/#BFF7 read-only DS12887 driver, mode-aware time conversion and timestamp API; build/runtime pending. |
+
+## A1.14 / D1.01 — ATM3 map and Dallas status diagnostics (2026-11-04)
+
+- [x] Added raw DS12887 Status D/A/B dump before VRT decision; VRT check now tests bit 7 rather than requiring the entire register to equal `#80`.
+- [x] RTC diagnostic identifies the actual raw register values, allowing distinction between a dead/disabled CMOS interface and a Dallas VRT condition.
+- [x] Added ATM3 live mapping dump before `CALL #3D13`: port `#0CBE` (bit 4 = `CF_TRDOS`, low nibble = FF77 mode) and port `#00BF` (`pBF`, bit 0 = DOS-port decode enable).
+- [x] NeoGS driver marker advanced to A44; RTC driver marker advanced to D1.01; host build ID advanced to A16.
+- [ ] Build and verify assembler output / `ProgramEnd <= #A800`.
+- [ ] Runtime inspect `[DS12887] STATUS D/A/B=...`; status D bit 7 must be set for valid clock/battery state.
+- [ ] Runtime inspect `[NLOAD D] ... ATM3MAP=xx PBF=xx`; ATM3MAP bit 4 should be set while TR-DOS ROM is active, and PBF bit 0 indicates DOS-port decoding.
+- [ ] Confirm `[NLOAD 02] CATALOG SEARCH RETURN` appears.
+- **Status:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
+
+| 2026-11-04 | A1.14 / D1.01 RTC + ATM3 mapping diagnostics | SOURCE COMMITTED | Added DS12887 raw status and ATM3 TR-DOS map register diagnostics; build/runtime pending. |
