@@ -1666,3 +1666,16 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Build: проверить `build_project125.bat` и `ProgramEnd <= #A800`.
 - [ ] Runtime: проверить `[NLOAD 02] CATALOG SEARCH RETURN`.
 - **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT VERIFIED.
+
+## A1.30 — восстановление HL и точного descriptor ABI TR-DOS (2026-11-04)
+
+- [x] Runtime A26/A49: D1/D2 присутствуют, но `[NLOAD 02]` отсутствует; восстановление A и BC не устранило зависание.
+- [x] При сравнении с Project124 найдено ещё одно отличие: Project124 входит в первый `CALL #3D13` с HL, оставшимся после `LDIR`. В Project125 диагностические сообщения заменяли HL адресом строки лога; сохранение HL внутри trace helper не возвращало исходный post-LDIR контекст.
+- [x] Перед первым поиском теперь сохраняется post-LDIR HL и восстанавливается непосредственно перед `CALL #3D13`; HL, возвращённый поиском, сохраняется для descriptor API и восстанавливается после trace.
+- [x] Исправлен также descriptor ABI: Project124 выполняет только `LD C,8`, сохраняя B, возвращённый поиском. Project125 ранее принудительно обнулял B через `LD BC,8`; теперь выполняется точное `LD C,8`.
+- [x] Driver banner A50; host build marker A27.
+- [ ] Build: проверить `build_project125.bat`, SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: подтвердить `[NLOAD 02] CATALOG SEARCH RETURN`; затем `[NLOAD 03/04]` и `[NLOAD 05/06]`.
+- **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT VERIFIED. Найдены и исправлены два дополнительных расхождения ABI по HL и сохранению B в descriptor вызове.
+
+| 2026-11-04 | A1.30 TR-DOS HL / descriptor ABI | SOURCE COMMITTED | Preserve Project124's post-LDIR HL for search, preserve returned HL for descriptor, and change only C to 8 as Project124 does. Build/runtime pending. |
