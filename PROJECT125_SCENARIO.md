@@ -1607,13 +1607,26 @@ A1.50–A1.53 признаны неудачными экспериментами
 
 ## A1.25 — ATM710 #FFF7 mux enable / TR-DOS shadow-ROM selection (2026-11-04)
 
-- [x] В `zx_main/p125_screen_console.asm` обнаружено: записи в `#FFF7` использовали `#7C` (RAM page 3) и `#7F` (RAM page 0), то есть D7=0.
-- [x] По описанию ATM Turbo 2+ D7 записи в `#FFF7` включает mux `#7FFD`; для нижнего 16-КБ окна этот mux необходим для автоматического выбора TR-DOS shadow ROM при opcode fetch в диапазоне `#3D00..#3DFF`. При D7=0 остаётся выбранная RAM-страница и штатный DOS API не вызывается.
-- [x] Это согласуется с зависанием `CALL #3D13`: текущая карта не включает автоматическое переключение нижнего окна на TR-DOS ROM. Чтение `(HL)` по `#3D13` при этом не является проверкой shadow ROM.
-- [x] Исправлены только значения для `#FFF7`: page 3 `#7C -> #FC`, page 0 `#7F -> #FF`. Нижние 7 бит сохранены, D7 установлен. Значения для `#7FF7`, видео-страницы и режимы ATM не изменены.
+- [x] Первоначально обнаружены значения D7=0 в `#FFF7`, но последующий runtime A22 показал, что это не исправляет зависание.
+- [x] Уточнена адресация: `#FFF7` выбирает окно 3 (`#C000–#FFFF`), тогда как TR-DOS shadow ROM расположен в окне 0 (`#0000–#3FFF`). Поэтому D7 в `#FFF7` не включает автоматическое переключение именно нижнего окна.
+- [x] Изменение A22 само по себе не считается исправлением причины; runtime A22 по-прежнему зависает после `NAME=NEOLOAD`.
 - [x] Host build marker повышен до `20261104-A22 TRDOS SHADOW MUX FIX`.
 - [ ] Сборка `build_project125.bat`: проверить SjASMPlus и `ProgramEnd <= #A800`.
 - [ ] Runtime: подтвердить `[NLOAD 02] CATALOG SEARCH RETURN`; затем проверить descriptor (`[NLOAD 03/04]`) и первый sector (`[NLOAD 05/06]`).
-- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING. Это сильная причина, выведенная из фактических значений D7=0 в текущем коде и описания ATM map; runtime ещё должен подтвердить исправление.
+- **Статус:** A22 NOT EFFECTIVE; initial interpretation corrected in A1.26. D7 on window 3 does not establish lower-window TR-DOS mapping.
 
-| 2026-11-04 | A1.25 ATM710 #FFF7 mux enable | SOURCE COMMITTED | Set D7 on every #FFF7 page selection (`#FC` for page 3, `#FF` for page 0) to preserve #7FFD mux and TR-DOS shadow-ROM auto-selection; build/runtime pending. |
+| 2026-11-04 | A1.25 ATM710 #FFF7 mux attempt | NOT EFFECTIVE | A22 set D7 for window 3 (#C000–#FFFF); runtime still hangs at CALL #3D13. Corrected in A1.26. |
+
+
+## A1.26 — ATM710 lower ROM window #3FF7 mapping (2026-11-04)
+
+- [x] Повторно сверена адресация мультиплексора: `#3FF7` — окно 0 (`#0000–#3FFF`), `#7FF7` — окно 1, `#BFF7` — окно 2, `#FFF7` — окно 3.
+- [x] Установлено, что A22 меняла D7 только для окна 3; это не включает требуемый `#7FFD` mux для нижнего ROM-окна. Runtime A22 подтвердил отсутствие эффекта: зависание по-прежнему после `NAME=NEOLOAD`.
+- [x] В `p125_atm_video_init` добавлена настройка окна 0 через `OUT (#3FF7),#BF`: D7=1 (разрешить #7FFD ROM2 mux / TR-DOS auto-select), D6=0 (ROM), D0-D5=`#3F` (инверсный номер ROM page 0).
+- [x] Изменение выполняется после открытия ATM shadow ports через TR-DOS `#3D2F`; host code остаётся в окне 1, стек `#BFFF` — в окне 2.
+- [x] Host build marker обновлён до `20261104-A23 LOWER ROM WINDOW MUX FIX`.
+- [ ] Сборка `build_project125.bat`: проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить, появился ли `[NLOAD 02] CATALOG SEARCH RETURN`; если появился — проверить descriptor и чтение первого сектора.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING. `#BF` следует из битовой карты ATM 7.10 (D7 mux, D6 ROM, инверсный номер ROM page 0); подтверждение только после сборки и runtime.
+
+| 2026-11-04 | A1.26 ATM710 lower ROM window mapping | SOURCE COMMITTED | Added `OUT (#3FF7),#BF` to enable ROM2/TR-DOS auto-select in window 0; build and runtime pending. |
