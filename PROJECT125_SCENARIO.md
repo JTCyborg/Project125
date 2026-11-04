@@ -1788,3 +1788,17 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. A35 показал, что одного сброса `#EFF7` недостаточно; изменение A1.40 проверяет отличие от рабочего startup — отсутствие принудительного paging window 0.
 
 | 2026-11-04 | A1.40 Keep native ATM TR-DOS ROM mapping | SOURCE COMMITTED | Remove the non-baseline `#3FF7=#BF` write; retain native ROM/ROM2 decoder for TR-DOS #3Dxx overlay. Build/runtime pending. |
+
+
+## A1.41 — возвращение штатного #7FFD на время TR-DOS API (2026-11-04)
+
+- [x] Hardware/ATM2+ подтверждает, что ROM2 определяется битом D4 порта #7FFD, а DOSEN включается при ROM2=1 и переходе на #3Dxx; бит D3 #7FFD выбирает видеостраницу 5/1 либо 7/3.
+- [x] Известный рабочий старт Project125 main/0 входил в TR-DOS с #7FFD=#10 и BANKM=#10. Активная версия оставляла #18 (добавлен бит D3 для альтернативного текстового экрана).
+- [x] Добавлены две регистросохраняющие процедуры: перед каждым вызовом TR-DOS #3D13 временно устанавливается #7FFD/BANKM=#10; сразу после возврата восстанавливается #18. Применено к поиску каталога C=10, descriptor C=8 и чтению сектора C=5.
+- [x] Входные и возвращаемые AF/BC/DE/HL сохраняются; на момент самого CALL #3D13 дополнительного стекового кадра нет. RTC, ATM renderer, размещение окон #7FF7/#FFF7 и NeoGS transport не менялись.
+- [x] Driver banner A57; host build marker A37.
+- [ ] Build: проверить SjASMPlus и ASSERT ProgramEnd <= #A800.
+- [ ] Runtime: проверить [NLOAD 02] после поиска; затем descriptor и первый sector. Если поиск вернётся, проверить, что экранный режим восстанавливается и загрузка NeoGS продолжается.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Это проверка конкретного отличия от рабочего startup, а не заявление об исправлении.
+
+| 2026-11-04 | A1.41 Legacy #7FFD state around TR-DOS calls | SOURCE COMMITTED | Temporarily use the proven #10 ROM2/BANKM state for C=10/C=8/C=5 TR-DOS API calls, then restore #18 for the alternate text screen. Build/runtime pending. |
