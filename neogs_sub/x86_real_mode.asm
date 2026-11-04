@@ -372,6 +372,8 @@ x86_real_dispatch:
         jp      z, x86_real_shift_word_one
         cp      #F7
         jp      z, x86_real_group_f7
+        cp      #35
+        jp      z, x86_real_logic16_accumulator_immediate
         cp      #04
         jp      z, x86_real_alu8_accumulator_immediate
         cp      #05
