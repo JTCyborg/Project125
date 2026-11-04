@@ -117,15 +117,16 @@ x86_mem_write8:
 .write_allowed:
         call    x86_mem_map_addr
         ret     c
-        ; Trace only changed writes in the first 0500h bytes (IVT+BDA).
-        ; This catches the actual BIOS error-flag write without flooding the
-        ; console with the full conventional-memory test. The logger is capped.
+        ; Trace only changed writes in the BDA (00400h-004FFh).
+        ; Conventional-memory POST writes must not consume the diagnostic
+        ; budget before BIOS error flags such as 00415h are reached.
         ld      a, (x86_mem_addr+2)
         or      a
         jr      nz, .store
         ld      a, (x86_mem_addr+1)
-        cp      #05
-        call    c, x86_mem_watch_low_write
+        cp      #04
+        jr      nz, .store
+        call    x86_mem_watch_low_write
 .store:
         ld      a, (x86_mem_value)
         ld      (hl), a
@@ -135,7 +136,7 @@ x86_mem_write8:
         scf
         ret
 
-; Log up to 64 changed writes in physical 00000h-004FFh.
+; Log up to 64 changed writes in physical BDA range 00400h-004FFh.
 ; The trace includes physical address, old/new values and guest CS:IP.
 ; No guest registers or memory backend address state are modified.
 x86_mem_watch_low_write:
