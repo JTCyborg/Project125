@@ -368,6 +368,8 @@ x86_real_dispatch:
         cp      #A4
         jp      c, x86_real_moffs
 .not_moffs:
+        cp      #D1
+        jp      z, x86_real_shift_word_one
         cp      #04
         jp      z, x86_real_alu8_accumulator_immediate
         cp      #05
@@ -1755,3 +1757,111 @@ x86_guest_handler_image:
         db #B8,#34,#12,#CF
 x86_guest_handler_image_end:
 
+
+
+; D1 E0: SHL AX,1. First BIOS shift form observed at F000:E083.
+; Other D1 ModR/M encodings remain explicit unsupported-opcode stops.
+x86_real_shift_word_one:
+        call    x86_real_fetch8
+        ret     c
+        cp      #E0
+        jp      nz, x86_real_shift_unsupported
+
+        ld      hl, (x86_reg_ax)
+        add     hl, hl
+        ld      (x86_shift_result), hl
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+
+        ; CF = old bit 15.
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shl_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+
+.shl_parity:
+        ; PF is even parity of the low result byte.
+        ld      hl, (x86_shift_result)
+        ld      a, l
+        and     a
+        jp      pe, .shl_set_pf
+        jr      .shl_zero
+.shl_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+
+.shl_zero:
+        ld      hl, (x86_shift_result)
+        ld      a, h
+        or      l
+        jr      nz, .shl_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+
+.shl_sign:
+        ld      hl, (x86_shift_result)
+        bit     7, h
+        jr      z, .shl_overflow
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+
+.shl_overflow:
+        ; For SHL count=1, OF = result bit 15 XOR CF.
+        ld      hl, (x86_shift_result)
+        ld      a, h
+        and     #80
+        ld      b, a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shl_overflow_cf_zero
+        ld      a, b
+        xor     #80
+        jr      .shl_overflow_test
+.shl_overflow_cf_zero:
+        ld      a, b
+.shl_overflow_test:
+        or      a
+        jr      z, .shl_merge
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+
+.shl_merge:
+        ; Preserve all FLAGS except CF, PF, ZF, SF and OF. AF is undefined
+        ; by 8086 SHL and is intentionally left unchanged.
+        ld      hl, (x86_reg_flags)
+        ld      de, #F73A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        ld      hl, (x86_shift_result)
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
+x86_real_shift_unsupported:
+        ld      a, #D1
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
+x86_shift_result:     dw 0
+x86_shift_new_flags:  dw 0
+x86_shift_carry:      db 0
