@@ -55,6 +55,11 @@ function Get-Crc16Ccitt([byte[]]$Bytes) {
     return $crc
 }
 
+[byte[]]$crcTestVector = [System.Text.Encoding]::ASCII.GetBytes("123456789")
+if ((Get-Crc16Ccitt $crcTestVector) -ne 0x29B1) {
+    throw "CRC-16/CCITT implementation failed the 123456789 reference vector."
+}
+
 [UInt16]$residentCrc = Get-Crc16Ccitt $resident
 [UInt16]$overlay68Crc = Get-Crc16Ccitt $overlay68
 [UInt16]$overlay69Crc = Get-Crc16Ccitt $overlay69
