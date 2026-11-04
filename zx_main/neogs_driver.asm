@@ -35,6 +35,10 @@ neo_fw_open_file:
         ld      de, #5CDD
         ld      bc, 8
         ldir
+        ; Preserve the exact post-LDIR HL value used by Project124's TR-DOS ABI.
+        ; Diagnostic helpers use HL for text pointers, so restore this value
+        ; immediately before the catalogue API call.
+        ld      (neo_fw_trdos_search_hl), hl
         ld      a, 'C'
         ld      (#5CE5), a
         ld      a, 9
@@ -65,7 +69,10 @@ neo_fw_open_file:
         ; BC=#000A; setting only C would accidentally pass B=1.
         ld      a, 9
         ld      bc, 10
+        ld      hl, (neo_fw_trdos_search_hl)
         call    #3D13
+        ; Preserve the API's returned HL across the trace and descriptor setup.
+        ld      (neo_fw_trdos_search_hl), hl
         ld      hl, trace_noload_02_search_return
         call    p125_trace_port
         ld      a, c
@@ -78,9 +85,11 @@ neo_fw_open_file:
         ld      (#5D0F), a
         ld      (#5D10), a
         pop     af
-        ld      bc, 8
+        ld      c, 8
         ld      hl, trace_noload_03_descriptor_call
         call    p125_trace_port
+        ; Project124 changes only C here: preserve B and returned HL.
+        ld      hl, (neo_fw_trdos_search_hl)
         call    #3D13
         ld      hl, trace_noload_04_descriptor_return
         call    p125_trace_port
@@ -1307,6 +1316,7 @@ neo_diag_hex_nibble:
 neo_fw_loader_filename:  db "NEOLOAD "
 neo_fw_firmware_filename: db "NEOFW   "
 neo_fw_requested_name_ptr: dw 0
+neo_fw_trdos_search_hl:  dw 0
 neo_fw_load_buffer:     dw 0
 neo_fw_load_remaining:  db 0
 neo_fw_buffer_remaining: dw 0
@@ -1367,4 +1377,4 @@ trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
 trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
 trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A49 TRDOS A/BC ABI FIX", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A50 TRDOS HL ABI FIX", 13, 10, 0
