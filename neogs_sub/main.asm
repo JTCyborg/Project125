@@ -1180,27 +1180,23 @@ x86_resident_io_trace_read8:
 
 x86_io_trace_count: db 0
 
-; One-shot BIOS MEMTST mismatch trace. Called after each SCASB compare from
-; the overlay interpreter; it emits only the first failed REP SCASB in BIOS
-; segment F000h while testing guest RAM at ES >= 0080h.
+; Trace the first four SCAS comparisons during BIOS startup.
+; The previous failure-only trace produced no output, so the current
+; diagnostic captures successful comparisons too, including ES:DI and the
+; calculated physical address. This distinguishes an uninitialized ES from
+; an actual RAM data mismatch.
 x86_resident_memtest_scas_trace:
-        ; Report only the first failed SCAS comparison. Successful REP SCAS
-        ; iterations are intentionally silent so the trace reaches the exact
-        ; byte/word that causes BIOS MEMTST to branch to BADRAM.
-        ld      a, (x86_reg_flags)
-        bit     6, a                    ; ZF=1 means the comparison matched
-        ret     nz
         ld      a, (x86_memtest_scas_trace_count)
-        or      a
-        ret     nz
+        cp      4
+        ret     nc
+        inc     a
+        ld      (x86_memtest_scas_trace_count), a
         ld      a, (x86_string_opcode)
         cp      #AE
         jr      z, .trace_scas_opcode_ok
         cp      #AF
         ret     nz
 .trace_scas_opcode_ok:
-        ld      a, 1
-        ld      (x86_memtest_scas_trace_count), a
         push    af
         push    bc
         push    de
