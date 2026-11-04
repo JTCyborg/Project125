@@ -74,7 +74,7 @@ neo_fw_open_file:
         ld      (#5D10), a
         ld      a, 9
         ld      (#5D06), a
-        ld      (#5C5D), sp
+        ld      (#5C3D), sp
         ld      hl, trace_noload_dosenv_ready
         call    p125_trace_port
         ; A1.31: first call a non-disk TR-DOS service (C=#14). It copies
@@ -1405,4 +1405,4 @@ trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
 trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
 trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A52 TRDOS DOSENV INIT", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A53 ERR_SP ADDRESS FIX", 13, 10, 0
