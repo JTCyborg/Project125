@@ -83,7 +83,11 @@ Init_Z80_System:
         ; Stage 1: load the standalone NeoGS loader file.
         ld      hl, msg_fw_load
         call    p125_print_string
+        ld      hl, trace_70_neoload_begin
+        call    p125_trace_port
         call    load_neogs_bootstrap_file
+        ld      hl, trace_71_neoload_done
+        call    p125_trace_port
         jr      nc, .firmware_file_ok
         ld      hl, msg_fw_file_error
         call    p125_print_string
@@ -94,7 +98,11 @@ Init_Z80_System:
 .firmware_file_ok:
         ld      hl, #C000
         ld      de, (neo_fw_file_length)
+        ld      hl, trace_80_fw_upload_begin
+        call    p125_trace_port
         call    upload_firmware
+        ld      hl, trace_81_fw_upload_done
+        call    p125_trace_port
         jr      nc, .firmware_ready
         ld      hl, msg_fw_upload_error
         call    p125_print_string
@@ -131,7 +139,11 @@ Init_Z80_System:
         call    p125_print_string
 
         ; Verify the shared video CRC primitive before using the frame ABI.
+        ld      hl, trace_90_crc_test_begin
+        call    p125_trace_port
         call    p125_video_crc_selftest
+        ld      hl, trace_91_crc_test_done
+        call    p125_trace_port
         jr      nc, .video_crc_ok
         ld      hl, msg_video_crc_error
         call    p125_print_string
@@ -145,7 +157,11 @@ Init_Z80_System:
         ; Stage 2: read BIOS.C as 32 sectors and stream each sector to page 75.
         ld      hl, msg_bios_load
         call    p125_print_string
+        ld      hl, trace_A0_bios_load_begin
+        call    p125_trace_port
         call    neogs_bios_load_from_trdos
+        ld      hl, trace_A1_bios_load_done
+        call    p125_trace_port
         jr      nc, .bios_loaded
         ld      hl, msg_bios_load_error
         call    p125_print_string
@@ -177,7 +193,11 @@ Init_Z80_System:
         ; Stage 3: execute the BIOS from the architectural 8086 reset vector.
         ld      hl, msg_bios_run
         call    p125_print_string
+        ld      hl, trace_B0_bios_exec_begin
+        call    p125_trace_port
         call    neogs_bios_boot_and_get_result
+        ld      hl, trace_B1_bios_exec_return
+        call    p125_trace_port
         jr      nc, .bios_returned
         ld      hl, msg_bios_run_error
         call    p125_print_string
@@ -356,6 +376,16 @@ trace_50_first_timestamp_begin: defb "[TRACE 50] FIRST LOG/TIMESTAMP BEGIN", 13,
 trace_51_first_log_done:      defb "[TRACE 51] FIRST LOG DONE", 13, 10, 0
 trace_60_rtc_read_begin:      defb "[TRACE 60] RTC READ BEGIN", 13, 10, 0
 trace_61_rtc_read_done:       defb "[TRACE 61] RTC READ DONE", 13, 10, 0
+trace_70_neoload_begin:       defb "[TRACE 70] NEOLOAD READ BEGIN", 13, 10, 0
+trace_71_neoload_done:        defb "[TRACE 71] NEOLOAD READ DONE", 13, 10, 0
+trace_80_fw_upload_begin:     defb "[TRACE 80] FW UPLOAD BEGIN", 13, 10, 0
+trace_81_fw_upload_done:      defb "[TRACE 81] FW UPLOAD DONE", 13, 10, 0
+trace_90_crc_test_begin:      defb "[TRACE 90] VIDEO CRC BEGIN", 13, 10, 0
+trace_91_crc_test_done:       defb "[TRACE 91] VIDEO CRC DONE", 13, 10, 0
+trace_A0_bios_load_begin:     defb "[TRACE A0] BIOS LOAD BEGIN", 13, 10, 0
+trace_A1_bios_load_done:      defb "[TRACE A1] BIOS LOAD DONE", 13, 10, 0
+trace_B0_bios_exec_begin:     defb "[TRACE B0] BIOS EXEC BEGIN", 13, 10, 0
+trace_B1_bios_exec_return:    defb "[TRACE B1] BIOS EXEC RETURN", 13, 10, 0
 
 msg_rtc_ready:        defb "[RTC] K512VI1 READY", 13, 10, 0
 msg_p125_start:       defb "[P125] ATM HOST START", 13, 10, 0
