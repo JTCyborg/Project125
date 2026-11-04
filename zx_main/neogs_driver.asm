@@ -1197,19 +1197,26 @@ neo_diag_search_state:
         call    p125_trace_port
         ld      a, (#5D06)
         call    neo_diag_hex8
-        ; ATM3 port 0CBE reports live mapping state:
-        ; bit 4 = TR-DOS ROM active (CF_TRDOS), bits 3..0 = FF77 mode.
-        ld      hl, trace_noload_diag_atmmap
+        ; ATM710 has no ATM3 #0CBE/#BF readback registers in Unreal Speccy.
+        ; Read the actual bytes visible at the TR-DOS entry address instead.
+        ; If ROM0 is not mapped, this signature will not match the TR-DOS ROM.
+        ld      hl, trace_noload_diag_rom
         call    p125_trace_port
-        ld      bc, #0CBE
-        in      a, (c)
+        ld      hl, #3D13
+        ld      b, 8
+.neo_diag_rom_loop:
+        ld      a, (hl)
         call    neo_diag_hex8
-        ; ATM3 port BF returns pBF; bit 0 enables DOS-port decoding.
-        ld      hl, trace_noload_diag_pbf
-        call    p125_trace_port
-        ld      bc, #00BF
-        in      a, (c)
-        call    neo_diag_hex8
+        ld      a, ' '
+        ld      c, #EF
+        out     (c), a
+        inc     hl
+        djnz    .neo_diag_rom_loop
+        ld      a, 13
+        ld      c, #EF
+        out     (c), a
+        ld      a, 10
+        out     (c), a
         ld      hl, trace_noload_diag_name
         call    p125_trace_port
         ld      hl, #5CDD
@@ -1312,8 +1319,7 @@ msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
 trace_noload_diag_prefix:          defb "[NLOAD D] BANKM=", 0
 trace_noload_diag_ext:             defb " EXT=", 0
 trace_noload_diag_mode:            defb " MODE=", 0
-trace_noload_diag_atmmap:           defb " ATM3MAP=", 0
-trace_noload_diag_pbf:              defb " PBF=", 0
+trace_noload_diag_rom:             defb " ATM710 ROM@3D13=", 0
 trace_noload_diag_name:            defb " NAME=", 0
 trace_noload_00_entry:             defb "[NLOAD 00] OPEN ENTRY", 13, 10, 0
 trace_noload_01_search_call:       defb "[NLOAD 01] CATALOG SEARCH CALL", 13, 10, 0
@@ -1324,4 +1330,4 @@ trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
 trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
 trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A44 ATM3 MAP DIAG", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A45 ATM710 ROM MAP DIAG", 13, 10, 0
