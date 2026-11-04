@@ -321,6 +321,22 @@ x86_real_dispatch:
         cp      #F3
         jp      z, x86_real_prefix_repe
 
+        cp      #06
+        jp      z, x86_real_push_segment
+        cp      #07
+        jp      z, x86_real_pop_segment
+        cp      #0E
+        jp      z, x86_real_push_segment
+        cp      #0F
+        jp      z, x86_real_pop_segment
+        cp      #16
+        jp      z, x86_real_push_segment
+        cp      #17
+        jp      z, x86_real_pop_segment
+        cp      #1E
+        jp      z, x86_real_push_segment
+        cp      #1F
+        jp      z, x86_real_pop_segment
         cp      #90
         jp      z, x86_real_nop
         cp      #91
@@ -340,6 +356,10 @@ x86_real_dispatch:
         jp      z, x86_real_sahf
         cp      #9F
         jp      z, x86_real_lahf
+        cp      #CE
+        jp      z, x86_real_into
+        cp      #D7
+        jp      z, x86_real_xlat
         cp      #A0
         jp      c, .not_moffs
         cp      #A4
@@ -522,6 +542,8 @@ x86_real_dispatch:
         jp      z, x86_real_int3
         cp      #CF
         jp      z, x86_real_iret
+        cp      #F5
+        jp      z, x86_real_cmc
         cp      #F8
         jp      z, x86_real_clc
         cp      #F9
@@ -582,6 +604,42 @@ x86_real_nop:
 ; the original 8086 behavior. POP SP increments internally, then replaces
 ; SP with the popped word. Neither instruction modifies guest FLAGS.
 ; -------------------------------------------------------------------------
+
+; 06/0E/16/1E PUSH ES/CS/SS/DS and 07/0F/17/1F POP equivalents.
+; Segment registers are contiguous in the architectural register file.
+x86_real_push_segment:
+        ld      (x86_real_opcode), a
+        and     #18
+        srl     a
+        srl     a
+        ld      e, a
+        ld      d, 0
+        ld      hl, x86_reg_es
+        add     hl, de
+        ld      e, (hl)
+        inc     hl
+        ld      d, (hl)
+        call    x86_real_stack_push
+        ret     c
+        jp      x86_real_next
+
+x86_real_pop_segment:
+        ld      (x86_real_opcode), a
+        call    x86_real_stack_pop
+        ret     c
+        ld      a, (x86_real_opcode)
+        and     #18
+        srl     a
+        srl     a
+        ld      e, a
+        ld      d, 0
+        ld      hl, x86_reg_es
+        add     hl, de
+        ld      de, (x86_real_stack_value)
+        ld      (hl), e
+        inc     hl
+        ld      (hl), d
+        jp      x86_real_next
 
 x86_real_push_r16:
         ld      (x86_real_opcode), a
@@ -1254,6 +1312,13 @@ x86_real_sti:
         jp      x86_real_next
 
 ; 8086 status/control flag instructions. Only the documented flag bit changes.
+x86_real_cmc:
+        ld      hl, x86_reg_flags
+        ld      a, (hl)
+        xor     1
+        ld      (hl), a
+        jp      x86_real_next
+
 x86_real_clc:
         ld      hl, x86_reg_flags
         res     0, (hl)
@@ -1295,6 +1360,37 @@ x86_real_xchg_ax:
         ld      (x86_reg_ax+1), a
         ld      a, b
         ld      (hl), a
+        jp      x86_real_next
+
+; CE INTO invokes vector 4 only when OF is set.
+x86_real_into:
+        ld      a, (x86_reg_flags+1)
+        bit     3, a
+        jp      z, x86_real_next
+        ld      a, 4
+        call    x86_int_enter
+        ret     c
+        jp      x86_real_next
+
+; D7 XLAT: AL <- byte at segment:[BX+AL].
+x86_real_xlat:
+        ld      hl, (x86_reg_bx)
+        ld      a, (x86_reg_ax)
+        ld      e, a
+        ld      d, 0
+        add     hl, de
+        ld      (x86_mem_offset), hl
+        ld      hl, (x86_reg_ds)
+        ld      a, (x86_real_seg_override_active)
+        or      a
+        jr      z, .xlat_segment_ready
+        ld      hl, (x86_real_seg_override)
+.xlat_segment_ready:
+        ld      (x86_mem_segment), hl
+        call    x86_mem_calc_phys
+        call    x86_mem_read8
+        ret     c
+        ld      (x86_reg_ax), a
         jp      x86_real_next
 
 ; 98 CBW and 99 CWD.
