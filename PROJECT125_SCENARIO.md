@@ -1736,3 +1736,10 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
 
 | 2026-11-04 | A1.35 TR-DOS open boundary trace | SOURCE COMMITTED | Add register-preserving markers around the archived TR-DOS calls to localize the stall without changing their inputs. |
+
+
+## A1.36 — TR-DOS catalogue search hang: stack placement
+- [x] Runtime A55 log localizes the hang inside TR-DOS `#3D13` catalogue search (`C=#0A`): `[NLOAD 01]` appears and `[NLOAD 02]` does not.
+- [x] Static comparison: Project124 sets the host stack to `#AFFF`; Project125 had moved it to `#BFFF` while calling the same TR-DOS ROM API.
+- [x] Restored Project124's `#AFFF` stack top in Project125. The resident screen module is constrained to end at or below `#A800`, leaving the stack above it.
+- [ ] Rebuild and run on ATM/Unreal; confirm `[NLOAD 02]` and subsequent descriptor/sector markers. This change is not yet runtime-verified.
