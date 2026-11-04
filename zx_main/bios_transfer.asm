@@ -343,3 +343,76 @@ bios_host_transfer_error: db 0
 bios_host_result_signature: db 0
 bios_host_result_status:    db 0
 bios_host_result_ax:        dw 0
+
+; -------------------------------------------------------------------------
+; Reverse-DMA transport self-test.
+; The host reads a 00..FF pattern from the NeoGS DMA window into #C000.
+; The payload itself never uses GSDAT/DBIT; GSCOM is only the command/doorbell.
+; OUT: carry clear on a byte-perfect 256-byte transfer.
+; -------------------------------------------------------------------------
+p125_dma_reverse_selftest:
+        xor     a
+        ld      (bios_host_transfer_error), a
+        ld      a, CMD_DMA_READ_TEST
+        out     (GSCOM), a
+
+        ld      bc, BIOS_HOST_WAIT_LIMIT
+.dma_reverse_ready_wait:
+        in      a, (GSSTAT)
+        bit     B_CBIT, a
+        jr      z, .dma_reverse_ready
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .dma_reverse_ready_wait
+        ld      a, 8
+        ld      (bios_host_transfer_error), a
+        scf
+        ret
+
+.dma_reverse_ready:
+        ; DMA overlays reads in the host window. Read exactly 256 bytes.
+        ld      hl, 0
+        ld      de, NGS_DMA_TEST_HOST_ADDR
+        ld      bc, NGS_DMA_TEST_LENGTH
+        di
+        ldir
+
+        ; End marker is control only; the 256-byte payload travelled via DMA.
+        ld      a, #FF
+        out     (GSCOM), a
+        ld      bc, BIOS_HOST_WAIT_LIMIT
+.dma_reverse_done_wait:
+        in      a, (GSSTAT)
+        bit     B_CBIT, a
+        jr      z, .dma_reverse_validate
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .dma_reverse_done_wait
+        ld      a, 9
+        ld      (bios_host_transfer_error), a
+        scf
+        ret
+
+.dma_reverse_validate:
+        ld      hl, NGS_DMA_TEST_HOST_ADDR
+        ld      b, 0
+        xor     a
+.dma_reverse_compare:
+        cp      (hl)
+        jr      nz, .dma_reverse_bad_data
+        inc     hl
+        inc     a
+        djnz    .dma_reverse_compare
+        xor     a
+        ld      (bios_host_transfer_error), a
+        or      a
+        ret
+
+.dma_reverse_bad_data:
+        ld      a, 10
+        ld      (bios_host_transfer_error), a
+        scf
+        ret
+
