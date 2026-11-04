@@ -1664,8 +1664,8 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [x] Повторное сравнение с рабочим Project124: перед `CALL #3D13` там A сохраняет значение 9 (режим поиска), тогда как DOSEN trampoline Project125 устанавливает A=#C3 и оставляет его изменённым.
 - [x] Перед поиском теперь явно задаются `A=9` и `BC=10`; driver banner A49, host build marker A26.
 - [ ] Build: проверить `build_project125.bat` и `ProgramEnd <= #A800`.
-- [ ] Runtime: проверить `[NLOAD 02] CATALOG SEARCH RETURN`.
-- **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT VERIFIED.
+- [x] Runtime 2026-11-04 A26/A49: D1/D2 присутствуют, но `[NLOAD 02]` отсутствует; исправление A/BC не устранило зависание.
+- **Статус:** SOURCE COMMITTED / RUNTIME TESTED — NOT EFFECTIVE. A26/A49 всё ещё зависает внутри первого `CALL #3D13`.
 
 ## A1.30 — восстановление HL и точного descriptor ABI TR-DOS (2026-11-04)
 
