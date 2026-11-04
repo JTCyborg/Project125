@@ -86,23 +86,8 @@ x86_real_io_instruction:
 ; Other PC/XT ports remain open-bus until their devices are implemented.
 
 x86_io_read8:
-        ; Compact decode for the three PC/XT LPT data ports. The latches
-        ; themselves are resident so this overlay only needs a short gate.
-        ld      a, (x86_io_port+1)
-        cp      3
-        jr      nz, .read8_lpt_0278
-        ld      a, (x86_io_port)
-        cp      #BC
-        jp      z, x86_resident_lpt_read_data
-        cp      #78
-        jp      z, x86_resident_lpt_read_data
-        jr      .read8_check_e0
-.read8_lpt_0278:
-        cp      2
-        jr      nz, .read8_check_e0
-        ld      a, (x86_io_port)
-        cp      #78
-        jp      z, x86_resident_lpt_read_data
+        call    x86_resident_lpt_read_dispatch
+        ret     nc
 .read8_check_e0:
         ld      hl, (x86_io_port)
         ld      de, #00E0
@@ -180,23 +165,8 @@ x86_io_trace_read8:
         jp      x86_resident_io_trace_read8
 
 x86_io_write8:
-        ; Keep the LPT address decode compact: all three data latches are
-        ; resident and are selected by the full 16-bit guest port number.
-        ld      a, (x86_io_port+1)
-        cp      3
-        jr      nz, .write8_lpt_0278
-        ld      a, (x86_io_port)
-        cp      #BC
-        jp      z, x86_resident_lpt_write_data
-        cp      #78
-        jp      z, x86_resident_lpt_write_data
-        jr      .write8_check_e0
-.write8_lpt_0278:
-        cp      2
-        jr      nz, .write8_check_e0
-        ld      a, (x86_io_port)
-        cp      #78
-        jp      z, x86_resident_lpt_write_data
+        call    x86_resident_lpt_write_dispatch
+        ret     nc
 .write8_check_e0:
         ld      hl, (x86_io_port)
         ld      de, #00E0
