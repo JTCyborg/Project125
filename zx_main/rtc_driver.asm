@@ -226,7 +226,6 @@ rtc_trace_return_addresses:
         EX      DE, HL
         LD      HL, rtc_trace_actual_prefix
         CALL    p125_trace_port
-        EX      DE, HL
         LD      A, H
         CALL    rtc_trace_hex8
         LD      A, L
