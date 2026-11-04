@@ -1153,7 +1153,7 @@ x86_kbd_load_latch:
         ld      (x86_ppi_keyboard_data), a
         ld      a, 1
         ld      (x86_ppi_keyboard_ready), a
-        xor     a
+        ld      a, 1
         ld      (x86_kbd_latch_from_queue), a
         ld      a, (x86_pic_pending)
         set     1, a
@@ -1169,16 +1169,21 @@ x86_kbd_acknowledge:
         ld      a, (x86_pic_pending)
         res     1, a
         ld      (x86_pic_pending), a
+        ld      a, (x86_kbd_latch_from_queue)
+        or      a
+        jr      z, .ack_bat
         ld      a, (x86_kbd_queue_count)
         or      a
-        jr      z, .ack_empty
+        jr      z, .ack_bat
         dec     a
         ld      (x86_kbd_queue_count), a
         ld      a, (x86_kbd_queue_read)
         inc     a
         and     #1F
         ld      (x86_kbd_queue_read), a
-.ack_empty:
+.ack_bat:
+        xor     a
+        ld      (x86_kbd_latch_from_queue), a
         jp      x86_kbd_load_latch
 
 x86_kbd_scancode_table:

@@ -504,21 +504,32 @@ x86_ppi_read_control:
         ret
 
 x86_ppi_write_port_b:
-        ; The keyboard interface's PB latch powers up low on the 5150,
-        ; independently of the externally visible PPI reset value (40h).
+        ; PB7 rising edge acknowledges the current XT keyboard byte.
         ld      a, (x86_ppi_keyboard_pb)
-        bit     6, a
         ld      b, a
         ld      a, (x86_io_value)
         ld      (x86_ppi_port_b), a
         ld      (x86_ppi_keyboard_pb), a
+        bit     7, b
+        jr      nz, .ppi_no_ack
+        bit     7, a
+        call    nz, x86_kbd_acknowledge
+.ppi_no_ack:
+        ; PB6 low-to-high resets the keyboard interface and returns BAT AAh.
+        ld      a, (x86_ppi_keyboard_pb)
         bit     6, b
         ret     nz
         bit     6, a
         ret     z
-        ; Keyboard reset edge: XT keyboard performs BAT and returns AAh.
         ld      a, #AA
         ld      (x86_ppi_keyboard_data), a
+        ld      a, 1
+        ld      (x86_ppi_keyboard_ready), a
+        xor     a
+        ld      (x86_kbd_latch_from_queue), a
+        ld      a, (x86_pic_pending)
+        set     1, a
+        ld      (x86_pic_pending), a
         ret
 
 x86_ppi_write_control:
