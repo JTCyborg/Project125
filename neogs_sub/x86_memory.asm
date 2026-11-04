@@ -117,6 +117,18 @@ x86_mem_write8:
 .write_allowed:
         call    x86_mem_map_addr
         ret     c
+        ; Watch the BIOS error/status byte at physical 00415h. The write
+        ; logger is resident and uses the dedicated NeoGS debug port #EF.
+        ld      a, (x86_mem_addr+2)
+        or      a
+        jr      nz, .store
+        ld      a, (x86_mem_addr+1)
+        cp      #04
+        jr      nz, .store
+        ld      a, (x86_mem_addr)
+        cp      #15
+        call    z, x86_mem_watch_bda_error
+.store:
         ld      a, (x86_mem_value)
         ld      (hl), a
         or      a
@@ -124,6 +136,82 @@ x86_mem_write8:
 .write_protected:
         scf
         ret
+
+; One-shot address watchpoint for BIOS BDA 0040:0015.
+; Emits old/new byte and guest CS:IP directly to the NeoGS #EF console.
+; Only this exact byte is traced, so normal POST memory traffic is silent.
+x86_mem_watch_bda_error:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      a, (hl)
+        ld      (x86_mem_watch_old), a
+        ld      hl, x86_mem_watch_prefix
+        call    x86_mem_watch_string
+        ld      a, (x86_mem_watch_old)
+        call    x86_mem_watch_hex8
+        ld      a, '>'
+        out     (#EF), a
+        ld      a, (x86_mem_value)
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_mem_watch_string:
+        ld      a, (hl)
+        inc     hl
+        or      a
+        ret     z
+        out     (#EF), a
+        jr      x86_mem_watch_string
+
+x86_mem_watch_hex8:
+        push    af
+        rrca
+        rrca
+        rrca
+        rrca
+        and     #0F
+        call    x86_mem_watch_nibble
+        pop     af
+        and     #0F
+        jp      x86_mem_watch_nibble
+
+x86_mem_watch_nibble:
+        add     a, '0'
+        cp      '9'+1
+        jr      c, .digit
+        add     a, 7
+.digit:
+        out     (#EF), a
+        ret
+
+x86_mem_watch_prefix:
+        db      "[BDA 0040:0015] ", 0
+x86_mem_watch_old:
+        db      0
 
 ; -------------------------------------------------------------------------
 ; Destructive physical RAM mapping test.
