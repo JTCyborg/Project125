@@ -1656,3 +1656,13 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Сборка build_project125.bat: проверить SjASMPlus и ProgramEnd <= #A800.
 - [ ] Runtime: подтвердить [NLOAD 02] CATALOG SEARCH RETURN; далее проверить descriptor и чтение первого сектора.
 - **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT YET VERIFIED. Исправление конкретного ABI-регистрового расхождения, выявленного сравнением с Project124.
+
+
+## A1.29 — восстановление A и BC перед TR-DOS search (2026-11-04)
+
+- [x] Runtime A25/A48: D1 и D2 присутствуют, но `[NLOAD 02]` отсутствует; исправление только BC не устранило зависание.
+- [x] Повторное сравнение с рабочим Project124: перед `CALL #3D13` там A сохраняет значение 9 (режим поиска), тогда как DOSEN trampoline Project125 устанавливает A=#C3 и оставляет его изменённым.
+- [x] Перед поиском теперь явно задаются `A=9` и `BC=10`; driver banner A49, host build marker A26.
+- [ ] Build: проверить `build_project125.bat` и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить `[NLOAD 02] CATALOG SEARCH RETURN`.
+- **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT VERIFIED.
