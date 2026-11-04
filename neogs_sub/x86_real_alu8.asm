@@ -560,8 +560,60 @@ x86_real_group1_byte_immediate:
         ld      (x86_group1_byte_modrm), a
         and     #C0
         cp      #C0
-        jp      nz, x86_real_group1_byte_unsupported
+        jp      z, .register_operand
 
+        ; Memory destination: decode the complete 8086 effective address,
+        ; read r/m8, then apply the immediate through the shared byte ALU.
+        ; This covers all Group-1 operations, including BIOS 80 /2 ADC.
+        ld      a, (x86_group1_byte_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_alu8_read_memory
+        ret     c
+        ld      (x86_alu8_dst), a
+        ld      a, (x86_group1_byte_modrm)
+        and     #38
+        ld      (x86_alu8_mode), a
+        ld      a, 1
+        ld      (x86_alu8_dst_is_mem), a
+        xor     a
+        ld      (x86_alu8_no_write), a
+        ld      (x86_alu8_is_logic), a
+        ld      (x86_alu8_carry_in), a
+
+        ld      a, (x86_alu8_mode)
+        cp      #08
+        jr      z, .memory_logic
+        cp      #20
+        jr      z, .memory_logic
+        cp      #30
+        jr      z, .memory_logic
+        cp      #38
+        jr      z, .memory_compare
+        cp      #10
+        jr      z, .memory_carry
+        cp      #18
+        jr      z, .memory_carry
+        jr      .memory_fetch_immediate
+.memory_logic:
+        ld      a, 1
+        ld      (x86_alu8_is_logic), a
+        jr      .memory_fetch_immediate
+.memory_compare:
+        ld      a, 1
+        ld      (x86_alu8_no_write), a
+        jr      .memory_fetch_immediate
+.memory_carry:
+        ld      a, (x86_reg_flags)
+        and     1
+        ld      (x86_alu8_carry_in), a
+.memory_fetch_immediate:
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_alu8_src), a
+        jp      x86_real_alu8_execute_core
+
+.register_operand:
         ld      a, (x86_group1_byte_modrm)
         and     #38
         ld      (x86_alu8_mode), a
