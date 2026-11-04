@@ -70,7 +70,7 @@ rtc_already_active:
         POP     BC: POP     AF
         RET
 
-rtc_driver_version:              DEFB "[RTC DRIVER A1.89]", 13, 10, 0
+rtc_driver_version:              DEFB "[RTC DRIVER A1.90]", 13, 10, 0
 rtc_trace_01_open_begin:          DEFB "[RTC 01] OPEN BEGIN", 13, 10, 0
 rtc_trace_02_open_done:           DEFB "[RTC 02] OPEN DONE", 13, 10, 0
 rtc_trace_03_signature_read_begin: DEFB "[RTC 03] SIGNATURE READ BEGIN", 13, 10, 0
@@ -183,26 +183,31 @@ write_byte_raw
         LD      A, 10
         OUT     (C), A
 
-        ; Read the actual return address from the stack without consuming it.
-        ; POP/PUSH keeps the original CALL return address for the final RET.
-        POP     DE
-        PUSH    DE
-
-        ; This explicit return-address probe belongs to the signature write
-        ; only. The later CMOS register writes have different continuations.
+        ; Probe only the signature write. Do not POP/PUSH the live stack:
+        ; calculate SP and read its two bytes in place.
         LD      A, (rtc_write_index)
         CP      #11
         JR      NZ, .return_without_probe
 
+        LD      HL, 0
+        ADD     HL, SP
+        LD      (rtc_probe_sp), HL
+        LD      E, (HL)
+        INC     HL
+        LD      D, (HL)
+        EX      DE, HL
+        LD      (rtc_actual_addr), HL
+
         LD      HL, rtc_signature_write_return
+        LD      (rtc_expected_addr), HL
+        LD      DE, (rtc_actual_addr)
         OR      A
         SBC     HL, DE
         JR      Z, .return_address_ok
+
         LD      HL, rtc_trace_13_return_bad
         CALL    p125_trace_port
-        ; Restore the expected continuation after the trace string call.
-        LD      HL, rtc_signature_write_return
-        ; DE = actual word read from stack, HL = expected continuation.
+        ; The formatter reads SP, ACTUAL and EXPECTED from RAM.
         CALL    rtc_trace_return_addresses
         RET
 .return_address_ok:
@@ -218,6 +223,7 @@ rtc_trace_10_data_out_done:   DEFB "[RTC 10] DATA OUT DONE", 13, 10, 0
 rtc_trace_11_write_ret:        DEFB "[RTC 11] WRITE RET", 13, 10, 0
 rtc_trace_12_return_ok:        DEFB "[RTC 12] RETURN ADDRESS OK", 13, 10, 0
 rtc_trace_13_return_bad:       DEFB "[RTC 13] RETURN ADDRESS BAD", 13, 10, 0
+rtc_trace_sp_prefix:           DEFB " SP=", 0
 rtc_trace_actual_prefix:       DEFB " ACTUAL=", 0
 rtc_trace_expected_prefix:     DEFB " EXPECTED=", 0
 rtc_trace_hex_nl:              DEFB 13, 10, 0
@@ -226,24 +232,25 @@ rtc_trace_hex_nl:              DEFB 13, 10, 0
 ; This routine preserves all caller registers and does not touch the stack
 ; contents below its own return address.
 rtc_write_index:   DEFB 0
+rtc_probe_sp:      DEFW 0
 rtc_actual_addr:   DEFW 0
 rtc_expected_addr: DEFW 0
 
 ; Emit actual DE and expected HL as four hexadecimal digits each.
 ; Values are copied to writable RAM before any trace helper can clobber HL.
 rtc_trace_return_addresses:
-        ; Entry: DE=actual stack word, HL=expected continuation.
-        PUSH    HL
-        PUSH    DE
-        POP     HL
-        LD      (rtc_actual_addr), HL
-        POP     HL
-        LD      (rtc_expected_addr), HL
-
         PUSH    AF
         PUSH    BC
         PUSH    DE
         PUSH    HL
+
+        LD      HL, rtc_trace_sp_prefix
+        CALL    p125_trace_port
+        LD      HL, (rtc_probe_sp)
+        LD      A, H
+        CALL    rtc_trace_hex8
+        LD      A, L
+        CALL    rtc_trace_hex8
 
         LD      HL, rtc_trace_actual_prefix
         CALL    p125_trace_port
