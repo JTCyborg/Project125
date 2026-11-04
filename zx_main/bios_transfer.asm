@@ -315,7 +315,7 @@ bios_host_debug_hex_nibble:
         cp      '9' + 1
         jr      c, .bios_host_hex_digit
         add     a, 7
- .bios_host_hex_digit:
+.bios_host_hex_digit:
         jp      p125_emit_char
 
 bios_host_tail_prefix:
