@@ -70,7 +70,7 @@ rtc_already_active:
         POP     BC: POP     AF
         RET
 
-rtc_driver_version:              DEFB "[RTC DRIVER A1.88]", 13, 10, 0
+rtc_driver_version:              DEFB "[RTC DRIVER A1.92]", 13, 10, 0
 rtc_trace_01_open_begin:          DEFB "[RTC 01] OPEN BEGIN", 13, 10, 0
 rtc_trace_02_open_done:           DEFB "[RTC 02] OPEN DONE", 13, 10, 0
 rtc_trace_03_signature_read_begin: DEFB "[RTC 03] SIGNATURE READ BEGIN", 13, 10, 0
@@ -141,8 +141,23 @@ read_byte_raw
 
 ; --- Атомарная низкоуровневая запись байта в К512ВИ1 ---
 write_byte_raw
-        ; Keep the two hardware writes separately observable. The trace helper
-        ; preserves AF/BC/HL, so A (register index) and L (data) remain intact.
+        ; Snapshot the caller return word before any diagnostic CALL.
+        CP      #11
+        JR      NZ, .entry_probe_done
+        LD      (rtc_saved_hl), HL
+        LD      (rtc_saved_de), DE
+        LD      HL, 0
+        ADD     HL, SP
+        LD      (rtc_entry_sp), HL
+        LD      E, (HL)
+        INC     HL
+        LD      D, (HL)
+        LD      (rtc_entry_ret), DE
+        LD      HL, (rtc_saved_hl)
+        LD      DE, (rtc_saved_de)
+.entry_probe_done:
+
+        ; Keep the two hardware writes separately observable.
         LD      HL, rtc_trace_0D_index_out_begin
         CALL    p125_trace_port
         LD      BC, #DFF7
@@ -154,13 +169,10 @@ write_byte_raw
         CALL    p125_trace_port
         LD      BC, #BFF7
         OUT     (C), L
+        LD      (rtc_write_index), A
         LD      HL, rtc_trace_10_data_out_done
         CALL    p125_trace_port
 
-        ; Raw one-byte port markers bracket the next trace-helper call.
-        ; '>' means the RTC 10 trace helper returned to this instruction.
-        ; '<' means the RTC 11 trace-helper call also returned.
-        ; These markers deliberately do not call p125_trace_port.
         LD      BC, #00EF
         LD      A, '>'
         OUT     (C), A
@@ -169,8 +181,6 @@ write_byte_raw
         LD      A, 10
         OUT     (C), A
 
-        ; Last checkpoint inside the callee, now isolated from the preceding
-        ; trace-helper return path by the raw '>' marker.
         LD      HL, rtc_trace_11_write_ret
         CALL    p125_trace_port
 
@@ -182,23 +192,38 @@ write_byte_raw
         LD      A, 10
         OUT     (C), A
 
-        ; Read the actual return address from the stack without consuming it.
-        ; POP/PUSH keeps the original CALL return address for the final RET.
-        POP     DE
-        PUSH    DE
+        ; Snapshot the same stack word after all trace helper calls.
+        LD      A, (rtc_write_index)
+        CP      #11
+        JR      NZ, .return_without_probe
+        LD      (rtc_saved_hl), HL
+        LD      (rtc_saved_de), DE
+        LD      HL, 0
+        ADD     HL, SP
+        LD      (rtc_exit_sp), HL
+        LD      E, (HL)
+        INC     HL
+        LD      D, (HL)
+        LD      (rtc_exit_ret), DE
+        LD      HL, (rtc_saved_hl)
+        LD      DE, (rtc_saved_de)
+
         LD      HL, rtc_signature_write_return
+        LD      (rtc_expected_addr), HL
+        LD      HL, (rtc_exit_ret)
+        LD      DE, (rtc_expected_addr)
         OR      A
         SBC     HL, DE
         JR      Z, .return_address_ok
+
         LD      HL, rtc_trace_13_return_bad
         CALL    p125_trace_port
-        ; Print both addresses so the stack mismatch is measurable.
-        ; DE = actual word read from stack, HL = expected continuation.
-        CALL    rtc_trace_return_addresses
+        CALL    rtc_trace_stack_snapshots
         RET
 .return_address_ok:
         LD      HL, rtc_trace_12_return_ok
         CALL    p125_trace_port
+.return_without_probe:
         RET
 
 rtc_trace_0D_index_out_begin: DEFB "[RTC 0D] INDEX OUT BEGIN", 13, 10, 0
@@ -208,36 +233,44 @@ rtc_trace_10_data_out_done:   DEFB "[RTC 10] DATA OUT DONE", 13, 10, 0
 rtc_trace_11_write_ret:        DEFB "[RTC 11] WRITE RET", 13, 10, 0
 rtc_trace_12_return_ok:        DEFB "[RTC 12] RETURN ADDRESS OK", 13, 10, 0
 rtc_trace_13_return_bad:       DEFB "[RTC 13] RETURN ADDRESS BAD", 13, 10, 0
-rtc_trace_actual_prefix:       DEFB " ACTUAL=", 0
+rtc_trace_entry_sp_prefix:     DEFB " ENTRY_SP=", 0
+rtc_trace_entry_ret_prefix:    DEFB " ENTRY_RET=", 0
+rtc_trace_exit_sp_prefix:      DEFB " EXIT_SP=", 0
+rtc_trace_exit_ret_prefix:     DEFB " EXIT_RET=", 0
 rtc_trace_expected_prefix:     DEFB " EXPECTED=", 0
 rtc_trace_hex_nl:              DEFB 13, 10, 0
 
-; Emit actual DE and expected HL as four hexadecimal digits each.
-; This routine preserves all caller registers and does not touch the stack
-; contents below its own return address.
-rtc_trace_return_addresses:
+; Print the saved entry/exit stack snapshots.
+rtc_trace_stack_snapshots:
         PUSH    AF
         PUSH    BC
         PUSH    DE
         PUSH    HL
 
-        ; On entry DE=actual stack word, HL=expected continuation.
-        ; Exchange them so HL carries the actual value for formatting.
-        EX      DE, HL
-        LD      HL, rtc_trace_actual_prefix
+        LD      HL, rtc_trace_entry_sp_prefix
         CALL    p125_trace_port
-        LD      A, H
-        CALL    rtc_trace_hex8
-        LD      A, L
-        CALL    rtc_trace_hex8
+        LD      HL, (rtc_entry_sp)
+        CALL    rtc_trace_print_word
+
+        LD      HL, rtc_trace_entry_ret_prefix
+        CALL    p125_trace_port
+        LD      HL, (rtc_entry_ret)
+        CALL    rtc_trace_print_word
+
+        LD      HL, rtc_trace_exit_sp_prefix
+        CALL    p125_trace_port
+        LD      HL, (rtc_exit_sp)
+        CALL    rtc_trace_print_word
+
+        LD      HL, rtc_trace_exit_ret_prefix
+        CALL    p125_trace_port
+        LD      HL, (rtc_exit_ret)
+        CALL    rtc_trace_print_word
 
         LD      HL, rtc_trace_expected_prefix
         CALL    p125_trace_port
-        EX      DE, HL
-        LD      A, H
-        CALL    rtc_trace_hex8
-        LD      A, L
-        CALL    rtc_trace_hex8
+        LD      HL, (rtc_expected_addr)
+        CALL    rtc_trace_print_word
 
         LD      HL, rtc_trace_hex_nl
         CALL    p125_trace_port
@@ -246,6 +279,14 @@ rtc_trace_return_addresses:
         POP     BC
         POP     AF
         RET
+
+rtc_trace_print_word:
+        LD      A, H
+        CALL    rtc_trace_hex8
+        LD      A, L
+        CALL    rtc_trace_hex8
+        RET
+
 
 ; A = byte. Emits two uppercase hexadecimal digits to port #EF.
 rtc_trace_hex8:
@@ -297,5 +338,19 @@ split_bcd
         LD      L, A
         RET
 
+
+
+; =========================================================================
+; RTC diagnostic workspace (resident Z80 RAM).
+; All words are little-endian and are accessed only by the RTC diagnostics.
+; =========================================================================
+rtc_saved_hl:       DEFW 0
+rtc_saved_de:       DEFW 0
+rtc_entry_sp:       DEFW 0
+rtc_entry_ret:      DEFW 0
+rtc_write_index:    DEFB 0
+rtc_exit_sp:        DEFW 0
+rtc_exit_ret:       DEFW 0
+rtc_expected_addr:  DEFW 0
 
 ; =========================================================================

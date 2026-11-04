@@ -1326,3 +1326,50 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.88 print RTC return-address mismatch values | SOURCE COMMITTED | Added ACTUAL/EXPECTED hexadecimal address output on mismatch; build and runtime remain unverified. |
+
+## A1.89 — исправление вывода адресов возврата RTC (2026-11-04)
+
+- [x] Повторно получен актуальный `zx_main/rtc_driver.asm` из ветки `neogs-driver-rewrite`; предыдущий formatter A1.88 действительно терял фактический адрес при выводе префикса.
+- [x] Введены RAM-переменные `rtc_actual_addr` и `rtc_expected_addr`; входные DE/HL копируются в них до вызовов форматирования.
+- [x] Вывод ACTUAL/EXPECTED теперь читает сохранённые слова из переменных, а не из регистров, которые меняет `p125_trace_port`.
+- [x] Перед вызовом formatter после вывода сообщения о mismatch ожидаемый адрес повторно загружается в HL.
+- [x] Проверка адреса возврата ограничена первой записью сигнатуры `#11=#AA`; последующие записи регистров #0A/#0B имеют другие адреса продолжения и не сравниваются с меткой первой записи.
+- [x] Баннер runtime-драйвера изменён на `[RTC DRIVER A1.89]`.
+- [x] По первоисточнику `cmos/bc07cmos.txt` подтверждено соответствие портов: open/close `#EFF7`, индекс `#DFF7`, данные `#BFF7`; значения инициализации #11=#AA, #0A=#20, #0B=#02 сохранены.
+- [ ] Сборка через `build_project125.bat`; проверить SjASMPlus syntax и ограничение resident host image.
+- [ ] Runtime: прислать полный лог начиная с `[RTC DRIVER A1.89]`. При mismatch ожидается строка `ACTUAL=xxxx EXPECTED=xxxx`; при совпадении — `[RTC 12] RETURN ADDRESS OK`, затем `[RTC 06] SIGNATURE WRITE DONE`.
+- [ ] После получения адресов установить причину расхождения; CMOS hardware initialization пока не объявляется подтверждённой.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING. A1.88 runtime не подтверждён; его formatter заменён исправлением A1.89.
+## A1.90 — диагностика SP без изменения стека (2026-11-04)
+
+- [x] Runtime A1.89 получен: `ACTUAL=0000 EXPECTED=67C0`; mismatch подтверждён корректным шестнадцатеричным форматтером.
+- [x] Диагностическое чтение вершины стека заменено на вычисление адреса `SP` и чтение двух байтов по `(SP)` без `POP/PUSH`.
+- [x] Добавлен вывод `SP=xxxx` перед `ACTUAL` и `EXPECTED`.
+- [x] Сравнение по-прежнему выполняется только для первой записи сигнатуры CMOS #11.
+- [ ] Сборка через `build_project125.bat`; проверить SjASMPlus syntax и размер resident host image.
+- [ ] Runtime: прислать строку `[RTC DRIVER A1.90]` и диагностическую строку `SP=xxxx ACTUAL=xxxx EXPECTED=67C0`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+## A1.91 — снимки стека на входе и выходе RTC write (2026-11-04)
+
+- [x] Runtime A1.90: `SP=AFF7 ACTUAL=0000 EXPECTED=67C0`; SP находится в ожидаемой верхней области host stack, но слово по вершине стека не совпадает с адресом возврата.
+- [x] В `write_byte_raw` добавлен снимок `SP` и двух байтов по `(SP)` непосредственно при входе, до первого вызова `p125_trace_port`.
+- [x] Добавлен второй снимок тех же значений непосредственно перед `RET`, после всех RTC trace helper вызовов.
+- [x] Диагностика выполняется только для записи регистра CMOS #11; снимки сохраняются в RAM, живой стек не модифицируется.
+- [ ] Сборка через `build_project125.bat`; проверить синтаксис SjASMPlus и ограничение resident host image.
+- [ ] Runtime: проверить `ENTRY_SP`, `ENTRY_RET`, `EXIT_SP`, `EXIT_RET`, `EXPECTED`. Если ENTRY_RET уже неверен — исследовать caller/call boundary; если ENTRY_RET верен, а EXIT_RET повреждён — локализовать изменение внутри trace helper path.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.91 RTC entry/exit stack snapshots | SOURCE COMMITTED | Captures stack pointer and return word before the first trace call and immediately before RET; build/runtime remain unverified. |
+
+
+## A1.92 — восстановление отсутствующих RTC diagnostic labels (2026-11-04)
+
+- [x] Исправлена ошибка сборки A1.91: процедуры обращались к диагностическим переменным, объявления которых отсутствовали в `rtc_driver.asm`.
+- [x] Добавлены все восемь требуемых символов: `rtc_saved_hl`, `rtc_saved_de`, `rtc_entry_sp`, `rtc_entry_ret`, `rtc_write_index`, `rtc_exit_sp`, `rtc_exit_ret` и `rtc_expected_addr`.
+- [x] Runtime banner обновлён до `[RTC DRIVER A1.92]`, чтобы отличать исправленный исходник от A1.91.
+- [ ] Сборка через `build_project125.bat`; проверить синтаксис и `ProgramEnd <= #A800`.
+- [ ] Runtime: получить полный лог A1.92 и проверить значения `ENTRY_SP`, `ENTRY_RET`, `EXIT_SP`, `EXIT_RET` и `EXPECTED`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.92 restore missing RTC diagnostic workspace | SOURCE COMMITTED | Added the missing RAM labels referenced by the A1.91 stack-snapshot instrumentation; build/runtime remain unverified. |
