@@ -88,6 +88,8 @@ x86_real_io_instruction:
 x86_io_read8:
         call    x86_resident_lpt_read_dispatch
         ret     nc
+        call    x86_resident_uart_read_dispatch
+        ret     nc
 .read8_check_e0:
         ld      hl, (x86_io_port)
         ld      de, #00E0
@@ -166,6 +168,8 @@ x86_io_trace_read8:
 
 x86_io_write8:
         call    x86_resident_lpt_write_dispatch
+        ret     nc
+        call    x86_resident_uart_write_dispatch
         ret     nc
 .write8_check_e0:
         ld      hl, (x86_io_port)
