@@ -1597,7 +1597,7 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [x] Project125 stack top увеличен до `#BFFF`, как в проверенной реализации Project124. Область `#A800..#BFFF` остаётся свободной под стек; буфер первого сектора остаётся в `#C000`.
 - [x] Добавлен вывод фактического SP в `[NLOAD D]` непосредственно перед `CALL #3D13`; driver banner повышен до A46, host build marker до A21.
 - [ ] Выполнить `build_project125.bat` и проверить отсутствие ошибок сборки / assertion.
-- [ ] Runtime: ожидать `SP=` около `BFF5` внутри диагностической процедуры (точное значение зависит от глубины CALL/PUSH); проверить, появился ли `[NLOAD 02] CATALOG SEARCH RETURN`.
+- [ ] Runtime: ожидать `SP=` около `BFF1` внутри диагностической процедуры (точное значение зависит от глубины CALL/PUSH); проверить, появился ли `[NLOAD 02] CATALOG SEARCH RETURN`.
 - **Статус:** SOURCE COMMITTED / STACK-HEADROOM CORRECTION NOT YET BUILD- OR RUNTIME-VERIFIED / TR-DOS ROOT CAUSE OPEN.
 
 | 2026-11-04 | A1.24 NEOLOAD stack headroom | SOURCE COMMITTED | Increased Project125 SP from #AFFF to #BFFF to match Project124's proven TR-DOS loader stack placement; added live SP trace. Build/runtime pending. |
