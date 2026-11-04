@@ -1163,3 +1163,14 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [x] Не изменены чтение секторов, адреса буферов, DMA, handshake и BIOS validation.
 - [ ] Сборка и runtime-проверка на ATM.
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED.
+
+## A1.76 — диагностика фактически неподдержанного opcode BIOS (2026-11-04)
+
+- [x] Runtime A1.75: BIOS.C полностью прочитан (32 сектора от 02/03 до 04/02); в physical page 75 reset vector EA 5B E0 00 F0 проверен; BIOS ROM validator PASS.
+- [x] Runtime: после старта CPU по-прежнему останавливается на CS:IP=FFFF:0001, status #02. Первый байт EA считан, IP увеличен, но обработчик инструкции не завершил переход.
+- [x] Текущий исходник уже содержит точный dispatch EA -> x86_real_jmp_far до диапазонного I/O decoder. Повторно менять порядок dispatch без проверки собранного бинарника нельзя.
+- [x] В x86_real_mode.asm добавлено сохранение байта, попавшего в ветку unsupported opcode, в x86_real_unsupported_opcode.
+- [x] В main.asm добавлен вывод OP=xx в BIOS stop trace. Следующий runtime покажет, какой opcode реально дошёл до unsupported handler.
+- [ ] Собрать build_project125.bat и убедиться, что обновлённая прошивка NEOFW.C создана.
+- [ ] Runtime: проверить строку [BIOS] STOP OP=xx CS:IP=.... Если OP=EA, проверить соответствие собранной NEOFW.C исходнику и фактически загруженному файлу; если другой байт — исправлять конкретный opcode decoder.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
