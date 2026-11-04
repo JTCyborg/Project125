@@ -370,6 +370,8 @@ x86_real_dispatch:
 .not_moffs:
         cp      #A8
         jp      z, x86_real_test_al_immediate
+        cp      #27
+        jp      z, x86_real_daa
         cp      #D0
         jp      z, x86_real_shift_byte_one
         cp      #D1
@@ -2619,3 +2621,120 @@ x86_real_group_f7_unsupported:
         ld      (x86_exit_status), a
         scf
         ret
+
+
+; 27 — DAA. Decimal-adjust AL after an ADD.
+; AF/CF are consumed as inputs; PF/ZF/SF are recalculated. OF is undefined
+; on the 8086 and is preserved here rather than assigned an arbitrary value.
+x86_real_daa:
+        ld      a, (x86_reg_ax)
+        ld      (x86_daa_original), a
+        ld      (x86_daa_result), a
+
+        ld      hl, (x86_reg_flags)
+        ld      a, l
+        and     #01
+        ld      (x86_daa_old_cf), a
+        ld      a, l
+        and     #10
+        ld      (x86_daa_old_af), a
+
+        ; Low-nibble correction: add 06 when AL[3:0] > 9 or AF was set.
+        ld      a, (x86_daa_original)
+        and     #0F
+        cp      #0A
+        jp      nc, .daa_low_adjust
+        ld      a, (x86_daa_old_af)
+        or      a
+        jp      z, .daa_high_test
+.daa_low_adjust:
+        ld      a, (x86_daa_result)
+        add     a, #06
+        ld      (x86_daa_result), a
+        ld      a, 1
+        ld      (x86_daa_new_af), a
+        jp      .daa_high_test
+.daa_high_test:
+        ; High correction uses the ORIGINAL AL and incoming CF.
+        ld      a, (x86_daa_original)
+        cp      #9A
+        jp      nc, .daa_high_adjust
+        ld      a, (x86_daa_old_cf)
+        or      a
+        jp      z, .daa_flags
+.daa_high_adjust:
+        ld      a, (x86_daa_result)
+        add     a, #60
+        ld      (x86_daa_result), a
+        ld      a, 1
+        ld      (x86_daa_new_cf), a
+
+.daa_flags:
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+
+        ld      a, (x86_daa_new_cf)
+        or      a
+        jp      z, .daa_pf
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.daa_pf:
+        ld      a, (x86_daa_new_af)
+        or      a
+        jp      z, .daa_parity
+        ld      hl, x86_shift_new_flags
+        set     4, (hl)
+.daa_parity:
+        ld      a, (x86_daa_result)
+        and     a
+        jp      pe, .daa_set_pf
+        jp      .daa_zero
+.daa_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.daa_zero:
+        ld      a, (x86_daa_result)
+        or      a
+        jp      nz, .daa_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.daa_sign:
+        ld      a, (x86_daa_result)
+        bit     7, a
+        jp      z, .daa_merge
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.daa_merge:
+        ; Replace CF/PF/AF/ZF/SF, preserve OF and control/reserved flags.
+        ld      hl, (x86_reg_flags)
+        ld      de, #FF2A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+
+        ; Store adjusted AL and preserve AH.
+        ld      a, (x86_reg_ax+1)
+        ld      h, a
+        ld      a, (x86_daa_result)
+        ld      l, a
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
+x86_daa_original: db 0
+x86_daa_result:   db 0
+x86_daa_old_cf:   db 0
+x86_daa_old_af:   db 0
+x86_daa_new_cf:   db 0
+x86_daa_new_af:   db 0
