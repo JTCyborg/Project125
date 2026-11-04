@@ -134,11 +134,27 @@ read_byte_raw
 
 ; --- Атомарная низкоуровневая запись байта в К512ВИ1 ---
 write_byte_raw
+        ; Keep the two hardware writes separately observable. The trace helper
+        ; preserves AF/BC/HL, so A (register index) and L (data) remain intact.
+        LD      HL, rtc_trace_0D_index_out_begin
+        CALL    p125_trace_port
         LD      BC, #DFF7
         OUT     (C), A
+        LD      HL, rtc_trace_0E_index_out_done
+        CALL    p125_trace_port
+
+        LD      HL, rtc_trace_0F_data_out_begin
+        CALL    p125_trace_port
         LD      BC, #BFF7
         OUT     (C), L
+        LD      HL, rtc_trace_10_data_out_done
+        CALL    p125_trace_port
         RET
+
+rtc_trace_0D_index_out_begin: DEFB "[RTC 0D] INDEX OUT BEGIN", 13, 10, 0
+rtc_trace_0E_index_out_done:  DEFB "[RTC 0E] INDEX OUT DONE", 13, 10, 0
+rtc_trace_0F_data_out_begin:  DEFB "[RTC 0F] DATA OUT BEGIN", 13, 10, 0
+rtc_trace_10_data_out_done:   DEFB "[RTC 10] DATA OUT DONE", 13, 10, 0
 
 open_cmos
         LD      BC, #EFF7
