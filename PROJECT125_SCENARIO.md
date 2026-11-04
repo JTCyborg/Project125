@@ -1230,3 +1230,16 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Build with `build_project125.bat`; verify assembler syntax and resident image size (`ProgramEnd <= #A800`).
 - [ ] Runtime: capture the port `#EF` log from `[TRACE 00]` onward. The last emitted marker identifies the call that did not return; report the complete log without trimming.
 - **Status:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+
+## A1.81 — трассировка внутренних этапов RTC K512VI1 (2026-11-04)
+
+- [x] Runtime A1.80: последовательность проходит [TRACE 00], инициализацию ATM-видео и очистку экрана; последняя отметка — [TRACE 30] RTC INIT BEGIN, [TRACE 31] отсутствует.
+- [x] Сбой локализован внутри вызова CHECK_AND_INIT_CMOS; видеорежим и экранный presenter на данном этапе не менять.
+- [x] В zx_main/rtc_driver.asm добавлены контрольные отметки непосредственно вокруг открытия CMOS, чтения сигнатуры регистра #11, трёх возможных записей регистров #11/#0A/#0B и закрытия CMOS.
+- [x] Маркеры RTC используют существующий независимый вывод p125_trace_port в порт #EF; диагностические вызовы сохраняют AF/BC/HL и не меняют прочитанное значение A.
+- [ ] Сборка build_project125.bat: проверить синтаксис и лимит resident host image.
+- [ ] Runtime: прислать полный лог от [TRACE 00] до последней строки [RTC xx]. Последняя RTC-метка укажет конкретный низкоуровневый шаг.
+- **Статус:** RTC TRACE SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.81 K512VI1 initialization substage trace | SOURCE COMMITTED | Added markers around CMOS open, signature read, cold-start register writes and close; no hardware behavior changed intentionally. |
