@@ -1615,7 +1615,6 @@ x86_real_imm_low:    db 0
 x86_real_imm_high:   db 0
 x86_real_int_vector: db 0
 x86_real_opcode: db 0
-x86_real_unsupported_opcode: db 0
 x86_real_imm_byte: db 0
 x86_real_incdec_mode: db 0
 x86_real_old_low: db 0
@@ -1623,8 +1622,6 @@ x86_real_old_high: db 0
 x86_real_new_flags: dw 0
 x86_real_reg_ptr: dw 0
 x86_real_result: dw 0
-x86_real_bounds_enable: db 0
-x86_real_task_end: dw 0
 x86_real_seg_override_active: db 0
 x86_real_seg_override: dw 0
 x86_real_rep_mode: db 0
