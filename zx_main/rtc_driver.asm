@@ -186,13 +186,20 @@ write_byte_raw
         ; POP/PUSH keeps the original CALL return address for the final RET.
         POP     DE
         PUSH    DE
+
+        ; This explicit return-address probe belongs to the signature write
+        ; only. The later CMOS register writes have different continuations.
+        CP      #11
+        JR      NZ, .return_address_ok
+
         LD      HL, rtc_signature_write_return
         OR      A
         SBC     HL, DE
         JR      Z, .return_address_ok
         LD      HL, rtc_trace_13_return_bad
         CALL    p125_trace_port
-        ; Print both addresses so the stack mismatch is measurable.
+        ; Restore the expected continuation after the trace string call.
+        LD      HL, rtc_signature_write_return
         ; DE = actual word read from stack, HL = expected continuation.
         CALL    rtc_trace_return_addresses
         RET
