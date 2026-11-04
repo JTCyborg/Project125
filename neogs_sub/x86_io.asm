@@ -369,20 +369,32 @@ x86_pit_write_control:
         ld      a, (x86_pit_channel)
         call    x86_pit_channel_ptr
         ld      a, (x86_pit_mode)
+        add     a, 6
+        ld      e, a
+        ld      d, 0
+        ld      hl, x86_pit_records
+        ld      a, (x86_pit_channel)
+        call    x86_pit_record_ptr
+        ld      de, 6
+        add     hl, de
+        ld      a, (x86_pit_mode)
         ld      (hl), a
         ret
 
 x86_pit_latch_selected:
-        ; A count latch command is ignored if a previous latch is unread.
         ld      a, (x86_pit_channel)
-        call    x86_pit_channel_word_ptr
-        inc     hl
-        inc     hl
-        ld      a, (hl)
-        or      a
+        call    x86_pit_record_ptr
+        ld      de, 7
+        add     hl, de
+        bit     1, (hl)
         ret     nz
+        set     1, (hl)
         dec     hl
         dec     hl
+        dec     hl
+        dec     hl
+        dec     hl
+        ; HL now points to count word at record+2.
         ld      e, (hl)
         inc     hl
         ld      d, (hl)
@@ -390,23 +402,27 @@ x86_pit_latch_selected:
         ld      (hl), e
         inc     hl
         ld      (hl), d
-        inc     hl
-        ld      a, 1
-        ld      (hl), a
         ret
 
 x86_pit_read_selected:
         ld      a, (x86_pit_channel)
-        call    x86_pit_channel_word_ptr
-        ; HL points to reload; countdown follows at +2, latch at +4.
-        inc     hl
-        inc     hl
-        ld      a, (x86_pit_latched)
-        or      a
+        call    x86_pit_record_ptr
+        ld      de, 7
+        add     hl, de
+        bit     1, (hl)
         jr      z, .read_live
-        inc     hl
-        inc     hl
+        dec     hl
+        dec     hl
+        dec     hl
+        ; HL points at latch word (+4).
+        jr      .read_byte
 .read_live:
+        dec     hl
+        dec     hl
+        dec     hl
+        dec     hl
+        ; HL points at count word (+2).
+.read_byte:
         ld      a, (x86_pit_read_phase)
         or      a
         jr      nz, .read_high
@@ -433,7 +449,7 @@ x86_pit_read_selected:
 
 x86_pit_write_selected:
         ld      a, (x86_pit_channel)
-        call    x86_pit_channel_word_ptr
+        call    x86_pit_record_ptr
         ld      a, (x86_pit_access)
         cp      1
         jr      z, .write_lsb
@@ -469,8 +485,7 @@ x86_pit_write_selected:
         xor     a
         ld      (hl), a
 .activate:
-        ld      a, (x86_pit_channel)
-        call    x86_pit_channel_word_ptr
+        ; Copy reload word to current count.
         inc     hl
         inc     hl
         ld      e, (hl)
@@ -480,36 +495,39 @@ x86_pit_write_selected:
         ld      (hl), e
         inc     hl
         ld      (hl), d
-        ; Per-channel running flag.
         inc     hl
-        ld      a, 1
-        ld      (hl), a
-        ; Preserve legacy channel-0 state used by the timer engine.
+        inc     hl
+        inc     hl
+        set     0, (hl)                 ; running flag
         ld      a, (x86_pit_channel)
         or      a
         ret     nz
-        ld      hl, (x86_pit_reload)
+        ld      hl, (x86_pit_reloads)
+        ld      (x86_pit_reload), hl
         ld      (x86_pit_countdown), hl
         ld      a, 1
         ld      (x86_pit_enabled), a
         ret
 
-; HL -> per-channel mode byte. A=channel 0..2.
-x86_pit_channel_ptr:
+; A=channel 0..2. HL -> 8-byte channel record:
+; reload word, current count word, latched count word, mode, flags.
+x86_pit_record_ptr:
         ld      e, a
         ld      d, 0
-        ld      hl, x86_pit_modes
+        ld      hl, x86_pit_records
+        add     hl, de
+        add     hl, de
+        add     hl, de
+        add     hl, de
+        add     hl, de
+        add     hl, de
+        add     hl, de
         add     hl, de
         ret
 
-; HL -> reload word for selected channel. Channel records are parallel arrays.
+; Legacy alias used by existing channel-0 elapsed-time service.
 x86_pit_channel_word_ptr:
-        ld      e, a
-        ld      d, 0
-        ld      hl, x86_pit_reloads
-        add     hl, de
-        add     hl, de
-        ret
+        jp      x86_pit_record_ptr
 
 x86_io_trace_write8:
         ret
@@ -798,13 +816,16 @@ x86_pit_write_phase:    db 0
 x86_pit_read_phase:     db 0
 x86_pit_enabled:        db 0
 x86_pit_latched:        db 0
-x86_pit_modes:          db 3,3,3
-x86_pit_reloads:        dw 0,0,0
-x86_pit_counts:         dw 0,0,0
-x86_pit_latches:        dw 0,0,0
-x86_pit_running:        db 0,0,0
+; Per-channel records: reload, count, latch, mode, flags (bit0=run, bit1=count latched).
+x86_pit_records:
+        dw 0,0,0
+        db 3,0
+        dw 0,0,0
+        db 3,0
+        dw 0,0,0
+        db 3,0
 ; Channel-0 compatibility aliases used by the elapsed-time service.
-x86_pit_reload:         dw 0
+x86_pit_reloads:        dw 0
 x86_pit_countdown:      dw 0
 x86_pit_last_tick:      dw 0
 x86_pit_fraction:       dw 0
