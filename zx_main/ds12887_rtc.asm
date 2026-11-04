@@ -1,14 +1,13 @@
 ; =========================================================================
 ; PROJECT125 — Dallas DS12887 RTC driver for ATM Turbo 2+
-; Version: D1.00
+; Version: D1.02
 ;
-; Unreal Speccy source (io.cpp, ATM3 path) confirms the hardware interface:
-;   OUT (#DFF7),A  selects the DS12887 register
-;   IN  A,(#BFF7)  reads the selected register
-;   OUT (#BFF7),A  writes the selected register
-;
-; ATM3 does not require the Pentagon EFF7 CMOS-enable bit.
-; This module is READ-ONLY: it never writes RTC/CMOS data or control registers.
+; ATM710/GLUK CMOS access:
+;   OUT (#EFF7),#80 opens the CMOS/RTC decode gate (EFF7 bit 7)
+;   OUT (#DFF7),A selects the DS12887 register
+;   IN  A,(#BFF7) reads the selected register
+;   OUT (#EFF7),#00 closes the CMOS/RTC decode gate
+; The RTC data/control registers are never written by this driver.
 ; READ_CURRENT_TIME is the timestamp API used by main.asm.
 ;
 ; DS12887 registers used:
@@ -25,6 +24,10 @@ DS12887_PROBE::
 
         ld      hl, ds12887_banner
         call    p125_trace_port
+
+        ; ATM710 requires the EFF7 CMOS gate; Project124 uses this same
+        ; open/close sequence for the working Pentagon CMOS clock driver.
+        call    DS12887_OPEN
 
         ; Status D VRT must be set. This is a read-only presence/validity test.
         ld      a, #0D
@@ -94,6 +97,7 @@ ds12887_probe_read_error:
         call    p125_trace_port
 
 ds12887_probe_done:
+        call    DS12887_CLOSE
         pop     hl
         pop     de
         pop     bc
@@ -112,6 +116,7 @@ READ_CURRENT_TIME::
         push    de
         push    hl
 
+        call    DS12887_OPEN
         ld      a, (ds12887_available)
         or      a
         jp      z, ds12887_time_unknown
@@ -145,6 +150,7 @@ ds12887_time_unknown:
         ld      (txt_sec+1), a
 
 ds12887_time_done:
+        call    DS12887_CLOSE
         pop     hl
         pop     de
         pop     bc
@@ -152,8 +158,32 @@ ds12887_time_done:
         ret
 
 ; -------------------------------------------------------------------------
+; GLUK/ATM CMOS gate. Match the known-working Project124 sequence.
+; EFF7 bit 7 enables the DFF7/BFF7 RTC/CMOS port decoder.
+; -------------------------------------------------------------------------
+DS12887_OPEN:
+        push    af
+        push    bc
+        ld      bc, #EFF7
+        ld      a, #80
+        out     (c), a
+        pop     bc
+        pop     af
+        ret
+
+DS12887_CLOSE:
+        push    af
+        push    bc
+        ld      bc, #EFF7
+        xor     a
+        out     (c), a
+        pop     bc
+        pop     af
+        ret
+
+; -------------------------------------------------------------------------
 ; A = DS12887 register number, returns register value in A.
-; Uses the ATM3 index/data ports identified in Unreal Speccy io.cpp.
+; Caller must have opened the EFF7 CMOS gate.
 ; No writes are made to the selected RTC register.
 ; -------------------------------------------------------------------------
 DS12887_READ_REG:
@@ -336,7 +366,7 @@ DS12887_PRINT_CHAR:
         pop     bc
         ret
 
-ds12887_banner:      defb "[DS12887 D1.01] RTC DRIVER PORTS #DFF7/#BFF7", 13, 10, 0
+ds12887_banner:      defb "[DS12887 D1.02] EFF7 GATE + #DFF7/#BFF7", 13, 10, 0
 ds12887_found:       defb "[DS12887] VRT OK; READ-ONLY CLOCK ACCESS", 13, 10, 0
 ds12887_status_dump: defb "[DS12887] STATUS D/A/B=", 0
 ds12887_invalid:     defb "[DS12887] VRT BIT 7 CLEAR (CHECK CMOS PORT/POWER)", 13, 10, 0
