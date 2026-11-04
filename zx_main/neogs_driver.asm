@@ -400,13 +400,15 @@ upload_firmware::
         ld      a, h
         or      l
         jp      z, .upload_failed
+        ; P125 segmented image: up to 48 KiB payload plus 10-byte header.
+        ; The original V1 #14/#13 and DBIT transport is unchanged.
         ld      a, h
-        cp      #40
+        cp      #C0
         jr      c, .firmware_file_length_ok
         jp      nz, .upload_failed
         ld      a, l
-        or      a
-        jp      nz, .upload_failed
+        cp      #0B
+        jp      nc, .upload_failed
 .firmware_file_length_ok:
         ld      hl, (neo_fw_file_length)
         ld      (neo_fw_length), hl
@@ -452,7 +454,7 @@ upload_firmware::
         cp      NGS_BOOTSTRAP_LENGTH_ACK
         jp      nz, .upload_failed
 
-        ; Phase 8: stream the custom firmware to RAM address $0000.
+        ; Phase 8: stream the complete P125 segmented package; bootstrap places its sections in pages 0, 68 and 69.
         ld      a, 8
         ld      (neo_fw_timeout_phase), a
         ld      hl, (neo_fw_source)
