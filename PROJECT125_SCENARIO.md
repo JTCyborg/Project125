@@ -1948,3 +1948,16 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
 
 | 2026-11-04 | A1.53 MOV segment registers and quiet RTC timestamps | SOURCE COMMITTED | Dispatch and implement 8Ch/8Eh segment-register MOV forms; suppress timestamp polling until DS12887 is available and remove per-line RTC trace noise. Build/runtime pending. |
+
+
+## A1.54 — 8086 MOV r/m, immediate (2026-11-04)
+
+- Runtime A47/A64: TR-DOS 5.03, NEOLOAD.C, NEOFW.C, firmware upload, BIOS.C staging, UI and video CRC selftest pass. BIOS reset vector and far JMP work. The new segment-register MOV handler passes opcode 8Eh at F000:E05F; the next stop is opcode C7 at F000:E061.
+- C7 is MOV r/m16,imm16. Added exact dispatch for C6/C7 and a common handler using the existing ModR/M effective-address decoder and memory/register write path. C6 handles byte immediate; C7 handles little-endian word immediate. Both require ModR/M /0; other extension fields return unsupported.
+- No TR-DOS, NeoGS upload, RTC, or UI sequencing changes.
+- Build marker remains A47; no new host marker is introduced by this interpreter-only change.
+- [ ] Build: SjASMPlus firmware and host; check for duplicate labels, relative-branch range, and resident image size.
+- [ ] Runtime: verify the BIOS passes C7 and capture the next stop.
+- **Status:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.54 MOV immediate to r/m | SOURCE COMMITTED | Implement 8086 C6/C7 immediate MOV through existing ModR/M decoder. Build/runtime pending. |
