@@ -372,6 +372,10 @@ x86_real_dispatch:
         jp      z, x86_real_alu8_accumulator_immediate
         cp      #05
         jp      z, x86_real_alu_accumulator_immediate
+        cp      #2C
+        jp      z, x86_real_alu8_accumulator_immediate
+        cp      #2D
+        jp      z, x86_real_alu_accumulator_immediate
         cp      #00
         jp      z, x86_real_alu8_modrm
         cp      #02
