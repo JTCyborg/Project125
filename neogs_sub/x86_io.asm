@@ -109,6 +109,28 @@ x86_io_read8:
         or      a
         sbc     hl, de
         jr      z, x86_pit_read_channel0
+        ; IBM PC/XT 8255 PPI: keyboard data, system-control latch,
+        ; memory-size/sense input and mode-control register.
+        ld      hl, (x86_io_port)
+        ld      de, #0060
+        or      a
+        sbc     hl, de
+        jr      z, x86_ppi_read_port_a
+        ld      hl, (x86_io_port)
+        ld      de, #0061
+        or      a
+        sbc     hl, de
+        jr      z, x86_ppi_read_port_b
+        ld      hl, (x86_io_port)
+        ld      de, #0062
+        or      a
+        sbc     hl, de
+        jr      z, x86_ppi_read_port_c
+        ld      hl, (x86_io_port)
+        ld      de, #0063
+        or      a
+        sbc     hl, de
+        jr      z, x86_ppi_read_control
         ld      a, #FF
         jp      x86_io_trace_read8
 
@@ -185,7 +207,96 @@ x86_io_write8:
         or      a
         sbc     hl, de
         jp      z, x86_pit_write_channel0
+        ld      hl, (x86_io_port)
+        ld      de, #0061
+        or      a
+        sbc     hl, de
+        jp      z, x86_ppi_write_port_b
+        ld      hl, (x86_io_port)
+        ld      de, #0063
+        or      a
+        sbc     hl, de
+        jp      z, x86_ppi_write_control
+        ; Port 60 is keyboard data input; port 62 is a read-only sense port.
+        ld      hl, (x86_io_port)
+        ld      de, #0060
+        or      a
+        sbc     hl, de
+        jr      z, .write8_ppi_ignored
+        ld      hl, (x86_io_port)
+        ld      de, #0062
+        or      a
+        sbc     hl, de
+        jr      z, .write8_ppi_ignored
         jp      x86_io_trace_write8
+.write8_ppi_ignored:
+        ret
+
+; -------------------------------------------------------------------------
+; IBM PC/XT 8255 PPI subset, based on Project124/PCem keyboard_xt.c.
+; Port 61 is a read/write system-control latch (reset value 40h).
+; Port 62 reports 640 KiB conventional-memory size in 32 KiB units,
+; plus the cassette/speaker sense bits. No cassette is attached here.
+; A low-to-high transition of PB6 resets the XT keyboard and queues AAh.
+; -------------------------------------------------------------------------
+x86_ppi_read_port_a:
+        ld      a, (x86_ppi_keyboard_data)
+        xor     a
+        ld      (x86_ppi_keyboard_full), a
+        ret
+
+x86_ppi_read_port_b:
+        ld      a, (x86_ppi_port_b)
+        ret
+
+x86_ppi_read_port_c:
+        ; PC/XT BIOS obtains memory size in 32 KiB units above the first
+        ; 64 KiB. For 640 KiB this is 18 (12h): select low/high nibble
+        ; with PB2, matching the original IBM 5150 keyboard/PPI wiring.
+        ld      a, (x86_ppi_port_b)
+        bit     2, a
+        jr      nz, .low_nibble
+        ld      a, #01
+        jr      .sense_bits
+.low_nibble:
+        ld      a, #02
+.sense_bits:
+        ld      b, a
+        ld      a, (x86_ppi_port_b)
+        and     #03
+        jr      z, .speaker_off
+        ld      a, b
+        or      #20
+        ret
+.speaker_off:
+        ld      a, b
+        ret
+
+x86_ppi_read_control:
+        ld      a, (x86_ppi_control)
+        ret
+
+x86_ppi_write_port_b:
+        ld      a, (x86_ppi_port_b)
+        bit     6, a
+        ld      b, a
+        ld      a, (x86_io_value)
+        ld      (x86_ppi_port_b), a
+        bit     6, b
+        ret     nz
+        bit     6, a
+        ret     z
+        ; XT keyboard reset edge: make the BAT completion byte available.
+        ld      a, #AA
+        ld      (x86_ppi_keyboard_data), a
+        ld      a, 1
+        ld      (x86_ppi_keyboard_full), a
+        ret
+
+x86_ppi_write_control:
+        ld      a, (x86_io_value)
+        ld      (x86_ppi_control), a
+        ret
 
 ; Master 8259, single-controller PC/XT subset. IRQ0 is fully serviced.
 x86_pic_write_command:
@@ -699,6 +810,12 @@ x86_io_trace_count:  db 0
 x86_io_test_ip:      dw 0
 x86_io_test_ax:      dw 0
 x86_io_test_dx:      dw 0
+
+; PC/XT 8255 PPI state. IBM 5150 reset values are PA=00h, PB=40h.
+x86_ppi_port_b:          db #40
+x86_ppi_control:         db #99
+x86_ppi_keyboard_data:   db 0
+x86_ppi_keyboard_full:   db 0
 
 x86_io_guest_imm8:
         db #B0,#5A,#E6,#E0,#B0,#00,#E4,#E0,#F4
