@@ -192,7 +192,7 @@ write_byte_raw
         ; only. The later CMOS register writes have different continuations.
         LD      A, (rtc_write_index)
         CP      #11
-        JR      NZ, .return_address_ok
+        JR      NZ, .return_without_probe
 
         LD      HL, rtc_signature_write_return
         OR      A
@@ -208,6 +208,7 @@ write_byte_raw
 .return_address_ok:
         LD      HL, rtc_trace_12_return_ok
         CALL    p125_trace_port
+.return_without_probe:
         RET
 
 rtc_trace_0D_index_out_begin: DEFB "[RTC 0D] INDEX OUT BEGIN", 13, 10, 0
