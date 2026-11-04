@@ -1380,6 +1380,7 @@ x86_real_xlat:
         ld      d, 0
         add     hl, de
         ld      (x86_mem_offset), hl
+        ld      (x86_mem_offset_work), hl
         ld      hl, (x86_reg_ds)
         ld      a, (x86_real_seg_override_active)
         or      a
@@ -1452,6 +1453,7 @@ x86_real_moffs:
         call    x86_real_mov_fetch16
         ret     c
         ld      (x86_mem_offset), hl
+        ld      (x86_mem_offset_work), hl
         ld      hl, (x86_reg_ds)
         ld      a, (x86_real_seg_override_active)
         or      a
