@@ -1266,3 +1266,16 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.83 RTC write return checkpoint | SOURCE COMMITTED | Added a marker immediately before RET in write_byte_raw; no RTC port values or register settings changed. |
+
+
+## A1.84 — проверка адреса возврата RTC (2026-11-04)
+
+- [x] Runtime A1.83: [RTC 11] WRITE RET выведен; [RTC 06] SIGNATURE WRITE DONE отсутствует.
+- [x] После CALL write_byte_raw введена метка точного адреса продолжения rtc_signature_write_return.
+- [x] Перед RET вычисляется адрес вершины стека через HL=SP и сравнивается с rtc_signature_write_return.
+- [x] Добавлены исходы [RTC 12] RETURN ADDRESS OK и [RTC 13] RETURN ADDRESS BAD.
+- [ ] Сборка build_project125.bat и проверка размера host image.
+- [ ] Runtime: сообщить, какая из отметок RTC 12/13 появляется и есть ли затем RTC 06.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.84 RTC return-address validation | SOURCE COMMITTED | Added stack-top return-address comparison before RET; no RTC I/O protocol changes. |
