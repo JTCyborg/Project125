@@ -1430,3 +1430,11 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
 
 | 2026-11-04 | A1.10 native ATM 8031 RTC | SOURCE COMMITTED | Replaced the non-invasive probe with a read-only RTC driver and routed the logger timestamp API to ATM's native controller. Build and runtime remain unverified. |
+
+
+## A1.10.1 — fix SjASMPlus branch range in ATM RTC driver (2026-11-04)
+
+- [x] Replaced relative `JR` branches in `atm_kbd_rtc.asm` with absolute `JP` branches. This removes the Z80 signed 8-bit displacement limit that caused assembler errors at the long probe/error paths.
+- [ ] Rebuild with `build.bat` / project build script; confirm no further assembler diagnostics.
+- [ ] Runtime verification remains pending.
+- **Status:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING.
