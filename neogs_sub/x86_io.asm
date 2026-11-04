@@ -44,13 +44,6 @@ x86_real_io_instruction:
 
 .input_byte:
         call    x86_io_read8
-        ld      (x86_io_trace_value), a
-        ld      a, 'R'
-        ld      (x86_io_trace_kind), a
-        ld      a, '8'
-        ld      (x86_io_trace_width), a
-        call    x86_io_trace_event
-        ld      a, (x86_io_trace_value)
         ld      (x86_alu8_result), a
         xor     a                       ; AL register index
         call    x86_alu8_write_reg
@@ -58,13 +51,6 @@ x86_real_io_instruction:
 
 .input_word:
         call    x86_io_read16
-        ld      (x86_io_trace_value), hl
-        ld      a, 'R'
-        ld      (x86_io_trace_kind), a
-        ld      a, 'W'
-        ld      (x86_io_trace_width), a
-        call    x86_io_trace_event
-        ld      hl, (x86_io_trace_value)
         xor     a                       ; AX register index
         call    x86_alu_write_reg16
         jp      x86_real_next
@@ -79,11 +65,6 @@ x86_real_io_instruction:
         call    x86_alu8_read_reg
         ld      (x86_io_value), a
         call    x86_io_write8
-        ld      a, 'W'
-        ld      (x86_io_trace_kind), a
-        ld      a, '8'
-        ld      (x86_io_trace_width), a
-        call    x86_io_trace_event
         jp      x86_real_next
 
 .output_word:
@@ -91,11 +72,6 @@ x86_real_io_instruction:
         call    x86_alu_read_reg16
         ld      (x86_io_value), hl
         call    x86_io_write16
-        ld      a, 'W'
-        ld      (x86_io_trace_kind), a
-        ld      a, 'W'
-        ld      (x86_io_trace_width), a
-        call    x86_io_trace_event
         jp      x86_real_next
 
 ; -------------------------------------------------------------------------
@@ -549,45 +525,6 @@ x86_io_write16:
 ; BIOS-only diagnostic for unmapped guest I/O accesses. First 64 events
 ; are forwarded to the existing host console, e.g. [IO] R8 0060=FF.
 x86_io_trace_event:
-        ; Keep the first 64 guest I/O transactions. This bounded trace is
-        ; diagnostic only; it must never alter guest registers or FLAGS.
-        ld      a, (x86_io_trace_count)
-        cp      64
-        ret     nc
-        inc     a
-        ld      (x86_io_trace_count), a
-        push    af
-        push    bc
-        push    de
-        push    hl
-        ld      hl, x86_io_trace_prefix
-        call    neo_debug_send_string
-        ld      a, (x86_io_trace_kind)
-        call    neo_send_data_byte
-        ld      a, (x86_io_trace_width)
-        call    neo_send_data_byte
-        ld      a, ' '
-        call    neo_send_data_byte
-        ld      hl, (x86_io_port)
-        ld      a, h
-        call    neo_debug_hex8
-        ld      a, l
-        call    neo_debug_hex8
-        ld      a, '='
-        call    neo_send_data_byte
-        ld      hl, (x86_io_trace_value)
-        ld      a, h
-        call    neo_debug_hex8
-        ld      a, l
-        call    neo_debug_hex8
-        ld      a, 13
-        call    neo_send_data_byte
-        ld      a, 10
-        call    neo_send_data_byte
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
         ret
 
 x86_io_trace_prefix: db "[IO] ", 0
