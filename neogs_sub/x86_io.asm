@@ -366,7 +366,9 @@ x86_io_trace_write8:
 x86_io_tick:
         ld      a, (x86_pit_enabled)
         or      a
-        ret     z
+        jr      nz, .tick_timer
+        ret
+.tick_timer:
         ld      hl, (x86_pit_countdown)
         dec     hl
         ld      (x86_pit_countdown), hl
@@ -387,16 +389,28 @@ x86_io_tick:
 .check_irq:
         ld      a, (x86_reg_flags+1)
         bit     1, a
-        ret     z
+        jr      nz, .check_mask
+        or      a                       ; clear carry on no delivery
+        ret
+.check_mask:
         ld      a, (x86_pic_mask)
         bit     0, a
-        ret     nz
+        jr      z, .check_service
+        or      a
+        ret
+.check_service:
         ld      a, (x86_pic_in_service)
         bit     0, a
-        ret     nz
+        jr      z, .check_pending
+        or      a
+        ret
+.check_pending:
         ld      a, (x86_pic_pending)
         bit     0, a
-        ret     z
+        jr      nz, .deliver
+        or      a
+        ret
+.deliver:
         res     0, a
         ld      (x86_pic_pending), a
         ld      a, (x86_pic_auto_eoi)
