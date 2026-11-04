@@ -1883,3 +1883,12 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Build and verify marker A43 / driver A61.
 - [ ] Runtime: capture the complete `[NLOAD D]` diagnostic through the `[NLOAD 01]` call boundary.
 - **Status:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. No claim that the search hang is fixed.
+
+
+## A1.49 — Post-map TR-DOS ROM boundary probe (2026-11-04)
+
+- [x] A1.48 runtime exposed a diagnostic ordering flaw: `ROM@3D13` and `BANKM` were sampled while the ATM UI mapping was still active (`BANKM=#18`), before `neo_fw_trdos_legacy_map` selected `#10`.
+- [x] Move the legacy paging switch ahead of the diagnostic. The ROM bytes and BANKM are now sampled after the `#10` switch, immediately before the unchanged `CALL #3D13`.
+- [ ] Build and verify marker A44 / driver A62.
+- [ ] Runtime: capture `[NLOAD D]` and `ATM710 ROM@3D13` from the post-map probe.
+- **Status:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. This isolates the mapping at the actual call boundary; it does not yet restore the full ATM window-0 configuration or claim the hang is fixed.
