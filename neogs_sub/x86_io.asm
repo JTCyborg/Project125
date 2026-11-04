@@ -367,13 +367,6 @@ x86_pit_write_control:
         ld      (x86_pit_write_phase), a
         ld      (x86_pit_read_phase), a
         ld      a, (x86_pit_channel)
-        call    x86_pit_channel_ptr
-        ld      a, (x86_pit_mode)
-        add     a, 6
-        ld      e, a
-        ld      d, 0
-        ld      hl, x86_pit_records
-        ld      a, (x86_pit_channel)
         call    x86_pit_record_ptr
         ld      de, 6
         add     hl, de
@@ -417,6 +410,7 @@ x86_pit_read_selected:
         ; HL points at latch word (+4).
         jr      .read_byte
 .read_live:
+        dec     hl
         dec     hl
         dec     hl
         dec     hl
@@ -485,9 +479,9 @@ x86_pit_write_selected:
         xor     a
         ld      (hl), a
 .activate:
-        ; Copy reload word to current count.
-        inc     hl
-        inc     hl
+        ; Reload -> current count, then mark channel running.
+        ld      a, (x86_pit_channel)
+        call    x86_pit_record_ptr
         ld      e, (hl)
         inc     hl
         ld      d, (hl)
@@ -495,15 +489,17 @@ x86_pit_write_selected:
         ld      (hl), e
         inc     hl
         ld      (hl), d
-        inc     hl
-        inc     hl
-        inc     hl
-        set     0, (hl)                 ; running flag
+        ld      de, 5
+        add     hl, de
+        set     0, (hl)
         ld      a, (x86_pit_channel)
         or      a
         ret     nz
-        ld      hl, (x86_pit_reloads)
-        ld      (x86_pit_reload), hl
+        ld      a, (x86_pit_records)
+        ld      (x86_pit_reload), a
+        ld      a, (x86_pit_records+1)
+        ld      (x86_pit_reload+1), a
+        ld      hl, (x86_pit_reload)
         ld      (x86_pit_countdown), hl
         ld      a, 1
         ld      (x86_pit_enabled), a
