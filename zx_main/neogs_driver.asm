@@ -93,7 +93,7 @@ neo_fw_open_file:
         ld      hl, trace_noload_api_probe_begin
         call    p125_trace_port
         ld      hl, neo_fw_trdos_probe_buffer
-        ld      c, 14
+        ld      c, #14
         call    #3D13
         pop     hl
         pop     de
