@@ -1061,9 +1061,17 @@ x86_resident_lpt_write_dispatch:
 ; Minimal PC/XT COM1 8250 UART register bank. The BIOS probes 03FBh.
 ; All state is guest-side software; NeoGS has no physical UART.
 x86_resident_uart_read_dispatch:
+        ; COM1 = 03F8-03FF, COM2 = 02F8-02FF.
         ld      a, (x86_io_port+1)
         cp      3
+        jr      z, .uart_read_com1
+        cp      2
         jr      nz, .uart_read_unmapped
+        ld      hl, x86_uart_com2_regs
+        jr      .uart_read_base_ok
+.uart_read_com1:
+        ld      hl, x86_uart_com1_regs
+.uart_read_base_ok:
         ld      a, (x86_io_port)
         cp      #F8
         jr      c, .uart_read_unmapped
@@ -1075,20 +1083,18 @@ x86_resident_uart_read_dispatch:
         jr      z, .uart_read_lsr
         cp      6
         jr      z, .uart_read_msr
-        ld      a, b
-        ld      e, a
+        ld      e, b
         ld      d, 0
-        ld      hl, x86_uart_com1_regs
         add     hl, de
         ld      a, (hl)
         or      a
         ret
 .uart_read_iir:
-        ld      a, 1
+        ld      a, 1              ; no interrupt pending
         or      a
         ret
 .uart_read_lsr:
-        ld      a, #60
+        ld      a, #60            ; THR and transmitter empty
         or      a
         ret
 .uart_read_msr:
@@ -1099,18 +1105,25 @@ x86_resident_uart_read_dispatch:
         ret
 
 x86_resident_uart_write_dispatch:
+        ; Select the independent software register bank for COM1 or COM2.
         ld      a, (x86_io_port+1)
         cp      3
+        jr      z, .uart_write_com1
+        cp      2
         jr      nz, .uart_write_unmapped
+        ld      hl, x86_uart_com2_regs
+        jr      .uart_write_base_ok
+.uart_write_com1:
+        ld      hl, x86_uart_com1_regs
+.uart_write_base_ok:
         ld      a, (x86_io_port)
         cp      #F8
         jr      c, .uart_write_unmapped
         sub     #F8
         cp      2
-        jr      z, .uart_write_done
+        jr      z, .uart_write_done ; IIR/FCR is not retained
         ld      e, a
         ld      d, 0
-        ld      hl, x86_uart_com1_regs
         add     hl, de
         ld      a, (x86_io_value)
         ld      (hl), a
@@ -1122,6 +1135,8 @@ x86_resident_uart_write_dispatch:
         ret
 
 x86_uart_com1_regs:
+        db 0,0,0,0,0,0,0,0
+x86_uart_com2_regs:
         db 0,0,0,0,0,0,0,0
 
 x86_resident_io_trace_read8:
