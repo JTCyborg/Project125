@@ -1631,3 +1631,17 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING. `#BF` следует из битовой карты ATM 7.10 (D7 mux, D6 ROM, инверсный номер ROM page 0); подтверждение только после сборки и runtime.
 
 | 2026-11-04 | A1.26 ATM710 lower ROM window mapping | SOURCE COMMITTED | Added `OUT (#3FF7),#BF` to enable ROM2/TR-DOS auto-select in window 0; build and runtime pending. |
+
+
+## A1.27 — повторная активация ATM710 DOSEN перед TR-DOS API (2026-11-04)
+
+- [x] Изучен документ Hardware «Описание архитектуры и портов ATM2+», разделы 3.1 и 4.1: адрес `#0177` задаёт A8=1 (ATM memory manager enabled), A9=0 (CPM/DOSEN gate); документ рекомендует `#0177` для включения теневых портов.
+- [x] Подтверждено, что A23 выставляет нижнее ROM-окно через `#3FF7=#BF`, а `BANKM=DC` сохраняет ROM2=1.
+- [x] Добавлен диагностический тест: непосредственно перед первым `CALL #3D13` повторно активировать gate через штатный TR-DOS trampoline `#3D2F` → `#2A53` (`OUT (C),A; RET`) с `BC=#0177`, `A=#C3`, затем восстановить `C=#0A`.
+- [x] Добавлены runtime markers `[NLOAD D1] DOSEN REARM BEGIN` и `[NLOAD D2] DOSEN REARM DONE`; driver marker A47, build marker A24.
+- [ ] Build: собрать `build_project125.bat`; проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: подтвердить появление обоих D1/D2 markers. Если D2 отсутствует — зависание уже в trampoline/gate setup. Если D2 есть, но `[NLOAD 02]` отсутствует — повторная активация DOSEN не устранила зависание; дальше проверять ROM2/ROM page decode и вызывающий TR-DOS ABI.
+- [ ] При появлении `[NLOAD 02]` проверить C, `#5D0F/#5D10`, затем descriptor и первый сектор; не объявлять загрузчик исправным только по возврату поиска.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING. Это диагностический тест gate, не заявленное исправление.
+
+| 2026-11-04 | A1.27 ATM710 DOSEN re-arm before TR-DOS API | SOURCE COMMITTED | Added a fresh documented `#0177` gate activation through the `#3D2F`/`#2A53` ROM trampoline immediately before the `C=#0A` catalogue search. Build and runtime pending. |
