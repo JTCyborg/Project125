@@ -64,6 +64,17 @@ neo_fw_open_file:
 .search_gate_ready:
         ld      hl, trace_noload_gate_done
         call    p125_trace_port
+        ; A1.31: first call a non-disk TR-DOS service (C=#14). It copies
+        ; the current 16-byte file descriptor from #5CDD to this scratch
+        ; buffer. A return proves #3D13 dispatch/return works independently
+        ; of the catalogue search and FDC path.
+        ld      hl, trace_noload_api_probe_begin
+        call    p125_trace_port
+        ld      hl, neo_fw_trdos_probe_buffer
+        ld      bc, #0014
+        call    #3D13
+        ld      hl, trace_noload_api_probe_return
+        call    p125_trace_port
         ; The DOSEN trampoline leaves BC=#0177 (B=1). The TR-DOS
         ; catalogue API expects the original Project124 entry context with
         ; BC=#000A; setting only C would accidentally pass B=1.
@@ -1317,6 +1328,7 @@ neo_fw_loader_filename:  db "NEOLOAD "
 neo_fw_firmware_filename: db "NEOFW   "
 neo_fw_requested_name_ptr: dw 0
 neo_fw_trdos_search_hl:  dw 0
+neo_fw_trdos_probe_buffer: defs 16
 neo_fw_load_buffer:     dw 0
 neo_fw_load_remaining:  db 0
 neo_fw_buffer_remaining: dw 0
@@ -1370,6 +1382,8 @@ trace_noload_00_entry:             defb "[NLOAD 00] OPEN ENTRY", 13, 10, 0
 trace_noload_01_search_call:       defb "[NLOAD 01] CATALOG SEARCH CALL", 13, 10, 0
 trace_noload_gate_begin:           defb "[NLOAD D1] DOSEN REARM BEGIN", 13, 10, 0
 trace_noload_gate_done:            defb "[NLOAD D2] DOSEN REARM DONE", 13, 10, 0
+trace_noload_api_probe_begin:      defb "[NLOAD T0] TRDOS NON-DISK API BEGIN", 13, 10, 0
+trace_noload_api_probe_return:     defb "[NLOAD T1] TRDOS NON-DISK API RETURN", 13, 10, 0
 trace_noload_02_search_return:     defb "[NLOAD 02] CATALOG SEARCH RETURN", 13, 10, 0
 trace_noload_03_descriptor_call:   defb "[NLOAD 03] DESCRIPTOR CALL", 13, 10, 0
 trace_noload_04_descriptor_return: defb "[NLOAD 04] DESCRIPTOR RETURN", 13, 10, 0
@@ -1377,4 +1391,4 @@ trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
 trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
 trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A50 TRDOS HL ABI FIX", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A51 TRDOS DISPATCH PROBE", 13, 10, 0
