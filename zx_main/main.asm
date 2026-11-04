@@ -70,11 +70,36 @@ Init_Z80_System:
         ld      hl, #C000
         ld      de, (neo_fw_file_length)
         call    upload_firmware
+        jr      c, .firmware_upload_error
+        ; This milestone is emitted only after the NeoGS ready ACK and the
+        ; byte-count cross-check have both succeeded.
         ld      hl, trace_81_fw_upload_done
         call    p125_trace_port
-        jr      nc, .firmware_ready
+        jr      .firmware_ready
+
+.firmware_upload_error:
         ld      hl, msg_fw_upload_error
         call    p125_trace_port
+        ld      hl, msg_fw_file_error_code
+        call    p125_trace_port
+        ld      a, (neo_fw_file_error)
+        call    p125_trace_hex8
+        ld      hl, msg_fw_dir_length
+        call    p125_trace_port
+        ld      a, (#5CE9)
+        call    p125_trace_hex8
+        ld      a, (#5CE8)
+        call    p125_trace_hex8
+        ld      hl, msg_fw_dir_sectors
+        call    p125_trace_port
+        ld      a, (#5CEA)
+        call    p125_trace_hex8
+        ld      hl, msg_fw_dir_start
+        call    p125_trace_port
+        ld      a, (#5CEC)
+        call    p125_trace_hex8
+        ld      a, (#5CEB)
+        call    p125_trace_hex8
         ld      a, (neo_fw_timeout_phase)
         call    p125_trace_hex8
         ld      hl, msg_fw_status
@@ -417,6 +442,10 @@ msg_p125_build_id:    defb "[P125] BUILD 20261104-A48 CPU-BULK-01", 13, 10, 0
 msg_fw_load:          defb "[P125] LOAD NEOGS FIRMWARE", 13, 10, 0
 msg_fw_file_error:    defb "[P125] ERROR: NEOLOAD.C FILE #", 0
 msg_fw_upload_error:  defb "[P125] ERROR: NEOGS FIRMWARE UPLOAD PHASE #", 0
+msg_fw_file_error_code: defb " FILEERR #", 0
+msg_fw_dir_length: defb " DIRLEN #", 0
+msg_fw_dir_sectors: defb " DIRSECTORS #", 0
+msg_fw_dir_start: defb " DIRSTART T/S #", 0
 msg_fw_status:        defb " GSSTAT #", 0
 msg_fw_txstate:       defb " TXSTATE #", 0
 msg_fw_txphase:       defb " TXPHASE #", 0
