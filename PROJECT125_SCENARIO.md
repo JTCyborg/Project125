@@ -1373,3 +1373,16 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.92 restore missing RTC diagnostic workspace | SOURCE COMMITTED | Added the missing RAM labels referenced by the A1.91 stack-snapshot instrumentation; build/runtime remain unverified. |
+
+
+## A1.93 — обход trace helper после RTC DATA OUT (2026-11-04)
+
+- [x] Runtime A1.92: лог заканчивается после `[RTC 10] DATA OUT DONE`; прямой маркер `>` после вызова `p125_trace_port` не появляется.
+- [x] Участок сразу после записи CMOS data локализован как граница остановки: после вывода RTC 10 следующий шаг — возврат из trace helper и прямой `OUT (#EF)`.
+- [x] Вызов `p125_trace_port` для RTC 10 заменён inline-выводом той же строки через `OUT (C),A`, с сохранением AF/BC/HL и сбалансированным стеком. Остальные диагностические вызовы и CMOS порты не изменены.
+- [x] Runtime banner обновлён до `[RTC DRIVER A1.93]`.
+- [ ] Сборка `build_project125.bat`; проверить синтаксис и `ProgramEnd <= #A800`.
+- [ ] Runtime: если появляется `>` — остановка была связана с вызовом helper для RTC 10; затем проверить `[RTC 11]`, `<`, `ENTRY_RET/EXIT_RET`. Если `>` отсутствует — причина находится раньше либо в выводе/обработке порта `#EF`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.93 bypass RTC trace helper at stop boundary | SOURCE COMMITTED | Replaced the RTC 10 helper call with inline output to isolate the observed post-message stall; build/runtime remain unverified. |
