@@ -22,7 +22,9 @@ x86_real_alu8_accumulator_immediate:
         ld      (x86_alu8_dst_reg), a       ; AL is byte register 0
         ld      (x86_alu8_no_write), a
         ld      (x86_alu8_is_logic), a
-        ld      (x86_alu8_mode), a         ; ADD
+        ld      a, (x86_real_opcode)
+        and     #38
+        ld      (x86_alu8_mode), a        ; ADD=00, SUB=28
         ld      (x86_alu8_carry_in), a
         jp      x86_real_alu8_execute_core
 
