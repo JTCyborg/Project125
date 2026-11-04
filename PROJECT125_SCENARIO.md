@@ -1326,3 +1326,17 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.88 print RTC return-address mismatch values | SOURCE COMMITTED | Added ACTUAL/EXPECTED hexadecimal address output on mismatch; build and runtime remain unverified. |
+
+## A1.89 — исправление вывода адресов возврата RTC (2026-11-04)
+
+- [x] Повторно получен актуальный `zx_main/rtc_driver.asm` из ветки `neogs-driver-rewrite`; предыдущий formatter A1.88 действительно терял фактический адрес при выводе префикса.
+- [x] Введены RAM-переменные `rtc_actual_addr` и `rtc_expected_addr`; входные DE/HL копируются в них до вызовов форматирования.
+- [x] Вывод ACTUAL/EXPECTED теперь читает сохранённые слова из переменных, а не из регистров, которые меняет `p125_trace_port`.
+- [x] Перед вызовом formatter после вывода сообщения о mismatch ожидаемый адрес повторно загружается в HL.
+- [x] Проверка адреса возврата ограничена первой записью сигнатуры `#11=#AA`; последующие записи регистров #0A/#0B имеют другие адреса продолжения и не сравниваются с меткой первой записи.
+- [x] Баннер runtime-драйвера изменён на `[RTC DRIVER A1.89]`.
+- [x] По первоисточнику `cmos/bc07cmos.txt` подтверждено соответствие портов: open/close `#EFF7`, индекс `#DFF7`, данные `#BFF7`; значения инициализации #11=#AA, #0A=#20, #0B=#02 сохранены.
+- [ ] Сборка через `build_project125.bat`; проверить SjASMPlus syntax и ограничение resident host image.
+- [ ] Runtime: прислать полный лог начиная с `[RTC DRIVER A1.89]`. При mismatch ожидается строка `ACTUAL=xxxx EXPECTED=xxxx`; при совпадении — `[RTC 12] RETURN ADDRESS OK`, затем `[RTC 06] SIGNATURE WRITE DONE`.
+- [ ] После получения адресов установить причину расхождения; CMOS hardware initialization пока не объявляется подтверждённой.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING. A1.88 runtime не подтверждён; его formatter заменён исправлением A1.89.
