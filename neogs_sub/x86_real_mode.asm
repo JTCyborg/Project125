@@ -323,6 +323,28 @@ x86_real_dispatch:
 
         cp      #90
         jp      z, x86_real_nop
+        cp      #91
+        jp      c, .not_xchg_ax
+        cp      #98
+        jp      c, x86_real_xchg_ax
+.not_xchg_ax:
+        cp      #98
+        jp      z, x86_real_cbw
+        cp      #99
+        jp      z, x86_real_cwd
+        cp      #9B
+        jp      z, x86_real_wait
+        cp      #9D
+        jp      z, x86_real_popf
+        cp      #9E
+        jp      z, x86_real_sahf
+        cp      #9F
+        jp      z, x86_real_lahf
+        cp      #A0
+        jp      c, .not_moffs
+        cp      #A4
+        jp      c, x86_real_moffs
+.not_moffs:
         cp      #00
         jp      z, x86_real_alu8_modrm
         cp      #02
@@ -500,10 +522,22 @@ x86_real_dispatch:
         jp      z, x86_real_int3
         cp      #CF
         jp      z, x86_real_iret
+        cp      #F8
+        jp      z, x86_real_clc
+        cp      #F9
+        jp      z, x86_real_stc
         cp      #FA
         jp      z, x86_real_cli
         cp      #FB
         jp      z, x86_real_sti
+        cp      #FC
+        jp      z, x86_real_cld
+        cp      #FD
+        jp      z, x86_real_std
+        cp      #C2
+        jp      z, x86_real_ret_near_imm
+        cp      #CA
+        jp      z, x86_real_ret_far_imm
 
         ld      (x86_real_unsupported_opcode), a
         ld      a, 2
@@ -1219,6 +1253,181 @@ x86_real_sti:
         set     1, (hl)
         jp      x86_real_next
 
+; 8086 status/control flag instructions. Only the documented flag bit changes.
+x86_real_clc:
+        ld      hl, x86_reg_flags
+        res     0, (hl)
+        jp      x86_real_next
+
+x86_real_stc:
+        ld      hl, x86_reg_flags
+        set     0, (hl)
+        jp      x86_real_next
+
+x86_real_cld:
+        ld      hl, x86_reg_flags+1
+        res     2, (hl)
+        jp      x86_real_next
+
+x86_real_std:
+        ld      hl, x86_reg_flags+1
+        set     2, (hl)
+        jp      x86_real_next
+
+; 91-97 XCHG AX,r16. 90 is handled as NOP above.
+x86_real_xchg_ax:
+        sub     #90
+        add     a, a
+        ld      e, a
+        ld      d, 0
+        ld      hl, x86_reg_ax
+        add     hl, de
+        ld      a, (x86_reg_ax)
+        ld      b, a
+        ld      a, (hl)
+        ld      (x86_reg_ax), a
+        ld      a, b
+        ld      (hl), a
+        inc     hl
+        ld      a, (x86_reg_ax+1)
+        ld      b, a
+        ld      a, (hl)
+        ld      (x86_reg_ax+1), a
+        ld      a, b
+        ld      (hl), a
+        jp      x86_real_next
+
+; 98 CBW and 99 CWD.
+x86_real_cbw:
+        ld      a, (x86_reg_ax)
+        rlca
+        ld      a, 0
+        jr      nc, .cbw_store
+        dec     a
+.cbw_store:
+        ld      (x86_reg_ax+1), a
+        jp      x86_real_next
+
+x86_real_cwd:
+        ld      a, (x86_reg_ax+1)
+        rlca
+        ld      hl, 0
+        jr      nc, .cwd_store
+        dec     hl
+.cwd_store:
+        ld      (x86_reg_dx), hl
+        jp      x86_real_next
+
+; WAIT has no external 8087 device attached; it is a timing-neutral no-op.
+x86_real_wait:
+        jp      x86_real_next
+
+; 9D POPF uses the same SS:SP word stack path as RET/IRET.
+x86_real_popf:
+        call    x86_real_stack_pop
+        ret     c
+        ld      hl, (x86_real_stack_value)
+        ld      (x86_reg_flags), hl
+        jp      x86_real_next
+
+; 9E SAHF: AH -> SF,ZF,AF,PF,CF; reserved bits remain unchanged.
+x86_real_sahf:
+        ld      a, (x86_reg_flags)
+        and     #2A
+        ld      b, a
+        ld      a, (x86_reg_ax+1)
+        and     #D5
+        or      b
+        or      #02
+        ld      (x86_reg_flags), a
+        jp      x86_real_next
+
+; 9F LAHF: AH <- SF,ZF,AF,PF,CF with bit 1 set.
+x86_real_lahf:
+        ld      a, (x86_reg_flags)
+        and     #D5
+        or      #02
+        ld      (x86_reg_ax+1), a
+        jp      x86_real_next
+
+; A0-A3 MOV accumulator <-> DS:[moffs16], with segment override support.
+x86_real_moffs:
+        ld      (x86_real_opcode), a
+        call    x86_real_mov_fetch16
+        ret     c
+        ld      (x86_mem_offset), hl
+        ld      hl, (x86_reg_ds)
+        ld      a, (x86_real_seg_override_active)
+        or      a
+        jr      z, .moffs_segment_ready
+        ld      hl, (x86_real_seg_override)
+.moffs_segment_ready:
+        ld      (x86_mem_segment), hl
+        ld      a, (x86_real_opcode)
+        cp      #A0
+        jr      z, .moffs_read_byte
+        cp      #A1
+        jr      z, .moffs_read_word
+        cp      #A2
+        jr      z, .moffs_write_byte
+        ; A3 MOV moffs16,AX
+        ld      hl, (x86_reg_ax)
+        ld      (x86_mem_word_value), hl
+        call    x86_mem_write16
+        ret     c
+        jp      x86_real_next
+.moffs_read_byte:
+        call    x86_mem_read8
+        ret     c
+        ld      (x86_reg_ax), a
+        jp      x86_real_next
+.moffs_read_word:
+        call    x86_mem_read16
+        ret     c
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+.moffs_write_byte:
+        ld      a, (x86_reg_ax)
+        ld      (x86_mem_value), a
+        call    x86_mem_write8
+        ret     c
+        jp      x86_real_next
+
+; C2 RET near,imm16 and CA RETF,imm16.
+x86_real_ret_near_imm:
+        call    x86_real_mov_fetch16
+        ret     c
+        ld      (x86_real_imm_word), hl
+        call    x86_real_stack_pop
+        ret     c
+        ld      hl, (x86_real_stack_value)
+        ld      (x86_reg_ip), hl
+        ld      hl, (x86_reg_sp)
+        ld      de, (x86_real_imm_word)
+        add     hl, de
+        ld      (x86_reg_sp), hl
+        jp      x86_real_next
+
+x86_real_ret_far_imm:
+        call    x86_real_mov_fetch16
+        ret     c
+        ld      (x86_real_imm_word), hl
+        call    x86_real_stack_pop
+        ret     c
+        ld      hl, (x86_real_stack_value)
+        ld      (x86_real_far_ip), hl
+        call    x86_real_stack_pop
+        ret     c
+        ld      hl, (x86_real_stack_value)
+        ld      (x86_reg_cs), hl
+        ld      hl, (x86_real_far_ip)
+        ld      (x86_reg_ip), hl
+        ld      hl, (x86_reg_sp)
+        ld      de, (x86_real_imm_word)
+        add     hl, de
+        ld      (x86_reg_sp), hl
+        jp      x86_real_next
+
 x86_real_hlt:
         xor     a
         ld      (x86_exit_status), a
@@ -1287,6 +1496,7 @@ x86_real_test_fail:
         ret
 
 x86_real_steps:       dw 0
+x86_real_imm_word:   dw 0
 x86_real_stack_value: dw 0
 x86_real_old_sp:      dw 0
 x86_real_copy_source: dw 0
