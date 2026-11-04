@@ -370,6 +370,8 @@ x86_real_dispatch:
 .not_moffs:
         cp      #D1
         jp      z, x86_real_shift_word_one
+        cp      #D2
+        jp      z, x86_real_shift_byte_cl
         cp      #D3
         jp      z, x86_real_shift_word_cl
         cp      #F6
@@ -1877,6 +1879,122 @@ x86_real_shift_word_one:
         ld      hl, (x86_shift_result)
         ld      (x86_reg_ax), hl
         jp      x86_real_next
+
+; D2 E0: SHL AL,CL. The 8086 uses the full CL count.
+; Count zero leaves AL and FLAGS unchanged. Only register-direct AL is
+; currently required by the BIOS path; other ModR/M forms stop explicitly.
+x86_real_shift_byte_cl:
+        call    x86_real_fetch8
+        ret     c
+        cp      #E0
+        jp      nz, x86_real_shift_byte_cl_unsupported
+        ld      a, (x86_reg_cx)
+        or      a
+        jp      z, x86_real_next
+        ld      (x86_shift_count), a
+        ld      (x86_shift_original_count), a
+        ld      a, (x86_reg_ax)
+        ld      (x86_shift_original), a
+        ld      (x86_shift_result), a
+        xor     a
+        ld      (x86_shift_result+1), a
+.shift_byte_loop:
+        ld      a, (x86_shift_result)
+        ld      l, a
+        sla     l
+        ld      a, l
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+        ld      a, (x86_shift_count)
+        dec     a
+        ld      (x86_shift_count), a
+        jr      nz, .shift_byte_loop
+
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shlb_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.shlb_parity:
+        ld      a, (x86_shift_result)
+        and     a
+        jp      pe, .shlb_set_pf
+        jr      .shlb_zero
+.shlb_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.shlb_zero:
+        ld      a, (x86_shift_result)
+        or      a
+        jr      nz, .shlb_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.shlb_sign:
+        ld      a, (x86_shift_result)
+        bit     7, a
+        jr      z, .shlb_overflow
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.shlb_overflow:
+        ld      a, (x86_shift_original_count)
+        cp      1
+        jr      nz, .shlb_merge_preserve_of
+        ld      a, (x86_shift_result)
+        and     #80
+        ld      b, a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shlb_overflow_cf_zero
+        ld      a, b
+        xor     #80
+        jr      .shlb_overflow_test
+.shlb_overflow_cf_zero:
+        ld      a, b
+.shlb_overflow_test:
+        or      a
+        jr      z, .shlb_merge
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+.shlb_merge:
+        ld      de, #F73A
+        jr      .shlb_merge_apply
+.shlb_merge_preserve_of:
+        ld      de, #FF3A
+.shlb_merge_apply:
+        ld      hl, (x86_reg_flags)
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        ld      a, (x86_reg_ax+1)
+        ld      h, a
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
+x86_real_shift_byte_cl_unsupported:
+        ld      a, #D2
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
 
 x86_real_shift_unsupported:
         ld      a, #D1
