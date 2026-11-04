@@ -1640,8 +1640,19 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [x] Добавлен диагностический тест: непосредственно перед первым `CALL #3D13` повторно активировать gate через штатный TR-DOS trampoline `#3D2F` → `#2A53` (`OUT (C),A; RET`) с `BC=#0177`, `A=#C3`, затем восстановить `C=#0A`.
 - [x] Добавлены runtime markers `[NLOAD D1] DOSEN REARM BEGIN` и `[NLOAD D2] DOSEN REARM DONE`; driver marker A47, build marker A24.
 - [ ] Build: собрать `build_project125.bat`; проверить SjASMPlus и `ProgramEnd <= #A800`.
-- [ ] Runtime: подтвердить появление обоих D1/D2 markers. Если D2 отсутствует — зависание уже в trampoline/gate setup. Если D2 есть, но `[NLOAD 02]` отсутствует — повторная активация DOSEN не устранила зависание; дальше проверять ROM2/ROM page decode и вызывающий TR-DOS ABI.
+- [x] Runtime 2026-11-04 A24/A47: оба маркера D1 и D2 появились; следующий `[NLOAD 02]` отсутствует. Trampoline возвращается, повторная активация DOSEN не устранила зависание.
 - [ ] При появлении `[NLOAD 02]` проверить C, `#5D0F/#5D10`, затем descriptor и первый сектор; не объявлять загрузчик исправным только по возврату поиска.
-- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING. Это диагностический тест gate, не заявленное исправление.
+- **Статус:** DOSEN RE-ARM RUNTIME VERIFIED; НЕ ЯВЛЯЕТСЯ ИСПРАВЛЕНИЕМ. A24/A47 зависает после возврата из trampoline.
 
 | 2026-11-04 | A1.27 ATM710 DOSEN re-arm before TR-DOS API | SOURCE COMMITTED | Added a fresh documented `#0177` gate activation through the `#3D2F`/`#2A53` ROM trampoline immediately before the `C=#0A` catalogue search. Build and runtime pending. |
+
+
+## A1.28 — восстановление BC перед TR-DOS catalog API (2026-11-04)
+
+- [x] Runtime A24/A47 подтвердил, что DOSEN trampoline #3D2F -> #2A53 возвращается: присутствуют D1 и D2, но CALL #3D13 не возвращает управление.
+- [x] Сравнение с рабочим Project124 выявило отличие ABI: в Project124 перед поиском LDIR обнуляет BC, после чего LD C,10 формирует BC=#000A. В Project125 после trampoline остаётся BC=#0177; команда LD C,10 оставляла B=#01 и передавала в ROM BC=#010A.
+- [x] Исправлено: перед поиском задаётся LD BC,10; перед чтением descriptor задаётся LD BC,8. Sector read сохраняет отдельный штатный B=1.
+- [x] Driver banner повышен до A48; host build marker до A25.
+- [ ] Сборка build_project125.bat: проверить SjASMPlus и ProgramEnd <= #A800.
+- [ ] Runtime: подтвердить [NLOAD 02] CATALOG SEARCH RETURN; далее проверить descriptor и чтение первого сектора.
+- **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT YET VERIFIED. Исправление конкретного ABI-регистрового расхождения, выявленного сравнением с Project124.
