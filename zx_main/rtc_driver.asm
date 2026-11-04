@@ -70,7 +70,7 @@ rtc_already_active:
         POP     BC: POP     AF
         RET
 
-rtc_driver_version:              DEFB "[RTC DRIVER A1.91]", 13, 10, 0
+rtc_driver_version:              DEFB "[RTC DRIVER A1.92]", 13, 10, 0
 rtc_trace_01_open_begin:          DEFB "[RTC 01] OPEN BEGIN", 13, 10, 0
 rtc_trace_02_open_done:           DEFB "[RTC 02] OPEN DONE", 13, 10, 0
 rtc_trace_03_signature_read_begin: DEFB "[RTC 03] SIGNATURE READ BEGIN", 13, 10, 0
@@ -338,5 +338,19 @@ split_bcd
         LD      L, A
         RET
 
+
+
+; =========================================================================
+; RTC diagnostic workspace (resident Z80 RAM).
+; All words are little-endian and are accessed only by the RTC diagnostics.
+; =========================================================================
+rtc_saved_hl:       DEFW 0
+rtc_saved_de:       DEFW 0
+rtc_entry_sp:       DEFW 0
+rtc_entry_ret:      DEFW 0
+rtc_write_index:    DEFB 0
+rtc_exit_sp:        DEFW 0
+rtc_exit_ret:       DEFW 0
+rtc_expected_addr:  DEFW 0
 
 ; =========================================================================
