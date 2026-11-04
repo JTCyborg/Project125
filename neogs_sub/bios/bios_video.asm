@@ -102,10 +102,10 @@ bios_int10_set_mode:
 
         ; Host control frame: 00 00 = clear the 6x8 debug console.
         xor     a
-        call    neo_send_data_byte
+        call    bios_video_stream_byte
         ret     c
         xor     a
-        jp      neo_send_data_byte
+        jp      bios_video_stream_byte
 
 ; AH=0Fh — return current project text mode, width and active page.
 bios_int10_get_mode:
@@ -143,16 +143,16 @@ bios_int10_set_cursor:
 
         ; Host control frame: 00 01 row col.
         xor     a
-        call    neo_send_data_byte
+        call    bios_video_stream_byte
         ret     c
         ld      a, 1
-        call    neo_send_data_byte
+        call    bios_video_stream_byte
         ret     c
         ld      a, (bios_video_row)
-        call    neo_send_data_byte
+        call    bios_video_stream_byte
         ret     c
         ld      a, (bios_video_col)
-        jp      neo_send_data_byte
+        jp      bios_video_stream_byte
 
 ; AH=03h — read page-zero cursor into DH:DL.
 bios_int10_get_cursor:
@@ -184,7 +184,7 @@ bios_int10_teletype:
         ld      (bios_video_char), a
 .teletype_ascii:
         ld      a, (bios_video_char)
-        call    neo_send_data_byte
+        call    bios_video_stream_byte
         ret     c
 
         ld      a, (bios_video_char)
@@ -231,6 +231,22 @@ bios_int10_teletype:
         ret
 .cursor_done:
         or      a
+        ret
+
+; Host-console streaming is diagnostic output, not a CPU execution fault.
+; A DBIT/host timeout must not unwind INT 10h and terminate the guest BIOS.
+; Count transport failures in resident memory so the BIOS stop trace can report
+; whether the host console was back-pressured while POST continued.
+bios_video_stream_byte:
+        call    neo_send_data_byte
+        ret     nc
+        ld      a, (bios_video_stream_errors)
+        cp      #FF
+        jr      z, .stream_counted
+        inc     a
+        ld      (bios_video_stream_errors), a
+.stream_counted:
+        or      a                       ; clear carry: keep executing guest BIOS
         ret
 
 ; Store project cursor word at BDA 00450h: low=column, high=row.
