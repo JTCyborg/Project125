@@ -93,15 +93,15 @@ neogs_bootstrap_start:
         ld      a, '2'
         out     (#EF), a
 
-        ; The package contains a 10-byte header plus at most 48 KiB of data.
+        ; The package contains a 16-byte header plus at most 48 KiB of data.
         ; V1's 16-bit length exchange is retained; only the payload format is
-        ; segmented. Maximum package size is 0xC00A bytes.
+        ; segmented. Maximum package size is 0xC010 bytes.
         ld      a, d
         cp      #C0
         jr      c, bootstrap_length_valid
         jr      nz, bootstrap_error
         ld      a, e
-        cp      #0B
+        cp      #11
         jr      nc, bootstrap_error
 
 bootstrap_length_valid:
@@ -111,7 +111,7 @@ bootstrap_length_valid:
         ld      a, NGS_BOOTSTRAP_LENGTH_ACK
         call    bootstrap_send_data_byte
 
-        ; Manifest: "P125", WORD resident_len, WORD page68_len, WORD page69_len.
+        ; Manifest: "P125", three WORD lengths, then three WORD CRC-16/CCITT values.
         call    bootstrap_receive_data_byte
         cp      'P'
         jr      nz, bootstrap_error
@@ -131,6 +131,12 @@ bootstrap_length_valid:
         ld      (bootstrap_overlay68_length), hl
         call    bootstrap_read_word
         ld      (bootstrap_overlay69_length), hl
+        call    bootstrap_read_word
+        ld      (bootstrap_resident_crc), hl
+        call    bootstrap_read_word
+        ld      (bootstrap_overlay68_crc), hl
+        call    bootstrap_read_word
+        ld      (bootstrap_overlay69_crc), hl
 
         ; Resident section must be 1..16 KiB.
         ld      hl, (bootstrap_resident_length)
@@ -160,7 +166,7 @@ bootstrap_length_valid:
         add     hl, de
         ld      de, (bootstrap_overlay69_length)
         add     hl, de
-        ld      de, 10
+        ld      de, 16
         add     hl, de
         ld      de, (bootstrap_total_length)
         or      a
@@ -170,21 +176,45 @@ bootstrap_length_valid:
         ; Resident firmware -> WIN0 / physical page 0.
         ld      hl, 0
         ld      de, (bootstrap_resident_length)
+        ld      a, #FF
+        ld      (bootstrap_crc), a
+        ld      (bootstrap_crc+1), a
+        ld      hl, (bootstrap_resident_crc)
+        ld      (bootstrap_expected_crc), hl
+        ld      hl, 0
+        ld      de, (bootstrap_resident_length)
         call    bootstrap_copy_segment
+        jr      c, bootstrap_error
 
         ; Overlay 1 -> WIN2 / physical page 68.
         ld      a, #22                    ; ROR8(68)
         out     (MPAG), a
         ld      hl, #8000
         ld      de, (bootstrap_overlay68_length)
+        ld      a, #FF
+        ld      (bootstrap_crc), a
+        ld      (bootstrap_crc+1), a
+        ld      hl, (bootstrap_overlay68_crc)
+        ld      (bootstrap_expected_crc), hl
+        ld      hl, #8000
+        ld      de, (bootstrap_overlay68_length)
         call    bootstrap_copy_segment
+        jr      c, bootstrap_error
 
         ; Overlay 2 -> WIN2 / physical page 69.
         ld      a, #A2                    ; ROR8(69)
         out     (MPAG), a
         ld      hl, #8000
         ld      de, (bootstrap_overlay69_length)
+        ld      a, #FF
+        ld      (bootstrap_crc), a
+        ld      (bootstrap_crc+1), a
+        ld      hl, (bootstrap_overlay69_crc)
+        ld      (bootstrap_expected_crc), hl
+        ld      hl, #8000
+        ld      de, (bootstrap_overlay69_length)
         call    bootstrap_copy_segment
+        jr      c, bootstrap_error
 
         ; Resident firmware expects page 68 to be the default WIN2 mapping.
         ld      a, #22
@@ -217,19 +247,56 @@ bootstrap_validate_page_length:
         or      a
         ret
 
-; IN HL=destination, DE=section length. Receive exactly DE bytes.
+; IN HL=destination, DE=section length. Receive exactly DE bytes and verify
+; CRC-16/CCITT (poly 1021h, initial FFFFh) against bootstrap_expected_crc.
 ; The executing bootstrap and its stack are in WIN1/WIN3, so switching WIN2
 ; cannot overwrite either one.
 bootstrap_copy_segment:
 .copy_loop:
         ld      a, d
         or      e
-        ret     z
+        jr      z, .copy_crc_check
         call    bootstrap_receive_data_byte
+        ld      (bootstrap_rx_byte), a
+
+        ; CRC update while preserving the destination and remaining count.
+        push    hl
+        push    de
+        push    bc
+        ld      hl, (bootstrap_crc)
+        ld      a, (bootstrap_rx_byte)
+        xor     h
+        ld      h, a
+        ld      b, 8
+.crc_bit_loop:
+        add     hl, hl
+        jr      nc, .crc_no_xor
+        ld      a, h
+        xor     #10
+        ld      h, a
+        ld      a, l
+        xor     #21
+        ld      l, a
+.crc_no_xor:
+        djnz    .crc_bit_loop
+        ld      (bootstrap_crc), hl
+        pop     bc
+        pop     de
+        pop     hl
+
+        ld      a, (bootstrap_rx_byte)
         ld      (hl), a
         inc     hl
         dec     de
         jr      .copy_loop
+.copy_crc_check:
+        ld      hl, (bootstrap_crc)
+        ld      de, (bootstrap_expected_crc)
+        or      a
+        sbc     hl, de
+        ret     z
+        scf
+        ret
 
 bootstrap_error:
         ld      a, NGS_BOOTSTRAP_ERROR_ACK
@@ -358,6 +425,12 @@ bootstrap_total_length:    dw 0
 bootstrap_resident_length: dw 0
 bootstrap_overlay68_length: dw 0
 bootstrap_overlay69_length: dw 0
+bootstrap_resident_crc:    dw 0
+bootstrap_overlay68_crc:   dw 0
+bootstrap_overlay69_crc:   dw 0
+bootstrap_expected_crc:    dw 0
+bootstrap_crc:             dw 0
+bootstrap_rx_byte:         db 0
 bootstrap_tx_byte:
         db      0
 bootstrap_trace_value:
