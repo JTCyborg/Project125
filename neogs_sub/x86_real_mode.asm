@@ -318,6 +318,10 @@ x86_real_dispatch:
 x86_real_dispatch_no_progress:
         call    x86_io_tick
         ret     c
+        ; The IRQ-delivery marker is only consumed by the HLT wait loop.
+        ; Clear it here after ordinary instruction-boundary polling.
+        xor     a
+        ld      (x86_io_irq_delivered), a
         call    x86_real_fetch8
         ret     c
 
