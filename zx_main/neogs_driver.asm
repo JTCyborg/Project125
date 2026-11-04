@@ -69,9 +69,13 @@ neo_fw_open_file:
         ld      a, 9
         ld      (#5D06), a
         ld      c, 10
+        ; A1.47 diagnostic: dump the exact nine bytes passed to the TR-DOS
+        ; catalogue search (8-byte name plus extension) immediately before
+        ; the ROM call. This is outside the API call and preserves all regs.
+        call    neo_fw_trace_search_name
         ld      hl, trace_noload_01_search_call
         call    p125_trace_port
-        ; A1.43: use the Project124-proven search ABI directly. The A1.42
+        ; Keep the C=#0A call path otherwise identical to Project124.
         ; C=#14 preflight returned, but it is not part of the known-good open
         ; sequence and may alter undocumented TR-DOS internal state. Likewise,
         ; do not inspect ROM/workspace between filename setup and this call.
@@ -173,6 +177,61 @@ neo_fw_open_file:
 .load_failed:
         ld      (neo_fw_file_error), a
         scf
+        ret
+
+ 
+; Emit the exact TR-DOS search key from #5CDD..#5CE5 as 18 hex digits.
+; Preserves every Z80 register so the following C=#0A ABI is unchanged.
+neo_fw_trace_search_name:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, trace_noload_search_name
+        call    p125_trace_port
+        ld      hl, #5CDD
+        ld      b, 9
+.search_name_loop:
+        ld      a, (hl)
+        push    bc
+        push    hl
+        call    neo_fw_trace_hex8
+        pop     hl
+        pop     bc
+        inc     hl
+        djnz    .search_name_loop
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+neo_fw_trace_hex8:
+        push    af
+        rrca
+        rrca
+        rrca
+        rrca
+        call    neo_fw_trace_hex_nibble
+        pop     af
+        and     #0F
+        jp      neo_fw_trace_hex_nibble
+
+neo_fw_trace_hex_nibble:
+        and     #0F
+        add     a, '0'
+        cp      '9'+1
+        jr      c, .hex_out
+        add     a, 7
+.hex_out:
+        push    bc
+        ld      bc, #00EF
+        out     (c), a
+        pop     bc
         ret
 
 ; -------------------------------------------------------------------------
@@ -1401,6 +1460,7 @@ trace_noload_diag_mode:            defb " MODE=", 0
 trace_noload_diag_sp:              defb " SP=", 0
 trace_noload_diag_rom:             defb " ATM710 ROM@3D13=", 0
 trace_noload_diag_name:            defb " NAME=", 0
+trace_noload_search_name: defb "[NLOAD KEY] ", 0
 trace_noload_00_entry:             defb "[NLOAD 00] OPEN ENTRY", 13, 10, 0
 trace_noload_01_search_call:       defb "[NLOAD 01] CATALOG SEARCH CALL", 13, 10, 0
 trace_noload_gate_begin:           defb "[NLOAD D1] DOSEN REARM BEGIN", 13, 10, 0
