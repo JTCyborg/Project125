@@ -158,7 +158,44 @@ x86_pit_read_channel0:
         ld      a, h
         ret
 
+; Log the first open-bus byte read by the BIOS. The memory backend's
+; resident hex formatter writes directly to the NeoGS debug port #EF.
+; One-shot logging avoids flooding the host if BIOS polls an absent device.
 x86_io_trace_read8:
+        ld      a, (x86_io_trace_count)
+        or      a
+        ret     nz
+        inc     a
+        ld      (x86_io_trace_count), a
+        push    af
+        push    hl
+        ld      a, '!'
+        out     (#EF), a
+        ld      hl, (x86_io_port)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     af
         ret
 
 x86_io_write8:
