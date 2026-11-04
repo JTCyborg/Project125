@@ -144,6 +144,13 @@ x86_mem_watch_low_write:
         push    bc
         push    de
         push    hl
+        ; Always trace the ER_RAM byte at physical 00415h, even after
+        ; the ordinary 64-entry BDA watch budget has been exhausted. Log
+        ; this address even when the stored value is unchanged: reaching
+        ; BADRAM is itself the evidence we need.
+        ld      a, (x86_mem_addr)
+        cp      #15
+        jr      z, .force_er_ram
         ld      a, (hl)
         ld      b, a
         ld      a, (x86_mem_value)
@@ -154,7 +161,13 @@ x86_mem_watch_low_write:
         jr      nc, .done
         inc     a
         ld      (x86_mem_watch_count), a
+        jr      .emit
 
+.force_er_ram:
+        ld      a, (hl)
+        ld      b, a
+
+.emit:
         ld      hl, x86_mem_watch_prefix
         call    x86_mem_watch_string
         ld      a, (x86_mem_addr+2)
