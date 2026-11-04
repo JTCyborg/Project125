@@ -1870,7 +1870,7 @@ A1.50–A1.53 признаны неудачными экспериментами
 
 - [x] Preserve the Project124 C=#0A catalogue call path; add a register-preserving dump of the exact nine bytes at #5CDD..#5CE5 immediately before the call.
 - [ ] Build and verify marker A42.
-- [ ] Runtime: record `[NLOAD KEY]` output. Expected key for NEOLOAD.C: `4E454F4C4F41442043`; expected key for NEOF W.C: `4E454F465720202043`.
+- [ ] Runtime: record `[NLOAD KEY]` output. Expected key for NEOLOAD.C: `4E454F4C4F41442043`; expected key for NEOFW.C: `4E454F465720202043`.
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Diagnostic only; it does not claim to fix the catalogue-search hang.
 
 | 2026-11-04 | A1.47 TR-DOS search-key diagnostic | SOURCE COMMITTED | Dump exact filename+extension bytes before C=#0A without changing API registers. Build/runtime pending. |
@@ -1898,7 +1898,7 @@ A1.50–A1.53 признаны неудачными экспериментами
 
 - Runtime A44/A62: после переключения BANKM на #10 поиск всё ещё не возвращался. ROM boundary bytes 00 18 E7 00 C3 69 2F CD соответствуют исполняемому входному stub TR-DOS 5.03 по адресу #3D13; версия ROM и сама точка входа подтверждены, поэтому дальнейшая замена адреса/версии не обоснована.
 - Сопоставление с рабочим 0/zx_main/main.asm выявило главное архитектурное отличие: архив сначала выставляет #7FFD/BANKM=#10 и #EFF7=0, затем выполняет TR-DOS file I/O; ATM video init, DOSEN/window-0 mux #3FF7 и экранные страницы в архивном загрузочном пути до дисковых операций не включаются.
-- Host startup A45 теперь повторяет эту последовательность. Вся работа с TR-DOS (NEOLOAD.C, NEOF W.C, BIOS.C и секторное чтение) выполняется до p125_atm_video_init, #3FF7=#BF, RTC UI/log renderer.
+- Host startup A45 теперь повторяет эту последовательность. Вся работа с TR-DOS (NEOLOAD.C, NEOFW.C, BIOS.C и секторное чтение) выполняется до p125_atm_video_init, #3FF7=#BF, RTC UI/log renderer.
 - Driver A63 удаляет временное переключение #7FFD=#10/#18 вокруг каждого API-вызова. Поиск C=#0A, descriptor C=#08 и sector read C=#05 используют один непрерывный архивный disk map; диагностические routines сохраняют входные регистры.
 - До инициализации экрана диагностические сообщения выводятся напрямую в #EF; после загрузки BIOS.C включаются ATM UI, DS12887 и обычные RTC timestamped screen logs. BIOS CRC selftest и запуск x86 выполняются после инициализации UI.
 - Это изолирующий перенос проверенной последовательности Project124/0, а не заявление, что runtime уже исправлен.
@@ -1906,4 +1906,4 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Runtime: ожидать [NLOAD 02] CATALOG SEARCH RETURN, затем descriptor/sector markers, firmware upload, BIOS.C load; после [TRACE A1] BIOS LOAD DONE должны начаться VIDEO INIT / RTC / UI markers.
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
 
-| 2026-11-04 | A1.50 Archive-first TR-DOS boot order | SOURCE COMMITTED | Restore exact #7FFD/BANKM=#10 + #EFF7=0 startup and defer ATM video/window-0/DOSEN/RTC UI until NEOLOAD.C, NEOF W.C and BIOS.C disk I/O have completed. Remove per-call #10/#18 paging toggles. |
+| 2026-11-04 | A1.50 Archive-first TR-DOS boot order | SOURCE COMMITTED | Restore exact #7FFD/BANKM=#10 + #EFF7=0 startup and defer ATM video/window-0/DOSEN/RTC UI until NEOLOAD.C, NEOFW.C and BIOS.C disk I/O have completed. Remove per-call #10/#18 paging toggles. |
