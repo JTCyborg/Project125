@@ -1571,9 +1571,21 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [x] RTC work is closed as runtime PASS; subsequent work is isolated to TR-DOS/NeoGS loading.
 - [x] Runtime reaches `[NLOAD 00] OPEN ENTRY`, `[NLOAD 01] CATALOG SEARCH CALL`, and prints the exact search context: `BANKM=DC EXT=43 MODE=09`, visible bytes at `#3D13` = `00 18 E7 00 C3 69 2F CD`, filename `NEOLOAD `.
 - [ ] Confirm whether the supplied runtime log is complete: the current excerpt ends before `[NLOAD 02] CATALOG SEARCH RETURN`; do not classify this as a TR-DOS call failure until the continuation/terminal state is known.
-- [ ] Compare the eight bytes visible at `#3D13` against the exact ATM710 TR-DOS ROM image and verify the selected ROM mapping, not merely the BANKM/EXT values.
+- [x] Уточнена семантика TR-DOS shadow ROM: переход на opcode-fetch в диапазоне `#3D00..#3DFF` включает теневое DOS ROM; обычное чтение данных `(HL)` по `#3D13` не активирует переключение и показывает underlying ROM. Поэтому байты `00 18 E7 00 C3 69 2F CD` из A1.15/A1.22 не являются достоверной проверкой содержимого TR-DOS ROM и не должны сравниваться с его образом.
 - [ ] If the call does return, inspect returned C and TR-DOS error bytes `#5D0F/#5D10`, then proceed to descriptor and first-sector read.
 - [ ] Do not modify ATM video initialization, RTC, or the NeoGS upload protocol during this isolated loader diagnosis.
 - **Статус:** DIAGNOSTIC SOURCE PRESENT / RUNTIME BOUNDARY OBSERVED / ROOT CAUSE NOT YET ESTABLISHED.
 
 | 2026-11-04 | A1.22 NEOLOAD.C search boundary | DIAGNOSTIC | The captured excerpt reaches the pre-call ROM/name dump; the return trace is not present in the supplied excerpt, so the TR-DOS search outcome remains undetermined. |
+
+
+## A1.23 — корректная трактовка TR-DOS shadow ROM diagnostic (2026-11-04)
+
+- [x] По документации TR-DOS подтверждено: теневое DOS ROM включается при выборке команды (opcode fetch) по адресу в диапазоне `#3D00..#3DFF`; точка `#3D13` — машинный API dispatcher.
+- [x] Установлено, что диагностическое чтение `LD A,(HL)` при HL=`#3D13` не вызывает shadow-ROM переключение. Выведенные A45 байты относятся к underlying ROM и не доказывают, что TR-DOS ROM отсутствует или повреждён.
+- [x] В текущем коде есть корректная граница выполнения: `[NLOAD 01] CATALOG SEARCH CALL` выводится перед `CALL #3D13`, `[NLOAD 02] CATALOG SEARCH RETURN` — сразу после возврата. Именно эта пара, а не data dump, определяет, вернулось ли управление из TR-DOS.
+- [ ] По полному runtime log установить, присутствует ли `[NLOAD 02]`; если нет и лог действительно заканчивается на `NAME=NEOLOAD`, отдельно диагностировать зависание внутри TR-DOS entry call.
+- [ ] При возврате проверить C, #5D0F/#5D10 и последующие descriptor/sector markers.
+- **Статус:** STATIC DOCUMENTATION CHECK COMPLETE / RUNTIME CALL OUTCOME NOT YET ESTABLISHED.
+
+| 2026-11-04 | A1.23 TR-DOS shadow ROM diagnostic semantics | STATIC PASS | Direct data reads at #3D13 do not activate the shadow ROM; only the instruction-fetch transition does. The A45 byte dump is not a ROM identity test. Runtime call return remains to be established. |
