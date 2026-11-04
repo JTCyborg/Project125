@@ -609,6 +609,10 @@ bios_stop_dump_state:
         call    neo_debug_hex8
         ld      a, l
         call    neo_debug_hex8
+        ld      hl, bios_stop_video_errors_label
+        call    neo_debug_send_string
+        ld      a, (bios_video_stream_errors)
+        call    neo_debug_hex8
         pop     hl
         pop     de
         pop     bc
@@ -621,6 +625,8 @@ bios_stop_bx_label:
         defb    " BX=", 0
 bios_stop_flags_label:
         defb    " FLAGS=", 0
+bios_stop_video_errors_label:
+        defb    " VERR=", 0
 
 ; Dump physical page-75 bytes at image offset 1FF0 (guest FFFF0..FFFF4).
 ; This is deliberately performed after DMA is disabled and before validation.
