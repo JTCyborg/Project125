@@ -1749,3 +1749,16 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [x] A55 runtime with stack top restored to `#AFFF` still stops after `[NLOAD 01] CATALOG SEARCH CALL`; the stack-placement change did not resolve the hang.
 - [x] Re-enabled the existing read-only `neo_diag_search_state` immediately before `CALL #3D13` for the next run. It reports BANKM, extension, name length, live SP, ROM bytes at `#3D13`, and the eight-byte search name; it preserves AF/BC/DE/HL and does not change TR-DOS state.
 - [ ] Inspect the A56 snapshot against the known-working Project124 boundary and identify the actual ROM/paging/workspace discrepancy before changing the API sequence.
+
+
+## A1.38 — восстановление гарантированного выбора TR-DOS ROM (2026-11-04)
+
+- [x] Сопоставлен рабочий старт из `main/0`: он явно устанавливает `#7FFD=#10` и сохраняет это значение в `#5C3B` до первого открытия файла TR-DOS.
+- [x] В активной ветке `neogs-driver-rewrite` `p125_atm_video_init` ранее только читал унаследованный `#5C3B` и выставлял бит 3. Если унаследованный bit 4 был нулевым, TR-DOS ROM1 не выбирался, хотя комментарий ошибочно предполагал, что он уже активен.
+- [x] Изменено на детерминированную последовательность `#7FFD=#18`: bit 4 выбирает ROM1/TR-DOS, bit 3 выбирает альтернативный экран. Это эквивалентно проверенному `#10` из рабочего старта с добавленным экранным bit 3. Затем существующие `#3FF7/#7FF7/#FFF7` настройки ATM выполняются без изменений.
+- [x] Версия host build повышена до A34. Драйвер NeoGS, RTC DS12887, видео-рендерер и TR-DOS ABI не менялись.
+- [ ] Build: проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить появление `[NLOAD 02] CATALOG SEARCH RETURN`, затем descriptor, первый сектор, загрузку NeoGS и BIOS.C.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Это исправление конкретного расхождения с рабочим стартом; успешный запуск пока не заявляется.
+
+| 2026-11-04 | A1.38 TR-DOS ROM1 selection | SOURCE COMMITTED | Force the same ROM1/TR-DOS selection used by the working main/0 startup, while retaining alternate-screen selection. Build/runtime pending. |
