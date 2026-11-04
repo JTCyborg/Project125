@@ -175,7 +175,7 @@ x86_io_write8:
         ld      de, #0021
         or      a
         sbc     hl, de
-        jr      z, x86_pic_write_data
+        jp      z, x86_pic_write_data
         ld      hl, (x86_io_port)
         ld      de, #0043
         or      a
