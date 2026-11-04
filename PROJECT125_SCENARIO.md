@@ -1212,6 +1212,7 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [x] RTC K512VI1 initialization now runs after ATM shadow-port activation.
 - [x] Split host output into a raw character emitter and a Z80 log emitter. Z80-originated log lines receive `[HH:MM:SS]`; NeoGS debug-stream bytes are mirrored verbatim and never receive an RTC prefix.
 - [x] Z80-originated handshake trace messages use the host timestamp path; the NeoGS-originated BIOS/debug stream continues through the raw path.
+- [x] The five-byte BIOS tail diagnostic is buffered first; only after all NeoGS bytes have been consumed does the Z80 print the `[BIOS DST FFF0]` line with its RTC timestamp. This avoids delaying the NeoGS DBIT receive handshake while formatting the line.
 - [ ] Build: run `build_project125.bat`; verify the `ASSERT $ <= #A000` placement gate and final `ProgramEnd <= #A800` limit.
 - [ ] Runtime on ATM710/UnrealSpeccy: verify the complete 80×25 interface is visible, including both character parity halves; no black half-screen or overwritten host code.
 - [ ] Runtime: verify the status panel, 13-row log scrolling, and screen output during firmware upload and BIOS loading.
