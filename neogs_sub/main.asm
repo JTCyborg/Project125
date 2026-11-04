@@ -980,6 +980,48 @@ x86_reg_ds:    dw 0
 x86_reg_ip:    dw 0
 x86_reg_flags: dw 0
 
+; Resident one-shot trace for the first unmapped BIOS I/O read.
+; The interpreter calls this from overlay68; keeping the logger resident
+; avoids consuming the already-full 16 KiB interpreter overlay.
+x86_resident_io_trace_read8:
+        ld      a, (x86_io_trace_count)
+        or      a
+        ret     nz
+        inc     a
+        ld      (x86_io_trace_count), a
+        push    af
+        push    hl
+        ld      a, '!'
+        out     (#EF), a
+        ld      hl, (x86_io_port)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     af
+        ret
+
+x86_io_trace_count: db 0
+
 ; Shared bounds/diagnostic state accessed by resident BIOS and overlay CPU.
 x86_real_unsupported_opcode: db 0
 x86_real_bounds_enable:      db 0
