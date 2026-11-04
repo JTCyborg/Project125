@@ -1743,3 +1743,9 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [x] Static comparison: Project124 sets the host stack to `#AFFF`; Project125 had moved it to `#BFFF` while calling the same TR-DOS ROM API.
 - [x] Restored Project124's `#AFFF` stack top in Project125. The resident screen module is constrained to end at or below `#A800`, leaving the stack above it.
 - [ ] Rebuild and run on ATM/Unreal; confirm `[NLOAD 02]` and subsequent descriptor/sector markers. This change is not yet runtime-verified.
+
+
+## A1.37 — TR-DOS search boundary snapshot
+- [x] A55 runtime with stack top restored to `#AFFF` still stops after `[NLOAD 01] CATALOG SEARCH CALL`; the stack-placement change did not resolve the hang.
+- [x] Re-enabled the existing read-only `neo_diag_search_state` immediately before `CALL #3D13` for the next run. It reports BANKM, extension, name length, live SP, ROM bytes at `#3D13`, and the eight-byte search name; it preserves AF/BC/DE/HL and does not change TR-DOS state.
+- [ ] Inspect the A56 snapshot against the known-working Project124 boundary and identify the actual ROM/paging/workspace discrepancy before changing the API sequence.
