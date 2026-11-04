@@ -1679,3 +1679,14 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT VERIFIED. Найдены и исправлены два дополнительных расхождения ABI по HL и сохранению B в descriptor вызове.
 
 | 2026-11-04 | A1.30 TR-DOS HL / descriptor ABI | SOURCE COMMITTED | Preserve Project124's post-LDIR HL for search, preserve returned HL for descriptor, and change only C to 8 as Project124 does. Build/runtime pending. |
+## A1.31 — разделение TR-DOS dispatcher и FDC/catalogue path (2026-11-04)
+
+- [x] Runtime A27/A50: D1/D2 присутствуют, `[NLOAD 02]` отсутствует; HL ABI correction did not resolve the hang.
+- [x] Сверен опубликованный дизассемблер TR-DOS 5.03: сервис `C=#14` копирует 16-байтовый descriptor из `#5CDD` в `HL` без чтения диска; сервис `C=#0A` вызывает поиск, который читает сектор каталога.
+- [x] Перед C=#0A добавлен контрольный вызов C=#14 с отдельным 16-байтовым scratch buffer. Маркеры T0/T1 разделяют зависание в общем dispatcher `#3D13` и зависание в дисковом поиске.
+- [x] Driver banner A51; host build marker A28.
+- [ ] Build: проверить `build_project125.bat`, SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: если есть T1, но нет `[NLOAD 02]`, локализовано зависание внутри каталожного/FDC пути; если нет T1 — проблема в dispatcher/ROM entry path.
+- **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.31 TR-DOS dispatcher probe | SOURCE COMMITTED | Add a non-disk C=#14 TR-DOS API call before C=#0A to distinguish API entry/return failure from catalogue disk I/O. |
