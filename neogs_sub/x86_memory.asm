@@ -229,6 +229,7 @@ x86_mem_calc_phys:
         and     #0F
         ld      b, a
         ld      a, (x86_mem_segment+1)
+        and     #0F                 ; only segment bits 7:4 contribute to byte 1
         rlca
         rlca
         rlca
