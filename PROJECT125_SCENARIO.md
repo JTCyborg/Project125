@@ -1817,3 +1817,17 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME PENDING.
 
 | 2026-11-04 | A1.42 TR-DOS dispatcher preflight | SOURCE COMMITTED | Run non-disk C=#14 under the same legacy mapping before catalogue C=#0A, preserving the exact original search registers. Build/runtime pending. |
+
+
+## A1.43 — прямой каталоговый поиск по ABI Project124 (2026-11-04)
+
+- [x] Runtime A38/A58: появились оба маркера `[NLOAD T0]` и `[NLOAD T1]`; недисковый вызов `C=#14` возвращается, но `[NLOAD 02]` после каталогового поиска `C=#0A` отсутствует.
+- [x] Результат ограничивает зависание каталоговым/дисковым путём, но не доказывает неисправность FDC: тестовый `C=#14` был дополнительным вызовом, которого нет в рабочем Project124.
+- [x] Удалён preflight `C=#14` и диагностический snapshot непосредственно перед поиском. Между подготовкой имени и `CALL #3D13` теперь нет дополнительных ROM API вызовов или чтения ROM/workspace.
+- [x] Сохранено только переключение `#7FFD/BANKM=#10` перед вызовом, необходимое для согласования с проверенной картой TR-DOS; после возврата восстанавливается host map `#18`.
+- [x] Driver A59; host build A39.
+- [ ] Build: проверить SjASMPlus и `ASSERT ProgramEnd <= #A800`.
+- [ ] Runtime: проверить `[NLOAD 02] CATALOG SEARCH RETURN`. Если зависание останется, следующий этап — проверить FDC status/interrupt и TR-DOS disk path без изменения ABI.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME PENDING. Успешное открытие файла не заявляется.
+
+| 2026-11-04 | A1.43 Direct Project124 catalogue search ABI | SOURCE COMMITTED | Remove the diagnostic C=#14 call and ROM/workspace snapshot; retain legacy #10 paging and issue C=#0A directly. Build/runtime pending. |
