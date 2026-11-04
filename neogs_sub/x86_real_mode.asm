@@ -2075,10 +2075,14 @@ x86_real_shift_byte_cl:
         cp      #C8
         jp      z, x86_real_shift_byte_ror_cl
         cp      #E0
-        jp      z, x86_real_shift_byte_shl_cl
+        jp      nz, x86_real_shift_byte_cl_check_shr
+        ; D2 E0: retain the existing SHL AL,CL implementation below.
+        jr      x86_real_shift_byte_cl_shl
+x86_real_shift_byte_cl_check_shr:
         cp      #E8
         jp      z, x86_real_shift_byte_shr_cl
         jp      x86_real_shift_byte_cl_unsupported
+x86_real_shift_byte_cl_shl:
         ld      a, (x86_reg_cx)
         or      a
         jp      z, x86_real_next
@@ -2267,11 +2271,6 @@ x86_real_shift_byte_shr_cl:
         ld      l, a
         ld      (x86_reg_ax), hl
         jp      x86_real_next
-
-; D2 E0: SHL AL,CL. Kept as a separate handler so D2 group dispatch
-; can support individual documented ModR/M forms without mis-decoding.
-x86_real_shift_byte_shl_cl:
-        jp      x86_real_shift_byte_cl_shl_impl
 
 ; D2 C8: ROR AL,CL. The 8086 applies the complete CL count.
 ; ROR changes CF and (for count=1) OF only; PF/ZF/SF/AF are preserved.
