@@ -286,6 +286,8 @@ x86_real_fetch_out_of_range:
         ret
 
 x86_real_execute:
+        xor     a
+        ld      (x86_real_unsupported_opcode), a
         ld      hl, X86_REAL_STEP_LIMIT
         ld      (x86_real_steps), hl
 x86_real_next:
@@ -456,6 +458,13 @@ x86_real_dispatch:
         cp      #E4
         jp      c, x86_real_loop_short
 .not_loop_short:
+        ; Control-transfer opcodes E8 (CALL rel16) and EA (JMP ptr16:16)
+        ; lie inside the numeric E4..EF I/O opcode interval. Dispatch them
+        ; before the range checks or they are incorrectly sent to I/O decode.
+        cp      #E8
+        jp      z, x86_real_call_near
+        cp      #EA
+        jp      z, x86_real_jmp_far
         cp      #E4
         jp      c, .not_io_immediate
         cp      #E8
@@ -466,12 +475,8 @@ x86_real_dispatch:
         cp      #F0
         jp      c, x86_real_io_instruction
 .not_io_dx:
-        cp      #E8
-        jp      z, x86_real_call_near
         cp      #C3
         jp      z, x86_real_ret_near
-        cp      #EA
-        jp      z, x86_real_jmp_far
         cp      #9A
         jp      z, x86_real_call_far
         cp      #CB
@@ -487,6 +492,7 @@ x86_real_dispatch:
         cp      #CF
         jp      z, x86_real_iret
 
+        ld      (x86_real_unsupported_opcode), a
         ld      a, 2
         ld      (x86_exit_status), a
         scf
@@ -1265,6 +1271,7 @@ x86_real_imm_low:    db 0
 x86_real_imm_high:   db 0
 x86_real_int_vector: db 0
 x86_real_opcode: db 0
+x86_real_unsupported_opcode: db 0
 x86_real_imm_byte: db 0
 x86_real_incdec_mode: db 0
 x86_real_old_low: db 0

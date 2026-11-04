@@ -13,76 +13,19 @@ IPC_CMD_TIMEOUT EQU #FFFF
 ; The same 256-byte buffer is reused for every following sector while the
 ; firmware is streamed to NeoGS. The complete file is NEVER staged in host RAM.
 ; OUT: Carry clear, first sector at #C000, file length and next-sector cursor set.
-; -------------------------------------------------------------------------
 load_neogs_bootstrap_file::
         ld      hl, neo_fw_loader_filename
-        ld      de, msg_dump_neoload
         call    neo_fw_open_file
-        ret     c
-        jp      neo_fw_dump_first_sector
+        ret
 
 load_neogs_firmware_file::
         ld      hl, neo_fw_firmware_filename
-        ld      de, msg_dump_neofw
         call    neo_fw_open_file
-        ret     c
-        jp      neo_fw_dump_first_sector
-
-; Print the actual TR-DOS file metadata and first 32 bytes read into #C000.
-; This is deliberately done immediately after the disk read, before upload.
-; IN: DE = zero-terminated diagnostic label.
-neo_fw_dump_first_sector:
-        push    af
-        push    bc
-        push    de
-        push    hl
-        ld      hl, (neo_fw_file_length)
-        ld      (neo_fw_dump_length), hl
-        ld      hl, neo_fw_dump_prefix
-        call    p125_print_string
-        ld      hl, (neo_fw_dump_label)
-        call    p125_print_string
-        ld      hl, (neo_fw_dump_length)
-        ld      a, h
-        call    p125_print_hex8
-        ld      a, l
-        call    p125_print_hex8
-        ld      hl, neo_fw_dump_track_text
-        call    p125_print_string
-        ld      a, (neo_fw_load_track)
-        call    p125_print_hex8
-        ld      hl, neo_fw_dump_sector_text
-        call    p125_print_string
-        ld      a, (neo_fw_load_sector)
-        dec     a                       ; cursor already advanced after sector read
-        and     #0F
-        call    p125_print_hex8
-        ld      hl, neo_fw_dump_data_text
-        call    p125_print_string
-        ld      hl, #C000
-        ld      b, 32
-.dump_byte:
-        ld      a, (hl)
-        call    p125_print_hex8
-        ld      a, ' '
-        out     (#EF), a
-        inc     hl
-        djnz    .dump_byte
-        ld      a, 13
-        out     (#EF), a
-        ld      a, 10
-        out     (#EF), a
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
-        or      a
         ret
 
 ; HL points to an eight-character TR-DOS filename (extension is always C).
 neo_fw_open_file:
         ld      (neo_fw_requested_name_ptr), hl
-        ld      (neo_fw_dump_label), de
         ld      hl, (neo_fw_requested_name_ptr)
         ; Search the requested exact 8.3 catalogue name.
         ld      de, #5CDD
@@ -1208,14 +1151,6 @@ neo_fw_load_track:      db 0
 neo_fw_load_sector:     db 0
 neo_fw_file_error:      db 0
 neo_fw_file_length:     dw 0
-neo_fw_dump_label:      dw 0
-neo_fw_dump_length:     dw 0
-neo_fw_dump_prefix:     db "[P125] DISK DUMP ", 0
-neo_fw_dump_track_text: db " TRACK=", 0
-neo_fw_dump_sector_text: db " SECTOR=", 0
-neo_fw_dump_data_text:  db " DATA=", 0
-msg_dump_neoload:       db "NEOLOAD.C", 13, 10, 0
-msg_dump_neofw:         db "NEOFW.C", 13, 10, 0
 
 ; Stage 2 package parser and transfer state.
 neo_fw_package_source:  dw 0

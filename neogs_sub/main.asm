@@ -480,6 +480,16 @@ command_boot_bios:
         ; Compact stop trace: the host drains DBIT and mirrors it to port EF.
         ld      hl, bios_stop_prefix
         call    neo_debug_send_string
+        ld      a, 'O'
+        call    neo_send_data_byte
+        ld      a, 'P'
+        call    neo_send_data_byte
+        ld      a, '='
+        call    neo_send_data_byte
+        ld      a, (x86_real_unsupported_opcode)
+        call    neo_debug_hex8
+        ld      a, ' '
+        call    neo_send_data_byte
         ld      hl, (x86_reg_cs)
         ld      a, h
         call    neo_debug_hex8

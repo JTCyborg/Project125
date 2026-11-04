@@ -1143,3 +1143,59 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Runtime: подтвердить, что NeoGS получает 8192 байта без нулевого/повторного сектора и BIOS POST возвращает AX=B105.
 - [ ] Проверить восстановление исходного SP после успеха и каждого кода ошибки.
 - Статус: код записан в ветку; сборка и ATM/NeoGS runtime ещё не проверены.
+
+## A1.74 — исправление dispatch far JMP на BIOS reset vector (2026-11-04)
+
+- [x] Runtime A1.73: все 32 сектора BIOS.C прочитаны; reset vector source/destination совпадают: `EA 5B E0 00 F0`; NeoGS сообщает `BIOS ROM VALIDATED`.
+- [x] После команды запуска 8086 runtime останавливался с `CS:IP=FFFF:0001`, статусом 02 и AX=0000: первый байт reset vector EA был считан, но не обработан как far JMP.
+- [x] В `x86_real_mode.asm` обнаружена ошибка порядка opcode dispatch: диапазон E4..EB для I/O проверялся раньше точных обработчиков E8 (CALL rel16) и EA (JMP ptr16:16). Поэтому EA ошибочно попадал в обработчик I/O и завершался как unsupported opcode.
+- [x] Точные обработчики E8 и EA перенесены перед диапазонными проверками I/O. Остальные E4..E7 и EC..EF остаются в прежнем I/O decoder; C3/9A/CB не менялись.
+- [ ] Пересобрать `build_project125.bat`; проверить, что firmware успешно собирается и помещается в NEOFW.C.
+- [ ] Runtime: подтвердить переход reset vector на `F000:E05B`, затем дальнейшее выполнение BIOS.
+- [ ] После far JMP проверить следующие unsupported opcode/BIOS services по фактическому логу, расширяя CPU только по реально встреченным инструкциям.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+## A1.75 — отключение дампа содержимого BIOS-секторов (2026-11-04)
+
+- [x] Удалён вывод 256 байт каждого считанного сектора в HEX (`[BIOS DATA]`).
+- [x] Удалён дополнительный вывод пяти байт из последнего сектора (`[BIOS SRC FFF0]` на стороне дискового загрузчика).
+- [x] Оставлен короткий вывод позиции чтения `[BIOS READ] track/sector`, чтобы видеть ход TR-DOS загрузки без содержимого буфера.
+- [x] Не изменены чтение секторов, адреса буферов, DMA, handshake и BIOS validation.
+- [ ] Сборка и runtime-проверка на ATM.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED.
+
+## A1.76 — диагностика фактически неподдержанного opcode BIOS (2026-11-04)
+
+- [x] Runtime A1.75: BIOS.C полностью прочитан (32 сектора от 02/03 до 04/02); в physical page 75 reset vector EA 5B E0 00 F0 проверен; BIOS ROM validator PASS.
+- [x] Runtime: после старта CPU по-прежнему останавливается на CS:IP=FFFF:0001, status #02. Первый байт EA считан, IP увеличен, но обработчик инструкции не завершил переход.
+- [x] Текущий исходник уже содержит точный dispatch EA -> x86_real_jmp_far до диапазонного I/O decoder. Повторно менять порядок dispatch без проверки собранного бинарника нельзя.
+- [x] В x86_real_mode.asm добавлено сохранение байта, попавшего в ветку unsupported opcode, в x86_real_unsupported_opcode.
+- [x] В main.asm добавлен вывод OP=xx в BIOS stop trace. Следующий runtime покажет, какой opcode реально дошёл до unsupported handler.
+- [ ] Собрать build_project125.bat и убедиться, что обновлённая прошивка NEOFW.C создана.
+- [ ] Runtime: проверить строку [BIOS] STOP OP=xx CS:IP=.... Если OP=EA, проверить соответствие собранной NEOFW.C исходнику и фактически загруженному файлу; если другой байт — исправлять конкретный opcode decoder.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+## A1.77 — отключение дампов NEOLOAD/NEOFW и трассы BIOS sector read (2026-11-04)
+
+- [x] В `zx_main/neogs_driver.asm` удалён вывод `[P125] DISK DUMP NEOLOAD.C` и `[P125] DISK DUMP NEOFW.C`, включая HEX первых 32 байт и диагностические метаданные.
+- [x] Загрузчики NEOLOAD.C и NEOFW.C по-прежнему открывают файлы и читают первый сектор в #C000; потоковая передача firmware не менялась.
+- [x] В `zx_main/bios_file_loader.asm` удалён вывод `[BIOS READ] TT/SS` перед каждым чтением сектора.
+- [x] Удалены только диагностические процедуры/строки и неиспользуемое поле адреса последнего буфера; TR-DOS C=#05, курсор 0..15, staging #C000..#DFFF, DMA, handshake и BIOS validation не изменялись.
+- [ ] Сборка `build_project125.bat` и runtime-проверка на ATM: в логе не должно быть `[P125] DISK DUMP`, `[BIOS READ]`; диагностические сообщения BIOS execution, включая `OP=xx`, сохраняются.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+
+## A1.78 — перенос RTC K512VI1 и экранной диагностической консоли из Project124 (2026-11-04)
+
+- [x] Импортирован драйвер CMOS/RTC K512VI1 из Project124 в `zx_main/rtc_driver.asm`: проверка сигнатуры, холодная инициализация регистров A/B, чтение BCD HH:MM:SS с ожиданием UIP.
+- [x] Чтение RTC адаптировано для сохранения исходного состояния прерываний Z80: `READ_CURRENT_TIME` больше не включает EI безусловно.
+- [x] Импортирован 42×12 символов 6×8 экранный диагностический backend Project124 в `zx_main/p125_screen_console.asm`; нижняя половина стандартного Spectrum bitmap используется как журнал, верхняя область не очищается и не перерисовывается.
+- [x] Шрифт `font68.bin` (768 bytes) встроен как assembler data, чтобы Project125 не зависел от внешнего бинарного файла шрифта.
+- [x] Скроллинг нижней консоли перенесён отдельно; не импортированы Commander file panels, клавиатурная навигация и старый 32-column renderer.
+- [x] Host output теперь зеркалируется одновременно в порт #EF и экранную консоль.
+- [x] В начало каждой host log line добавляется RTC timestamp `[HH:MM:SS]`; для входящего NeoGS debug stream timestamp вставляется на каждой новой строке, а не на каждом байте.
+- [x] Подсистемы CPU 8086, BIOS loader, NeoGS DMA/IPC и video-frame ABI не изменялись по смыслу; изменены только точки вывода debug stream.
+- [ ] Сборка `build_project125.bat`: проверить SjASMPlus синтаксис, включение новых модулей и ограничение `ProgramEnd <= #A800`.
+- [ ] Runtime на ATM/Unreal: проверить RTC показания, timestamp в порту #EF, дублирование тех же сообщений на экран, прокрутку после 12 строк.
+- [ ] Проверить, что экранный вывод не конфликтует с выбранным ATM видеорежимом; текущий backend использует стандартную Spectrum bitmap-область и не является ATM 640×200/320×200 presenter.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME NOT VERIFIED. Не объявлять экранный интерфейс подтверждённым до сборки и запуска на целевой конфигурации.

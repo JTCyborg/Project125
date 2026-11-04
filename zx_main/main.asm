@@ -42,6 +42,14 @@ Init_Z80_System:
         ld      bc, #EFF7
         out     (c), a
 
+        ; Initialize Project124-derived screen console and K512VI1 RTC.
+        call    BIOS_DebugConsole_Clear
+        call    CHECK_AND_INIT_CMOS
+        ld      a, 1
+        ld      (p125_log_line_start), a
+
+        ld      hl, msg_rtc_ready
+        call    p125_print_string
         ld      hl, msg_p125_start
         call    p125_print_string
         ld      hl, msg_p125_build_id
@@ -134,9 +142,9 @@ Init_Z80_System:
         ld      a, l
         call    p125_print_hex8
         ld      a, 13
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, 10
-        out     (#EF), a
+        call    p125_emit_char
         jp      p125_halt
 
 .bios_loaded:
@@ -160,16 +168,16 @@ Init_Z80_System:
         ld      a, (bios_host_result_status)
         call    p125_print_hex8
         ld      a, ' '
-        out     (#EF), a
+        call    p125_emit_char
         ld      hl, (bios_host_result_ax)
         ld      a, h
         call    p125_print_hex8
         ld      a, l
         call    p125_print_hex8
         ld      a, 13
-        out     (#EF), a
+        call    p125_emit_char
         ld      a, 10
-        out     (#EF), a
+        call    p125_emit_char
 
 p125_halt:
         di
@@ -177,14 +185,19 @@ p125_halt:
         halt
         jr      .p125_halt_loop
 
-; Port EF text and hexadecimal diagnostics.
+; Timestamped diagnostics mirrored to port #EF and the 42x12 screen.
 p125_print_string:
         ld      a, (hl)
         or      a
         ret     z
-        out     (#EF), a
+        call    p125_log_prefix_if_needed
+.p125_string_loop:
+        ld      a, (hl)
+        or      a
+        ret     z
+        call    p125_emit_char
         inc     hl
-        jr      p125_print_string
+        jr      .p125_string_loop
 
 p125_print_hex8:
         push    af
@@ -204,11 +217,85 @@ p125_print_hex_nibble:
         jr      c, .hex_digit
         add     a, 7
 .hex_digit:
-        out     (#EF), a
+        jp      p125_emit_char
+
+; Emit one character to port #EF and the on-screen 6x8 console.
+p125_emit_char:
+        push    af
+        push    bc
+        ld      bc, #00EF
+        out     (c), a
+        call    BIOS_DebugConsole_PrintChar
+        cp      13
+        jr      z, .p125_mark_line_start
+        cp      10
+        jr      nz, .p125_emit_done
+.p125_mark_line_start:
+        ld      a, 1
+        ld      (p125_log_line_start), a
+.p125_emit_done:
+        pop     bc
+        pop     af
         ret
 
+p125_log_prefix_if_needed:
+        ld      a, (p125_log_line_start)
+        or      a
+        ret     z
+        call    p125_print_timestamp
+        xor     a
+        ld      (p125_log_line_start), a
+        ret
+
+p125_print_timestamp:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        call    READ_CURRENT_TIME
+        ld      a, '['
+        call    p125_emit_char
+        ld      a, (txt_hour)
+        call    p125_emit_char
+        ld      a, (txt_hour+1)
+        call    p125_emit_char
+        ld      a, ':'
+        call    p125_emit_char
+        ld      a, (txt_min)
+        call    p125_emit_char
+        ld      a, (txt_min+1)
+        call    p125_emit_char
+        ld      a, ':'
+        call    p125_emit_char
+        ld      a, (txt_sec)
+        call    p125_emit_char
+        ld      a, (txt_sec+1)
+        call    p125_emit_char
+        ld      a, ']'
+        call    p125_emit_char
+        ld      a, ' '
+        call    p125_emit_char
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+; Prefix each incoming NeoGS debug line independently.
+p125_debug_stream_char:
+        push    af
+        cp      13
+        jr      z, .p125_debug_no_prefix
+        cp      10
+        jr      z, .p125_debug_no_prefix
+        call    p125_log_prefix_if_needed
+.p125_debug_no_prefix:
+        pop     af
+        jp      p125_emit_char
+
+msg_rtc_ready:        defb "[RTC] K512VI1 READY", 13, 10, 0
 msg_p125_start:       defb "[P125] ATM HOST START", 13, 10, 0
-msg_p125_build_id:    defb "[P125] BUILD 20261103-A11", 13, 10, 0
+msg_p125_build_id:    defb "[P125] BUILD 20261104-A12 RTC-SCREEN", 13, 10, 0
 msg_fw_load:          defb "[P125] LOAD NEOGS FIRMWARE", 13, 10, 0
 msg_fw_file_error:    defb "[P125] ERROR: NEOLOAD.C FILE #", 0
 msg_fw_upload_error:  defb "[P125] ERROR: NEOGS FIRMWARE UPLOAD PHASE #", 0
@@ -231,6 +318,11 @@ msg_video_crc_error:  defb "[P125] VIDEO CRC SELFTEST FAILED #", 0
 msg_video_crc_ok:     defb "[P125] VIDEO CRC SELFTEST PASS", 13, 10, 0
 
 P125_OLD_SP: dw 0
+p125_log_line_start: db 1
+
+; Project124-derived RTC and screen console modules.
+        INCLUDE "rtc_driver.asm"
+        INCLUDE "p125_screen_console.asm"
 
 ; Host-side modules: firmware bootstrap, BIOS DMA transport and TR-DOS reader.
         INCLUDE "neogs_driver.asm"
