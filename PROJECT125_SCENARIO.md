@@ -1199,3 +1199,20 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Runtime на ATM/Unreal: проверить RTC показания, timestamp в порту #EF, дублирование тех же сообщений на экран, прокрутку после 12 строк.
 - [ ] Проверить, что экранный вывод не конфликтует с выбранным ATM видеорежимом; текущий backend использует стандартную Spectrum bitmap-область и не является ATM 640×200/320×200 presenter.
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME NOT VERIFIED. Не объявлять экранный интерфейс подтверждённым до сборки и запуска на целевой конфигурации.
+## A1.79 — ATM-native 80×25 presenter and RTC log-source separation (2026-11-04)
+
+- [x] Replaced the incorrect Spectrum `#4000–#5AFF` bitmap console from A1.78 with the ATM Turbo 2+ hardware text mode 80×25 (`RG=6`, system-port value `#C6`).
+- [x] ATM shadow ports are opened first through the TR-DOS trampoline `#3D2F -> #2A53 -> #0177`; no shadow-port write is attempted before DOSEN is enabled.
+- [x] Selected the alternate ATM screen pair with `#7FFD=#18`: physical page 7 for character codes and page 3 for attributes. This avoids overwriting the resident host program in page 5 at `#6000`.
+- [x] The presenter is placed at `#A000` in CPU window 2. For each screen operation it temporarily maps page 7 to `#4000` and page 3 to `#C000`, then restores page 5/page 0. Thus the host code at `#6000` and the TR-DOS staging buffer at `#C000` are not left mapped out or overwritten.
+- [x] Ported the tested Project112 80×25 text layout: `#01C0 + row*64 + column/2`; even/odd character and attribute planes use the documented ATM address split.
+- [x] Recreated the Project124 two-zone layout as an ATM-native workspace: 12-row status panel above, 13-row timestamped diagnostic log below; 80 columns across the display.
+- [x] RTC K512VI1 initialization now runs after ATM shadow-port activation.
+- [x] Split host output into a raw character emitter and a Z80 log emitter. Z80-originated log lines receive `[HH:MM:SS]`; NeoGS debug-stream bytes are mirrored verbatim and never receive an RTC prefix.
+- [x] Z80-originated handshake trace messages use the host timestamp path; the NeoGS-originated BIOS/debug stream continues through the raw path.
+- [ ] Build: run `build_project125.bat`; verify the `ASSERT $ <= #A000` placement gate and final `ProgramEnd <= #A800` limit.
+- [ ] Runtime on ATM710/UnrealSpeccy: verify the complete 80×25 interface is visible, including both character parity halves; no black half-screen or overwritten host code.
+- [ ] Runtime: verify the status panel, 13-row log scrolling, and screen output during firmware upload and BIOS loading.
+- [ ] Runtime: verify K512VI1 time and `[HH:MM:SS]` on Z80-originated log lines; verify NeoGS lines have no inserted timestamp.
+- [ ] Regression: confirm NeoGS firmware upload, BIOS.C staging/DMA, IPC handshake and 8086 execution remain unchanged.
+- **Status:** SOURCE COMMITTED / BUILD NOT VERIFIED / ATM RUNTIME NOT VERIFIED. A1.79 supersedes the Spectrum bitmap backend introduced in A1.78; do not mark the ATM presenter complete until build and runtime checks pass.
