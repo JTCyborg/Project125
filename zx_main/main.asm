@@ -56,6 +56,11 @@ Init_Z80_System:
         ld      hl, trace_30_rtc_init_begin
         call    p125_trace_port
         call    CHECK_AND_INIT_CMOS
+
+        ; Probe the independent ATM keyboard-controller timer (read-only).
+        ; This does not replace or modify the K512VI1 CMOS RTC.
+        call    ATM_KBD_RTC_PROBE
+
         ld      hl, trace_31_rtc_init_done
         call    p125_trace_port
 
@@ -416,6 +421,7 @@ p125_log_line_start: db 1
 
 ; Project124-derived K512VI1 RTC driver.
         INCLUDE "rtc_driver.asm"
+        INCLUDE "atm_kbd_rtc.asm"
 
 ; Host-side modules: firmware bootstrap, BIOS DMA transport and TR-DOS reader.
         INCLUDE "neogs_driver.asm"
