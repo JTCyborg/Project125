@@ -221,10 +221,12 @@ rtc_trace_return_addresses:
         PUSH    DE
         PUSH    HL
 
+        ; On entry DE=actual stack word, HL=expected continuation.
+        ; Exchange them so HL carries the actual value for formatting.
+        EX      DE, HL
         LD      HL, rtc_trace_actual_prefix
         CALL    p125_trace_port
-        POP     HL
-        PUSH    HL
+        EX      DE, HL
         LD      A, H
         CALL    rtc_trace_hex8
         LD      A, L
@@ -232,14 +234,7 @@ rtc_trace_return_addresses:
 
         LD      HL, rtc_trace_expected_prefix
         CALL    p125_trace_port
-        POP     HL
-        PUSH    HL
-        ; Expected address is stored in the saved caller HL slot.
-        ; Recover actual DE from its saved caller slot without changing it.
-        POP     HL
-        POP     DE
-        PUSH    DE
-        PUSH    HL
+        EX      DE, HL
         LD      A, H
         CALL    rtc_trace_hex8
         LD      A, L
