@@ -42,6 +42,10 @@ neo_fw_open_file:
         ld      c, 10
         ld      hl, trace_noload_01_search_call
         call    p125_trace_port
+        ; A1.37: read-only boundary snapshot immediately before the hanging
+        ; catalogue call. This helper preserves AF/BC/DE/HL and does not
+        ; modify the TR-DOS workspace or paging registers.
+        call    neo_diag_search_state
         call    #3D13
         ld      hl, trace_noload_02_search_return
         call    p125_trace_port
@@ -1350,4 +1354,4 @@ trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
 trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
 trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A55 TRDOS OPEN TRACE", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A56 TRDOS SEARCH SNAPSHOT", 13, 10, 0
