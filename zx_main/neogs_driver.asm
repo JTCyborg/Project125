@@ -45,6 +45,22 @@ neo_fw_open_file:
         ; A1.13: capture the exact TR-DOS search environment immediately
         ; before entering ROM. This routine writes only to diagnostic port #EF.
         call    neo_diag_search_state
+        ; A1.27: repeat the documented ATM710 DOSEN gate activation immediately
+        ; before the catalogue API. #0177: A8=1 enables ATM memory; A9=0
+        ; keeps DOSEN active. #2A53 is the TR-DOS OUT (C),A; RET trampoline.
+        ld      hl, trace_noload_gate_begin
+        call    p125_trace_port
+        ld      bc, .search_gate_ready
+        push    bc
+        ld      bc, #2A53
+        push    bc
+        ld      bc, #0177
+        ld      a, #C3
+        jp      #3D2F
+.search_gate_ready:
+        ld      hl, trace_noload_gate_done
+        call    p125_trace_port
+        ld      c, 10
         call    #3D13
         ld      hl, trace_noload_02_search_return
         call    p125_trace_port
@@ -1338,6 +1354,8 @@ trace_noload_diag_rom:             defb " ATM710 ROM@3D13=", 0
 trace_noload_diag_name:            defb " NAME=", 0
 trace_noload_00_entry:             defb "[NLOAD 00] OPEN ENTRY", 13, 10, 0
 trace_noload_01_search_call:       defb "[NLOAD 01] CATALOG SEARCH CALL", 13, 10, 0
+trace_noload_gate_begin:           defb "[NLOAD D1] DOSEN REARM BEGIN", 13, 10, 0
+trace_noload_gate_done:            defb "[NLOAD D2] DOSEN REARM DONE", 13, 10, 0
 trace_noload_02_search_return:     defb "[NLOAD 02] CATALOG SEARCH RETURN", 13, 10, 0
 trace_noload_03_descriptor_call:   defb "[NLOAD 03] DESCRIPTOR CALL", 13, 10, 0
 trace_noload_04_descriptor_return: defb "[NLOAD 04] DESCRIPTOR RETURN", 13, 10, 0
@@ -1345,4 +1363,4 @@ trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
 trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
 trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A46 NEOLOAD STACK DIAG", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A47 DOSEN REARM DIAG", 13, 10, 0
