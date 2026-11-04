@@ -2005,6 +2005,9 @@ x86_real_shift_byte_ror_cl:
         ld      (x86_shift_original_count), a
         ld      a, (x86_reg_ax)
         ld      (x86_shift_result), a
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
 .ror_byte_loop:
         ld      a, (x86_shift_result)
         ld      l, a
@@ -2037,9 +2040,6 @@ x86_real_shift_byte_ror_cl:
         ld      a, (x86_shift_original_count)
         cp      1
         jr      nz, .ror_preserve_of
-        ld      a, (x86_shift_result)
-        xor     a
-        bit     7, a
         ; Build OF explicitly from result bits 7 and 6.
         ld      a, (x86_shift_result)
         and     #C0
