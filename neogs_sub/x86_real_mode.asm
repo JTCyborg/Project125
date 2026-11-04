@@ -368,6 +368,8 @@ x86_real_dispatch:
         cp      #A4
         jp      c, x86_real_moffs
 .not_moffs:
+        cp      #A8
+        jp      z, x86_real_test_al_immediate
         cp      #D1
         jp      z, x86_real_shift_word_one
         cp      #D2
@@ -2380,6 +2382,60 @@ x86_real_group_f7:
         cpl
         ld      h, a
         ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
+; A8 ib — TEST AL,imm8. The result is discarded; CF/OF are cleared,
+; SF/ZF/PF reflect AL AND immediate, while AF is left unchanged (undefined
+; by the original 8086 instruction).
+x86_real_test_al_immediate:
+        call    x86_real_fetch8
+        ret     c
+        ld      b, a
+        ld      a, (x86_reg_ax)
+        and     b
+        ld      (x86_shift_result), a
+
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, (x86_shift_result)
+        and     a
+        jp      pe, .test_al_pf
+        jr      .test_al_zero
+.test_al_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.test_al_zero:
+        ld      a, (x86_shift_result)
+        or      a
+        jr      nz, .test_al_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.test_al_sign:
+        ld      a, (x86_shift_result)
+        bit     7, a
+        jr      z, .test_al_merge
+        ld      hl, x86_shift_new_flags+1
+        set     7, (hl)
+.test_al_merge:
+        ; Preserve AF and reserved/control bits; clear CF, OF and replace
+        ; PF/ZF/SF.
+        ld      hl, (x86_reg_flags)
+        ld      de, #7F3A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
         jp      x86_real_next
 
 x86_real_group_f7_unsupported:
