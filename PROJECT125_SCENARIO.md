@@ -1596,8 +1596,24 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [x] Сопоставлена раскладка стека: Project124, где тот же TR-DOS API `CALL #3D13` используется в рабочем загрузчике, устанавливает `SP=#BFFF`; Project125 ранее устанавливал `SP=#AFFF` при `ProgramEnd <= #A800`, оставляя только 2 КБ между концом resident image и верхом стека.
 - [x] Project125 stack top увеличен до `#BFFF`, как в проверенной реализации Project124. Область `#A800..#BFFF` остаётся свободной под стек; буфер первого сектора остаётся в `#C000`.
 - [x] Добавлен вывод фактического SP в `[NLOAD D]` непосредственно перед `CALL #3D13`; driver banner повышен до A46, host build marker до A21.
-- [ ] Выполнить `build_project125.bat` и проверить отсутствие ошибок сборки / assertion.
-- [ ] Runtime: ожидать `SP=` около `BFF1` внутри диагностической процедуры (точное значение зависит от глубины CALL/PUSH); проверить, появился ли `[NLOAD 02] CATALOG SEARCH RETURN`.
-- **Статус:** SOURCE COMMITTED / STACK-HEADROOM CORRECTION NOT YET BUILD- OR RUNTIME-VERIFIED / TR-DOS ROOT CAUSE OPEN.
+- [x] Runtime 2026-11-04: BUILD A21 / DRIVER A46 действительно загружены; диагностическая процедура показала `SP=BFF1`, как и ожидалось.
+- [x] После увеличения стека зависание на `CALL #3D13` осталось без изменений; нехватка стекового пространства не подтверждается как причина.
+- [ ] Выполнить `build_project125.bat` для следующей версии и проверить отсутствие ошибок сборки / assertion.
+- [ ] Runtime: проверить возврат `[NLOAD 02] CATALOG SEARCH RETURN`.
+- **Статус:** STACK PLACEMENT RUNTIME VERIFIED; STACK NOT ROOT CAUSE; TR-DOS MAPPING ROOT CAUSE UNDER INVESTIGATION.
 
 | 2026-11-04 | A1.24 NEOLOAD stack headroom | SOURCE COMMITTED | Increased Project125 SP from #AFFF to #BFFF to match Project124's proven TR-DOS loader stack placement; added live SP trace. Build/runtime pending. |
+
+
+## A1.25 — ATM710 #FFF7 mux enable / TR-DOS shadow-ROM selection (2026-11-04)
+
+- [x] В `zx_main/p125_screen_console.asm` обнаружено: записи в `#FFF7` использовали `#7C` (RAM page 3) и `#7F` (RAM page 0), то есть D7=0.
+- [x] По описанию ATM Turbo 2+ D7 записи в `#FFF7` включает mux `#7FFD`; для нижнего 16-КБ окна этот mux необходим для автоматического выбора TR-DOS shadow ROM при opcode fetch в диапазоне `#3D00..#3DFF`. При D7=0 остаётся выбранная RAM-страница и штатный DOS API не вызывается.
+- [x] Это согласуется с зависанием `CALL #3D13`: текущая карта не включает автоматическое переключение нижнего окна на TR-DOS ROM. Чтение `(HL)` по `#3D13` при этом не является проверкой shadow ROM.
+- [x] Исправлены только значения для `#FFF7`: page 3 `#7C -> #FC`, page 0 `#7F -> #FF`. Нижние 7 бит сохранены, D7 установлен. Значения для `#7FF7`, видео-страницы и режимы ATM не изменены.
+- [x] Host build marker повышен до `20261104-A22 TRDOS SHADOW MUX FIX`.
+- [ ] Сборка `build_project125.bat`: проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: подтвердить `[NLOAD 02] CATALOG SEARCH RETURN`; затем проверить descriptor (`[NLOAD 03/04]`) и первый sector (`[NLOAD 05/06]`).
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / HARDWARE RUNTIME PENDING. Это сильная причина, выведенная из фактических значений D7=0 в текущем коде и описания ATM map; runtime ещё должен подтвердить исправление.
+
+| 2026-11-04 | A1.25 ATM710 #FFF7 mux enable | SOURCE COMMITTED | Set D7 on every #FFF7 page selection (`#FC` for page 3, `#FF` for page 0) to preserve #7FFD mux and TR-DOS shadow-ROM auto-selection; build/runtime pending. |
