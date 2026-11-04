@@ -415,8 +415,10 @@ p125_screen_write_char:
         ld      de, #01C0
         add     hl, de
         ld      a, (bios_dbg_write_col)
+        ld      c, a
         and     1
         ld      (bios_dbg_parity), a
+        ld      a, c
         srl     a
         ld      e, a
         ld      d, 0
