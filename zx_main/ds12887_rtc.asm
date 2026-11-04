@@ -1,12 +1,10 @@
 ; =========================================================================
 ; PROJECT125 — Dallas DS12887 RTC driver for ATM Turbo 2+
-; Version: D1.02
+; Version: D1.03
 ;
-; ATM710/GLUK CMOS access:
-;   OUT (#EFF7),#80 opens the CMOS/RTC decode gate (EFF7 bit 7)
-;   OUT (#DFF7),A selects the DS12887 register
-;   IN  A,(#BFF7) reads the selected register
-;   OUT (#EFF7),#00 closes the CMOS/RTC decode gate
+; ATM710 dual interface:
+;   Native GLUK: EFF7 bit 7 gate, DFF7 index, BFF7 data.
+;   SMUC fallback: FFBA selects address mode, DFBA index/data.
 ; The RTC data/control registers are never written by this driver.
 ; READ_CURRENT_TIME is the timestamp API used by main.asm.
 ;
@@ -25,38 +23,43 @@ DS12887_PROBE::
         ld      hl, ds12887_banner
         call    p125_trace_port
 
-        ; ATM710 requires the EFF7 CMOS gate; Project124 uses this same
-        ; open/close sequence for the working Pentagon CMOS clock driver.
+        ; First try the native GLUK/ATM DFF7/BFF7 interface.
+        xor     a
+        ld      (ds12887_backend), a
         call    DS12887_OPEN
+        call    DS12887_READ_STATUS
 
-        ; Status D VRT must be set. This is a read-only presence/validity test.
-        ld      a, #0D
-        call    DS12887_READ_REG
-        ld      (ds12887_status_d), a
+        ; A floating/unimplemented port often reads FF. A valid DS12887
+        ; has Status D exactly 80h and Status A divider bits 010b.
+        call    DS12887_VALIDATE_STATUS
+        jr      nc, ds12887_probe_status_ready
+
+        ; ATM710 emulators may expose the same Dallas CMOS through SMUC.
+        ; Retry through the SMUC DFBA/FFBA index/data interface.
+        call    DS12887_CLOSE
+        ld      a, 1
+        ld      (ds12887_backend), a
+        call    DS12887_OPEN
+        call    DS12887_READ_STATUS
+
+ds12887_probe_status_ready:
         ld      hl, ds12887_status_dump
         call    p125_trace_port
         ld      a, (ds12887_status_d)
         call    DS12887_PRINT_HEX8
         ld      a, ' '
         call    DS12887_PRINT_CHAR
-
-        ld      a, #0A
-        call    DS12887_READ_REG
-        ld      (ds12887_status_a), a
+        ld      a, (ds12887_status_a)
         call    DS12887_PRINT_HEX8
         ld      a, ' '
         call    DS12887_PRINT_CHAR
-
-        ld      a, #0B
-        call    DS12887_READ_REG
-        ld      (ds12887_status_b), a
+        ld      a, (ds12887_status_b)
         call    DS12887_PRINT_HEX8
         ld      hl, ds12887_crlf
         call    p125_trace_port
 
-        ld      a, (ds12887_status_d)
-        bit     7, a
-        jp      z, ds12887_probe_invalid
+        call    DS12887_VALIDATE_STATUS
+        jp      c, ds12887_probe_invalid
 
         ld      a, 1
         ld      (ds12887_available), a
@@ -157,6 +160,34 @@ ds12887_time_done:
         pop     af
         ret
 
+; Read Status D/A/B through the currently selected backend.
+DS12887_READ_STATUS:
+        ld      a, #0D
+        call    DS12887_READ_REG
+        ld      (ds12887_status_d), a
+        ld      a, #0A
+        call    DS12887_READ_REG
+        ld      (ds12887_status_a), a
+        ld      a, #0B
+        call    DS12887_READ_REG
+        ld      (ds12887_status_b), a
+        ret
+
+; Carry clear only for a plausible live DS12887 register set.
+DS12887_VALIDATE_STATUS:
+        ld      a, (ds12887_status_d)
+        cp      #80
+        jr      nz, ds12887_status_invalid
+        ld      a, (ds12887_status_a)
+        and     #70
+        cp      #20
+        jr      nz, ds12887_status_invalid
+        or      a
+        ret
+ds12887_status_invalid:
+        scf
+        ret
+
 ; -------------------------------------------------------------------------
 ; GLUK/ATM CMOS gate. Match the known-working Project124 sequence.
 ; EFF7 bit 7 enables the DFF7/BFF7 RTC/CMOS port decoder.
@@ -164,9 +195,19 @@ ds12887_time_done:
 DS12887_OPEN:
         push    af
         push    bc
+        ld      a, (ds12887_backend)
+        or      a
+        jr      nz, ds12887_open_smuc
         ld      bc, #EFF7
         ld      a, #80
         out     (c), a
+        jr      ds12887_open_done
+ds12887_open_smuc:
+        ; SMUC bit 7 = 0 selects CMOS address mode on DFBA.
+        ld      bc, #FFBA
+        xor     a
+        out     (c), a
+ds12887_open_done:
         pop     bc
         pop     af
         ret
@@ -174,9 +215,13 @@ DS12887_OPEN:
 DS12887_CLOSE:
         push    af
         push    bc
+        ld      a, (ds12887_backend)
+        or      a
+        jr      nz, ds12887_close_done
         ld      bc, #EFF7
         xor     a
         out     (c), a
+ds12887_close_done:
         pop     bc
         pop     af
         ret
@@ -188,9 +233,21 @@ DS12887_CLOSE:
 ; -------------------------------------------------------------------------
 DS12887_READ_REG:
         push    bc
+        ld      c, a
+        ld      a, (ds12887_backend)
+        or      a
+        jr      nz, ds12887_read_smuc
+        ld      a, c
         ld      bc, #DFF7
         out     (c), a
         ld      bc, #BFF7
+        in      a, (c)
+        pop     bc
+        ret
+ds12887_read_smuc:
+        ld      a, c
+        ld      bc, #DFBA
+        out     (c), a
         in      a, (c)
         pop     bc
         ret
@@ -366,7 +423,7 @@ DS12887_PRINT_CHAR:
         pop     bc
         ret
 
-ds12887_banner:      defb "[DS12887 D1.02] EFF7 GATE + #DFF7/#BFF7", 13, 10, 0
+ds12887_banner:      defb "[DS12887 D1.03] GLUK/SMUC AUTO", 13, 10, 0
 ds12887_found:       defb "[DS12887] VRT OK; READ-ONLY CLOCK ACCESS", 13, 10, 0
 ds12887_status_dump: defb "[DS12887] STATUS D/A/B=", 0
 ds12887_invalid:     defb "[DS12887] VRT BIT 7 CLEAR (CHECK CMOS PORT/POWER)", 13, 10, 0
@@ -375,6 +432,7 @@ ds12887_raw_time:    defb "[DS12887] RAW H:M:S=", 0
 ds12887_crlf:        defb 13, 10, 0
 
 ds12887_available:   defb 0
+ds12887_backend:     defb 0
 ds12887_status_a:    defb 0
 ds12887_status_b:    defb 0
 ds12887_status_d:    defb 0
