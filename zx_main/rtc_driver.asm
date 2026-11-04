@@ -151,10 +151,30 @@ write_byte_raw
         LD      HL, rtc_trace_10_data_out_done
         CALL    p125_trace_port
 
-        ; Last checkpoint inside the callee. If this appears but RTC 06 does
-        ; not, investigate the RET target/stack rather than either OUT cycle.
+        ; Raw one-byte port markers bracket the next trace-helper call.
+        ; '>' means the RTC 10 trace helper returned to this instruction.
+        ; '<' means the RTC 11 trace-helper call also returned.
+        ; These markers deliberately do not call p125_trace_port.
+        LD      BC, #00EF
+        LD      A, '>'
+        OUT     (C), A
+        LD      A, 13
+        OUT     (C), A
+        LD      A, 10
+        OUT     (C), A
+
+        ; Last checkpoint inside the callee, now isolated from the preceding
+        ; trace-helper return path by the raw '>' marker.
         LD      HL, rtc_trace_11_write_ret
         CALL    p125_trace_port
+
+        LD      BC, #00EF
+        LD      A, '<'
+        OUT     (C), A
+        LD      A, 13
+        OUT     (C), A
+        LD      A, 10
+        OUT     (C), A
 
         ; Read the actual return address from the stack without consuming it.
         ; POP/PUSH keeps the original CALL return address for the final RET.
