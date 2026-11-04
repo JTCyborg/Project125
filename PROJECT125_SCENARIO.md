@@ -1534,3 +1534,20 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | D1.05 / A1.19 SMUC signature diagnostic | SOURCE COMMITTED | Replaced ambiguous FFBA NVRAM readback with the fixed #5FBE signature read (#57 when SMUC and DOS ports are decoded); build/runtime remain unverified. |
+
+
+## D1.06 / A1.20 — раздельная диагностика GLUK и SMUC (2026-11-04)
+
+- [x] Разобран runtime-лог A20: строка `[DS12887 D1.04]` была вызвана ошибочной строкой banner в исходнике; код уже содержал D1.05-проверку `#5FBE`. Это не свидетельствует о сборке старого RTC-модуля.
+- [x] Исправлен banner на D1.06.
+- [x] Добавлен отдельный вывод статусов `D/A/B` после чтения через GLUK и через SMUC, а также итогового выбранного backend. Теперь можно отличить неисправность/недоступность GLUK-пути от SMUC decoder gate.
+- [x] Удалён устаревший вывод статусов, заменённый раздельными диагностическими строками.
+- [x] Зафиксирован runtime результат пользователя: `SMUC ID #5FBE=FF`, итоговые статусы `FF FF FF`; RTC timestamp остаётся неизвестным.
+- [ ] Build: выполнить `build_project125.bat`; проверить отсутствие ошибок SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: получить строки `GLUK D/A/B`, `SMUC D/A/B`, `SMUC ID #5FBE` и `SELECTED D/A/B`.
+- [ ] Если `#5FBE=FF`, исследовать, почему SMUC/DOS-port decoder закрыт именно в момент RTC probe; не делать вывод о неисправности DS12887 по этому значению.
+- [ ] Если `#5FBE=57`, но SMUC D/A/B остаются FF, исследовать последовательность выбора адреса `#DFBA` и чтения данных `#DFBA`.
+- [ ] RTC PASS только после валидных Status D/A/B и корректного чтения времени.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | D1.06 / A1.20 GLUK + SMUC split diagnostics | SOURCE COMMITTED | Corrected the stale D1.04 banner and added separate register triplets for both backends. The supplied A20 runtime log shows #5FBE=FF and FF status bytes; no RTC PASS. Build and next runtime remain pending. |
