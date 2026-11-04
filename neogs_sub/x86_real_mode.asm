@@ -300,7 +300,7 @@ x86_real_dispatch:
         ld      hl, (x86_real_steps)
         ld      a, h
         or      l
-        jp      z, x86_real_budget_fail
+        jp      z, x86_real_budget_exhausted
         dec     hl
         ld      (x86_real_steps), hl
 
@@ -1631,6 +1631,18 @@ x86_real_hlt:
         ld      (x86_exit_status), a
         or      a
         ret
+
+x86_real_budget_exhausted:
+        ; BIOS POST can legitimately execute more than 65535 architectural
+        ; instructions. Keep the bounded default for normal guest jobs, but
+        ; replenish the 16-bit quantum while the host BIOS runner is active.
+        ; This avoids counter wrap and keeps progress/IPC servicing alive.
+        ld      a, (x86_real_progress_enable)
+        or      a
+        jp      z, x86_real_budget_fail
+        ld      hl, X86_REAL_STEP_LIMIT
+        ld      (x86_real_steps), hl
+        jp      x86_real_dispatch
 
 x86_real_budget_fail:
         ld      a, 1
