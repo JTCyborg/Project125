@@ -370,6 +370,8 @@ x86_real_dispatch:
 .not_moffs:
         cp      #A8
         jp      z, x86_real_test_al_immediate
+        cp      #D0
+        jp      z, x86_real_shift_byte_one
         cp      #D1
         jp      z, x86_real_shift_word_one
         cp      #D2
@@ -1790,6 +1792,94 @@ x86_guest_handler_image:
 x86_guest_handler_image_end:
 
 
+
+; D0 C8: SHR AL,1. BIOS interface-card scan uses this exact form.
+; Other D0 ModR/M encodings remain explicit unsupported-opcode stops.
+x86_real_shift_byte_one:
+        call    x86_real_fetch8
+        ret     c
+        cp      #C8
+        jp      nz, x86_real_shift_byte_one_unsupported
+
+        ld      a, (x86_reg_ax)
+        ld      (x86_shift_original), a
+        srl     a
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+
+        ; CF receives original AL bit 0.
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shr1_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.shr1_parity:
+        ld      a, (x86_shift_result)
+        and     a
+        jp      pe, .shr1_set_pf
+        jr      .shr1_zero
+.shr1_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.shr1_zero:
+        ld      a, (x86_shift_result)
+        or      a
+        jr      nz, .shr1_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.shr1_sign:
+        ld      a, (x86_shift_result)
+        bit     7, a
+        jr      z, .shr1_overflow
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.shr1_overflow:
+        ; For SHR count=1, OF is the original most significant bit.
+        ld      a, (x86_shift_original)
+        bit     7, a
+        jr      z, .shr1_merge
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+.shr1_merge:
+        ; Clear CF/PF/ZF/SF/OF; preserve AF and non-status FLAGS.
+        ld      hl, (x86_reg_flags)
+        ld      de, #F73A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+
+        ; Replace AL while preserving AH.
+        ld      a, (x86_reg_ax+1)
+        ld      h, a
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
+x86_real_shift_byte_one_unsupported:
+        ld      a, #D0
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
 
 ; D1 E0: SHL AX,1. First BIOS shift form observed at F000:E083.
 ; Other D1 ModR/M encodings remain explicit unsupported-opcode stops.
