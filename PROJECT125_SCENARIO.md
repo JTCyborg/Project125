@@ -1865,3 +1865,12 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. This is a hardware-mapping correction to test, not a claim that the TR-DOS hang is fixed.
 
 | 2026-11-04 | A1.46 ATM2+ window-0 TR-DOS overlay mapping | SOURCE COMMITTED | Reset paging control before DOSEN activation and explicitly couple window-0 ROM mapping to ROM2/DOSEN using #3FF7=#BF. Build/runtime pending. |
+
+## A1.47 — TR-DOS search-key diagnostic (2026-11-04)
+
+- [x] Preserve the Project124 C=#0A catalogue call path; add a register-preserving dump of the exact nine bytes at #5CDD..#5CE5 immediately before the call.
+- [ ] Build and verify marker A42.
+- [ ] Runtime: record `[NLOAD KEY]` output. Expected key for NEOLOAD.C: `4E454F4C4F41442043`; expected key for NEOF W.C: `4E454F465720202043`.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Diagnostic only; it does not claim to fix the catalogue-search hang.
+
+| 2026-11-04 | A1.47 TR-DOS search-key diagnostic | SOURCE COMMITTED | Dump exact filename+extension bytes before C=#0A without changing API registers. Build/runtime pending. |
