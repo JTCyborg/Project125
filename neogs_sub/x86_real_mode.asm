@@ -312,9 +312,11 @@ x86_real_dispatch:
         ld      a, h
         and     #07
         jr      nz, x86_real_dispatch_no_progress
+        ; Progress heartbeat disabled to keep spectrum_out.txt compact.
+        ; x86_real_progress_enable remains active for BIOS instruction-budget renewal.
         ld      a, (x86_real_progress_enable)
         or      a
-        call    nz, bios_progress_emit
+        ; call  nz, bios_progress_emit
 x86_real_dispatch_no_progress:
         call    x86_io_tick
         ret     c
