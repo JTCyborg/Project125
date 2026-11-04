@@ -9,6 +9,23 @@
 ; Logical instructions clear CF/OF and deterministically clear undefined AF.
 ; =========================================================================
 
+; ADD AL,imm8 (04). Route through the byte ALU arithmetic/FLAGS engine.
+x86_real_alu8_accumulator_immediate:
+        ld      (x86_real_opcode), a
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_alu8_src), a
+        ld      a, (x86_reg_ax)
+        ld      (x86_alu8_dst), a
+        xor     a
+        ld      (x86_alu8_dst_is_mem), a
+        ld      (x86_alu8_dst_reg), a       ; AL is byte register 0
+        ld      (x86_alu8_no_write), a
+        ld      (x86_alu8_is_logic), a
+        ld      (x86_alu8_mode), a         ; ADD
+        ld      (x86_alu8_carry_in), a
+        jp      x86_real_alu8_execute_core
+
 ; -------------------------------------------------------------------------
 ; 8-bit arithmetic and logical ModR/M forms.
 ; A=opcode. Byte register encoding: AL,CL,DL,BL,AH,CH,DH,BH.
@@ -182,7 +199,7 @@ x86_real_alu8_modrm:
         ld      a, (x86_reg_flags)
         and     1
         ld      (x86_alu8_carry_in), a
-.carry_ready:
+x86_real_alu8_execute_core:
         ld      a, (x86_alu8_is_logic)
         or      a
         jp      nz, .execute_logic
