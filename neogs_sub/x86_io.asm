@@ -87,6 +87,11 @@ x86_real_io_instruction:
 
 x86_io_read8:
         ld      hl, (x86_io_port)
+        ld      de, #03BC
+        or      a
+        sbc     hl, de
+        jp      z, x86_resident_lpt_read_data
+        ld      hl, (x86_io_port)
         ld      de, #00E0
         or      a
         sbc     hl, de
@@ -162,6 +167,11 @@ x86_io_trace_read8:
         jp      x86_resident_io_trace_read8
 
 x86_io_write8:
+        ld      hl, (x86_io_port)
+        ld      de, #03BC
+        or      a
+        sbc     hl, de
+        jp      z, x86_resident_lpt_write_data
         ld      hl, (x86_io_port)
         ld      de, #00E0
         or      a
