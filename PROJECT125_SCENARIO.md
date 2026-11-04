@@ -1762,3 +1762,16 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Это исправление конкретного расхождения с рабочим стартом; успешный запуск пока не заявляется.
 
 | 2026-11-04 | A1.38 TR-DOS ROM1 selection | SOURCE COMMITTED | Force the same ROM1/TR-DOS selection used by the working main/0 startup, while retaining alternate-screen selection. Build/runtime pending. |
+
+
+## A1.39 — восстановление сброса ATM #EFF7 перед TR-DOS (2026-11-04)
+
+- [x] Runtime A34/A56: BANKM=18, extension 43 (ASCII C), mode 09, SP AFF1, имя NEOLOAD; после [NLOAD 01] управление не возвращается из CALL #3D13.
+- [x] Повторно сопоставлен рабочий 0/zx_main/main.asm из main/0 с текущим стартом. Помимо выбора #7FFD=#10 и записи BANKM, рабочий старт явно выполняет OUT (#EFF7),0 до TR-DOS операций. В текущем ATM init этот сброс отсутствовал.
+- [x] В p125_atm_video_init восстановлен сброс #EFF7=0 сразу после выбора #7FFD=#18 и до настройки #3FF7/#7FF7/#FFF7.
+- [x] RTC DS12887, текстовый рендерер, TR-DOS API-параметры и NeoGS transfer не менялись. Build marker обновлён до A35.
+- [ ] Build: проверить SjASMPlus и ProgramEnd <= #A800.
+- [ ] Runtime: проверить, появляется ли [NLOAD 02] CATALOG SEARCH RETURN; затем проверить descriptor, первый sector и продолжение загрузки.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Это восстановление ещё одного отличия от известного рабочего старта, не заявление о подтверждённом исправлении.
+
+| 2026-11-04 | A1.39 ATM #EFF7 reset before TR-DOS | SOURCE COMMITTED | Restore the explicit OUT (#EFF7),0 from the working main/0 startup before ATM window setup and the first TR-DOS catalogue call; build/runtime pending. |
