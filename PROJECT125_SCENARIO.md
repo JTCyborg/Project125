@@ -1854,3 +1854,14 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Build: проверить SjASMPlus и `ASSERT ProgramEnd <= #A800`.
 - [ ] Runtime: подтвердить строки BUILD A40, DRIVER A60, DS12887 D1.07; затем проверить [NLOAD 02].
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+## A1.46 — ATM2+ window-0 TR-DOS overlay mapping (2026-11-04)
+
+- [x] Hardware document Hardware/Описание архитектуры и портов ATM2+.txt, sections 3 and 4.1, confirms that TR-DOS overlay requires ROM2=1, a fetch at #3Dxx, and a window-0 ROM mapping with D7=1 so the low ROM select is multiplexed with DOSEN.
+- [x] Reordered ATM initialization: reset #EFF7 before enabling permanent DOSEN through the #3D2F/#2A53 trampoline. The previous order reset the paging/control latch after the shadow-port/DOSEN setup.
+- [x] Explicitly configure window 0 through #3FF7=#BF (ROM page 0, D7=1 DOSEN/ROM2-linked selection), after shadow ports are opened. Keep #7FFD=#18, BANKM, video pages, window 1/3, RTC and screen renderer unchanged.
+- [ ] Build: run SjASMPlus/build_project125.bat; verify no assembly errors and ProgramEnd <= #A800.
+- [ ] Runtime: confirm [NLOAD 02] CATALOG SEARCH RETURN; then descriptor C=#08, first sector C=#05, NeoGS upload and BIOS load.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. This is a hardware-mapping correction to test, not a claim that the TR-DOS hang is fixed.
+
+| 2026-11-04 | A1.46 ATM2+ window-0 TR-DOS overlay mapping | SOURCE COMMITTED | Reset paging control before DOSEN activation and explicitly couple window-0 ROM mapping to ROM2/DOSEN using #3FF7=#BF. Build/runtime pending. |
