@@ -1291,3 +1291,15 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.85 RTC assembler and stack-check correction | SOURCE COMMITTED | Fixed unresolved local branch/range error and corrected stack return-address comparison; build and runtime remain unverified. |
+
+
+## A1.86 — изоляция возврата из RTC trace helper (2026-11-04)
+
+- [x] Runtime A1.85: лог обрывается после `[RTC 10] DATA OUT DONE`; `[RTC 11] WRITE RET` не наблюдается.
+- [x] Из исходника подтверждено: после вывода RTC 10 следующий шаг — новый вызов `p125_trace_port` для RTC 11; проверка адреса возврата A1.85 находится позже и пока не достигается/не подтверждена.
+- [x] Добавлены прямые одиночные маркеры в порт `#00EF`, не использующие `p125_trace_port`: `>` перед вызовом RTC 11 и `<` после него. Они разделяют возврат из предыдущего trace helper и выполнение следующего вызова.
+- [ ] Сборка `build_project125.bat`; проверить размер host image.
+- [ ] Runtime: если нет `>`, остановка внутри/на возврате из вызова, который печатает RTC 10; если `>` есть, но RTC 11 и `<` отсутствуют — проблема в следующем вызове trace helper; если видны RTC 11 и `<`, выполнение прошло оба вызова, продолжить к сравнению адреса возврата.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.86 isolate RTC trace-helper return path | SOURCE COMMITTED | Added raw port markers around the RTC 11 trace-helper call; no RTC register values or I/O addresses changed. |
