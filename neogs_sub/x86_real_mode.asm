@@ -500,6 +500,10 @@ x86_real_dispatch:
         jp      z, x86_real_int3
         cp      #CF
         jp      z, x86_real_iret
+        cp      #FA
+        jp      z, x86_real_cli
+        cp      #FB
+        jp      z, x86_real_sti
 
         ld      (x86_real_unsupported_opcode), a
         ld      a, 2
@@ -1201,6 +1205,18 @@ x86_real_int3:
 x86_real_iret:
         call    x86_iret_return
         ret     c
+        jp      x86_real_next
+
+; FA CLI and FB STI modify only IF (FLAGS bit 9). Other status,
+; control and reserved bits are preserved exactly.
+x86_real_cli:
+        ld      hl, x86_reg_flags+1
+        res     1, (hl)
+        jp      x86_real_next
+
+x86_real_sti:
+        ld      hl, x86_reg_flags+1
+        set     1, (hl)
         jp      x86_real_next
 
 x86_real_hlt:
