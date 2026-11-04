@@ -1186,17 +1186,23 @@ x86_io_trace_count: db 0
 ; calculated physical address. This distinguishes an uninitialized ES from
 ; an actual RAM data mismatch.
 x86_resident_memtest_scas_trace:
+        ; BIOS RAM sweeps use REPE SCAS. Ignore successful comparisons and
+        ; F2/REPNE searches; retain the first four actual REPE mismatches.
+        ld      a, (x86_string_opcode)
+        and     #FE
+        cp      #AE
+        ret     nz
+        ld      a, (x86_real_rep_mode)
+        cp      3
+        ret     nz
+        ld      a, (x86_reg_flags)
+        bit     6, a
+        ret     nz
         ld      a, (x86_memtest_scas_trace_count)
         cp      4
         ret     nc
         inc     a
         ld      (x86_memtest_scas_trace_count), a
-        ld      a, (x86_string_opcode)
-        cp      #AE
-        jr      z, .trace_scas_opcode_ok
-        cp      #AF
-        ret     nz
-.trace_scas_opcode_ok:
         push    af
         push    bc
         push    de
@@ -1884,6 +1890,28 @@ x86_string_rep_scas_summary:
         and     #FE
         cp      #AE
         ret     nz
+        ; Suppress successful REP scans. For REPE, a nonzero CX means the
+        ; scan stopped on a mismatch. For REPNE, CX=0 means no match was
+        ; found before the count expired.
+        ld      a, (x86_real_rep_mode)
+        cp      3
+        jr      z, .check_repe_mismatch
+        cp      2
+        ret     nz
+        ld      hl, (x86_reg_cx)
+        ld      a, h
+        or      l
+        ret     nz
+        jr      .emit_summary
+.check_repe_mismatch:
+        ld      hl, (x86_reg_cx)
+        ld      a, h
+        or      l
+        ret     z
+        ld      a, (x86_reg_flags)
+        bit     6, a
+        ret     nz
+.emit_summary:
         push    af
         push    bc
         push    de
