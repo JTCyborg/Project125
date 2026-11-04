@@ -1219,3 +1219,14 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Runtime: verify K512VI1 time and `[HH:MM:SS]` on Z80-originated log lines; verify NeoGS lines have no inserted timestamp.
 - [ ] Regression: confirm NeoGS firmware upload, BIOS.C staging/DMA, IPC handshake and 8086 execution remain unchanged.
 - **Status:** SOURCE COMMITTED / BUILD NOT VERIFIED / ATM RUNTIME NOT VERIFIED. A1.79 supersedes the Spectrum bitmap backend introduced in A1.78; do not mark the ATM presenter complete until build and runtime checks pass.
+
+## A1.80 — startup trace markers on port #EF (2026-11-04)
+
+- [x] Added a dedicated `p125_trace_port` routine in `zx_main/main.asm`. It writes zero-terminated ASCII strings directly to port `#EF`, without RTC access, screen rendering, or the normal timestamped logger.
+- [x] Added checkpoints for Z80 entry, ATM video initialization, screen clear, RTC initialization, static UI drawing, and the first timestamped log line.
+- [x] Added checkpoints immediately before and after `READ_CURRENT_TIME` to identify an RTC read stall.
+- [x] Added checkpoints around NEOLOAD.C reading, NeoGS firmware upload, video CRC self-test, BIOS.C loading, and BIOS execution/return.
+- [x] Diagnostic markers are emitted only by the Z80 host. NeoGS debug-stream bytes and the normal log protocol are unchanged.
+- [ ] Build with `build_project125.bat`; verify assembler syntax and resident image size (`ProgramEnd <= #A800`).
+- [ ] Runtime: capture the port `#EF` log from `[TRACE 00]` onward. The last emitted marker identifies the call that did not return; report the complete log without trimming.
+- **Status:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
