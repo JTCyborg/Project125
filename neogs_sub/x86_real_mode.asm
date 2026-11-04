@@ -585,6 +585,8 @@ x86_real_dispatch_no_progress:
         ; before the range checks or they are incorrectly sent to I/O decode.
         cp      #E8
         jp      z, x86_real_call_near
+        cp      #E9
+        jp      z, x86_real_jmp_near
         cp      #EA
         jp      z, x86_real_jmp_far
         cp      #E4
@@ -812,6 +814,24 @@ x86_real_ret_near:
         call    x86_real_stack_pop
         ret     c
         ld      hl, (x86_real_stack_value)
+        ld      (x86_reg_ip), hl
+        jp      x86_real_next
+
+; E9 rel16 — near relative JMP. The signed displacement is added modulo
+; 16 bits to IP after both displacement bytes have been fetched.
+x86_real_jmp_near:
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_real_imm_low), a
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_real_imm_high), a
+        ld      a, (x86_real_imm_low)
+        ld      e, a
+        ld      a, (x86_real_imm_high)
+        ld      d, a
+        ld      hl, (x86_reg_ip)
+        add     hl, de
         ld      (x86_reg_ip), hl
         jp      x86_real_next
 
