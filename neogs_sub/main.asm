@@ -1243,6 +1243,7 @@ x86_kbd_process_matrix:
         or      #80
         ld      (x86_kbd_key_code), a
 .key_make:
+        call    x86_kbd_debug_emit
         call    x86_kbd_enqueue
 
 .bit_advance:
@@ -1342,6 +1343,84 @@ x86_kbd_acknowledge:
         ld      (x86_pic_pending), a
         ; Do not load the next byte here. The next instruction-boundary
         ; keyboard poll presents it, matching the XT controller's delay. 
+        ret
+
+; NeoGS scan-code trace written directly to local debug port EFh.
+; Format matches ATM: [NGS] K=xx SC=xx M/B.
+x86_kbd_debug_emit:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      a, '['
+        out     (#EF), a
+        ld      a, 'N'
+        out     (#EF), a
+        ld      a, 'G'
+        out     (#EF), a
+        ld      a, 'S'
+        out     (#EF), a
+        ld      a, ']'
+        out     (#EF), a
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'K'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      a, (x86_kbd_matrix_index)
+        call    x86_kbd_debug_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'S'
+        out     (#EF), a
+        ld      a, 'C'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      a, (x86_kbd_key_code)
+        call    x86_kbd_debug_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, (x86_kbd_new_bit)
+        or      a
+        jr      nz, .break
+        ld      a, 'M'
+        out     (#EF), a
+        jr      .newline
+.break:
+        ld      a, 'B'
+        out     (#EF), a
+.newline:
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_kbd_debug_hex8:
+        push    af
+        rrca
+        rrca
+        rrca
+        rrca
+        and     #0F
+        call    x86_kbd_debug_nibble
+        pop     af
+        and     #0F
+        jp      x86_kbd_debug_nibble
+
+x86_kbd_debug_nibble:
+        add     a, '0'
+        cp      '9'+1
+        jr      c, .digit
+        add     a, 7
+.digit:
+        out     (#EF), a
         ret
 
 x86_kbd_scancode_table:

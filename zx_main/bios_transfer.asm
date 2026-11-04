@@ -432,6 +432,7 @@ atm_keyboard_poll_and_send:
         call    p125_emit_char
         ld      a, 10
         call    p125_emit_char
+        call    atm_keyboard_log_scancodes
 
         ; Replace the current BIOS command with a short keyboard DMA request.
         ; NeoGS notices it at an instruction boundary and clears CBIT when
@@ -517,6 +518,136 @@ atm_keyboard_previous:
         defs    NGS_KBD_MATRIX_SIZE, #1F
 atm_keyboard_initialized:
         db      0
+
+atm_keyboard_log_scancodes:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        xor     a
+        ld      (atm_kbd_log_index), a
+        ld      (atm_kbd_log_row), a
+.row:
+        ld      a, (atm_kbd_log_row)
+        ld      e, a
+        ld      d, 0
+        ld      hl, atm_keyboard_matrix
+        add     hl, de
+        ld      a, (hl)
+        ld      (atm_kbd_log_new), a
+        ld      hl, atm_keyboard_previous
+        add     hl, de
+        ld      a, (hl)
+        ld      (atm_kbd_log_old), a
+        ld      b, 5
+.bit:
+        ld      a, (atm_kbd_log_new)
+        and     1
+        ld      (atm_kbd_log_bit), a
+        ld      a, (atm_kbd_log_old)
+        and     1
+        ld      c, a
+        ld      a, (atm_kbd_log_bit)
+        cp      c
+        jr      z, .advance
+        ld      a, (atm_kbd_log_index)
+        ld      e, a
+        ld      d, 0
+        ld      hl, atm_keyboard_scancode_table
+        add     hl, de
+        ld      a, (hl)
+        ld      (atm_kbd_log_code), a
+        ld      a, (atm_kbd_log_bit)
+        or      a
+        jr      z, .make
+        ld      a, (atm_kbd_log_code)
+        or      #80
+        ld      (atm_kbd_log_code), a
+.make:
+        call    atm_keyboard_emit_scancode
+.advance:
+        ld      a, (atm_kbd_log_new)
+        srl     a
+        ld      (atm_kbd_log_new), a
+        ld      a, (atm_kbd_log_old)
+        srl     a
+        ld      (atm_kbd_log_old), a
+        ld      a, (atm_kbd_log_index)
+        inc     a
+        ld      (atm_kbd_log_index), a
+        djnz    .bit
+        ld      a, (atm_kbd_log_row)
+        inc     a
+        ld      (atm_kbd_log_row), a
+        cp      8
+        jr      nz, .row
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+atm_keyboard_emit_scancode:
+        push    af
+        ld      a, '['
+        call    p125_emit_char
+        ld      a, 'A'
+        call    p125_emit_char
+        ld      a, 'T'
+        call    p125_emit_char
+        ld      a, 'M'
+        call    p125_emit_char
+        ld      a, ']'
+        call    p125_emit_char
+        ld      a, ' '
+        call    p125_emit_char
+        ld      a, 'K'
+        call    p125_emit_char
+        ld      a, '='
+        call    p125_emit_char
+        ld      a, (atm_kbd_log_index)
+        call    p125_print_hex8
+        ld      a, ' '
+        call    p125_emit_char
+        ld      a, 'S'
+        call    p125_emit_char
+        ld      a, 'C'
+        call    p125_emit_char
+        ld      a, '='
+        call    p125_emit_char
+        ld      a, (atm_kbd_log_code)
+        call    p125_print_hex8
+        ld      a, ' '
+        call    p125_emit_char
+        ld      a, (atm_kbd_log_bit)
+        or      a
+        jr      nz, .break
+        ld      a, 'M'
+        call    p125_emit_char
+        jr      .end
+.break:
+        ld      a, 'B'
+        call    p125_emit_char
+.end:
+        call    p125_trace_newline
+        pop     af
+        ret
+
+atm_keyboard_scancode_table:
+        db #2A,#2C,#2D,#2E,#2F
+        db #1E,#1F,#20,#21,#22
+        db #10,#11,#12,#13,#14
+        db #02,#03,#04,#05,#06
+        db #0B,#0A,#09,#08,#07
+        db #19,#18,#17,#16,#15
+        db #1C,#26,#25,#24,#23
+        db #39,#1D,#32,#31,#30
+atm_kbd_log_index: db 0
+atm_kbd_log_row:   db 0
+atm_kbd_log_new:   db 0
+atm_kbd_log_old:   db 0
+atm_kbd_log_bit:   db 0
+atm_kbd_log_code:  db 0
 
 msg_kbd_matrix:
         defb    "[KBD] MATRIX ", 0
