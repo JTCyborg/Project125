@@ -495,12 +495,48 @@ p125_neoload_end:
         ASSERT p125_neoload_end - p125_neoload_start = NEOLOAD_FILE_SIZE
         SAVETRD "disk_A.trd", "NEOLOAD.C", #C000, NEOLOAD_FILE_SIZE
 
+; SAVETRD reads from a single 16-KiB mapped RAM page. The 48-KiB
+; package is therefore staged in up to three physical pages and appended
+; sector-aligned to one NEOFW.C directory entry. V1 host streaming sees one
+; ordinary sequential file and needs no knowledge of the disk-side chunks.
+        IF NEOFW_FILE_SIZE > #4000
+NEOFW_CHUNK0_SIZE EQU #4000
+        ELSE
+NEOFW_CHUNK0_SIZE EQU NEOFW_FILE_SIZE
+        ENDIF
+
         PAGE 3
         ORG #C000
-p125_neofw_start:
-        INCBIN "zx_main/neofw.bin"
-p125_neofw_end:
-        ASSERT p125_neofw_end - p125_neofw_start = NEOFW_FILE_SIZE
-        SAVETRD "disk_A.trd", "NEOFW.C", #C000, NEOFW_FILE_SIZE
+p125_neofw_chunk0_start:
+        INCBIN "zx_main/neofw.bin", 0, NEOFW_CHUNK0_SIZE
+p125_neofw_chunk0_end:
+        ASSERT p125_neofw_chunk0_end - p125_neofw_chunk0_start = NEOFW_CHUNK0_SIZE
+        SAVETRD "disk_A.trd",|"NEOFW.C",#C000,NEOFW_CHUNK0_SIZE
+
+        IF NEOFW_FILE_SIZE > #4000
+                IF NEOFW_FILE_SIZE > #8000
+NEOFW_CHUNK1_SIZE EQU #4000
+                ELSE
+NEOFW_CHUNK1_SIZE EQU NEOFW_FILE_SIZE - #4000
+                ENDIF
+                PAGE 1
+                ORG #C000
+p125_neofw_chunk1_start:
+                INCBIN "zx_main/neofw.bin", #4000, NEOFW_CHUNK1_SIZE
+p125_neofw_chunk1_end:
+                ASSERT p125_neofw_chunk1_end - p125_neofw_chunk1_start = NEOFW_CHUNK1_SIZE
+                SAVETRD "disk_A.trd",&"NEOFW.C",#C000,NEOFW_CHUNK1_SIZE
+        ENDIF
+
+        IF NEOFW_FILE_SIZE > #8000
+NEOFW_CHUNK2_SIZE EQU NEOFW_FILE_SIZE - #8000
+                PAGE 2
+                ORG #C000
+p125_neofw_chunk2_start:
+                INCBIN "zx_main/neofw.bin", #8000, NEOFW_CHUNK2_SIZE
+p125_neofw_chunk2_end:
+                ASSERT p125_neofw_chunk2_end - p125_neofw_chunk2_start = NEOFW_CHUNK2_SIZE
+                SAVETRD "disk_A.trd",&"NEOFW.C",#C000,NEOFW_CHUNK2_SIZE
+        ENDIF
 
         PAGE 0
