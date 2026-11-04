@@ -1312,6 +1312,8 @@ msg_p7_a3_ok:          db "[P125] PH7 A3 OK", 13, 10, 0
 trace_noload_diag_prefix:          defb "[NLOAD D] BANKM=", 0
 trace_noload_diag_ext:             defb " EXT=", 0
 trace_noload_diag_mode:            defb " MODE=", 0
+trace_noload_diag_atmmap:           defb " ATM3MAP=", 0
+trace_noload_diag_pbf:              defb " PBF=", 0
 trace_noload_diag_name:            defb " NAME=", 0
 trace_noload_00_entry:             defb "[NLOAD 00] OPEN ENTRY", 13, 10, 0
 trace_noload_01_search_call:       defb "[NLOAD 01] CATALOG SEARCH CALL", 13, 10, 0
