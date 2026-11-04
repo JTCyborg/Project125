@@ -145,7 +145,7 @@ neogs_bios_transfer_finish:
 neogs_bios_boot_and_wait:
         ld      a, CMD_BOOT_BIOS
         out     (GSCOM), a
-        ld      d, 96
+        ld      d, 255
 .bios_boot_outer:
         ld      bc, BIOS_HOST_WAIT_LIMIT
 .bios_boot_inner:
