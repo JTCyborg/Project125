@@ -206,13 +206,11 @@ neo_fw_read_next_sector:
         xor     a
         ld      (#5D0F), a
         ld      (#5D10), a
+        ; Sector reads are intentionally silent; only file-level milestones
+        ; and first-sector acquisition are logged by the caller.
         push    hl
-        ld      hl, trace_noload_07_trdos_read_call
-        call    p125_trace_port
-        pop     hl
         call    #3D13
-        ld      hl, trace_noload_08_trdos_read_return
-        call    p125_trace_port
+        pop     hl
         ld      a, (#5D0F)
         ld      b, a
         ld      a, (#5D10)
@@ -1412,6 +1410,4 @@ trace_noload_03_descriptor_call:   defb "[NLOAD 03] DESCRIPTOR CALL", 13, 10, 0
 trace_noload_04_descriptor_return: defb "[NLOAD 04] DESCRIPTOR RETURN", 13, 10, 0
 trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 0
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
-trace_noload_07_trdos_read_call:   defb "[NLOAD 07] TRDOS SECTOR READ CALL", 13, 10, 0
-trace_noload_08_trdos_read_return: defb "[NLOAD 08] TRDOS SECTOR READ RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A63 LEGACY TRDOS BOOT ORDER", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A64 QUIET DISK LOG", 13, 10, 0
