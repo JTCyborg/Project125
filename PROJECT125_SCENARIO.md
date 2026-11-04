@@ -1690,3 +1690,10 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT VERIFIED.
 
 | 2026-11-04 | A1.31 TR-DOS dispatcher probe | SOURCE COMMITTED | Add a non-disk C=#14 TR-DOS API call before C=#0A to distinguish API entry/return failure from catalogue disk I/O. |
+
+## A1.32 — TR-DOS environment initialization (2026-11-04)
+
+- Source change: initialize `#5CF9=0`, `#5D10=0`, `#5D06=9`, and `ERR_SP` at `#5C5D` from the current SP before TR-DOS API calls.
+- Added runtime marker `[NLOAD E1] TRDOS DOSENV READY`; driver A52, host A29.
+- Build and hardware runtime are pending. The error-hook from `dv093d13.txt` is intentionally not installed because its BASIC/BIOS interception requires a separate ATM-specific implementation.
+- Status: SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
