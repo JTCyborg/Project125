@@ -1961,3 +1961,12 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Status:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
 
 | 2026-11-04 | A1.54 MOV immediate to r/m | SOURCE COMMITTED | Implement 8086 C6/C7 immediate MOV through existing ModR/M decoder. Build/runtime pending. |
+
+## A1.55 — 8086 CLI/STI (2026-11-04)
+
+- Runtime A47/A64 after A1.54: BIOS passes the previous C7 stop and advances to opcode FA at F000:E067.
+- FA is CLI (Clear Interrupt Flag). Added dispatch and execution for FA and its paired FB (STI). Both update only FLAGS.IF (bit 9); all other FLAGS bits are preserved.
+- No changes to BIOS image, TR-DOS 5.03 loading order, NeoGS transport, RTC, or UI.
+- [ ] Build: SjASMPlus firmware and host; check assembly and resident image size.
+- [ ] Runtime: confirm BIOS passes FA and capture the next stop/instruction.
+- **Status:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
