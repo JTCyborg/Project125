@@ -1303,3 +1303,15 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.86 isolate RTC trace-helper return path | SOURCE COMMITTED | Added raw port markers around the RTC 11 trace-helper call; no RTC register values or I/O addresses changed. |
+
+
+## A1.87 — идентификатор версии RTC-драйвера в runtime-логе (2026-11-04)
+
+- [x] В начало `CHECK_AND_INIT_CMOS` добавлен вывод строки `[RTC DRIVER A1.87]` через независимый `p125_trace_port` в порт `#EF`.
+- [x] Идентификатор выводится до `[RTC 01] OPEN BEGIN`, поэтому версия драйвера видна даже при остановке на любом последующем этапе RTC-инициализации.
+- [x] Диагностические маркеры A1.86 (`>`, `[RTC 11]`, `<`) и проверка адреса возврата сохранены.
+- [ ] Сборка `build_project125.bat`; проверить синтаксис SjASMPlus и ограничение размера host image.
+- [ ] Runtime: подтвердить первой строкой RTC-диагностики `[RTC DRIVER A1.87]`, затем прислать полный лог.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING. Версия в логе подтверждает исходник драйвера, но сама по себе не подтверждает, что собранный бинарник был обновлён.
+
+| 2026-11-04 | A1.87 RTC driver revision in runtime log | SOURCE COMMITTED | Added an unmistakable `[RTC DRIVER A1.87]` banner before RTC initialization checkpoints; build/runtime remain unverified. |
