@@ -793,4 +793,4 @@ neogs_overlay69_end:
         ASSERT neogs_dma_handler_end <= #5000
         ASSERT X86_RAM_RUN_ADDR + NGS_X86_MAX_CODE_SIZE = #8000
 
-neogs_firmware_end:
+; Firmware sections are exported independently by build_firmware.asm.
