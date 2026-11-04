@@ -1117,66 +1117,42 @@ x86_io_tick:
 .check_irq:
         ld      a, (x86_reg_flags+1)
         bit     1, a
-        jr      nz, .if_enabled
-        or      a
-        ret
-.if_enabled:
-        ld      a, (x86_pic_pending)
-        bit     0, a
-        jr      z, .try_irq1
-        ld      a, (x86_pic_mask)
-        bit     0, a
-        jr      nz, .try_irq1
+        ret     z
+        ; Scan IRQs in programmed priority order. A higher-priority ISR
+        ; blocks itself and all lower-priority requests, but permits a
+        ; higher-priority request to nest.
+        ld      a, (x86_pic_priority_base)
+        ld      c, a
+        ld      b, 8
+.irq_scan:
+        ld      a, c
+        call    x86_pic_get_bit
+        ld      d, a
         ld      a, (x86_pic_in_service)
-        bit     0, a
-        jr      nz, .try_irq1
-        xor     a
-        jr      .deliver
-.try_irq1:
+        and     d
+        jr      nz, .irq_none
         ld      a, (x86_pic_pending)
-        bit     1, a
-        jr      nz, .irq1_pending
-        or      a
-        ret
-.irq1_pending:
+        and     d
+        jr      z, .irq_next
         ld      a, (x86_pic_mask)
-        bit     1, a
-        jr      z, .irq1_unmasked
+        and     d
+        jr      nz, .irq_next
+        ; Acknowledge selected request.
+        ld      a, d
+        cpl
+        ld      e, a
+        ld      a, (x86_pic_pending)
+        and     e
+        ld      (x86_pic_pending), a
+        ld      a, (x86_pic_auto_eoi)
         or      a
-        ret
-.irq1_unmasked:
+        jr      nz, .irq_vector
         ld      a, (x86_pic_in_service)
-        bit     1, a
-        jr      z, .irq1_ready
-        or      a
-        ret
-.irq1_ready:
-        ld      a, 1
-.deliver:
+        or      d
+        ld      (x86_pic_in_service), a
+.irq_vector:
+        ld      a, c
         ld      (x86_io_irq_index), a
-        or      a
-        jr      nz, .deliver_irq1
-        ld      a, (x86_pic_pending)
-        res     0, a
-        ld      (x86_pic_pending), a
-        ld      a, (x86_pic_auto_eoi)
-        or      a
-        jr      nz, .deliver_vector
-        ld      a, (x86_pic_in_service)
-        set     0, a
-        ld      (x86_pic_in_service), a
-        jr      .deliver_vector
-.deliver_irq1:
-        ld      a, (x86_pic_pending)
-        res     1, a
-        ld      (x86_pic_pending), a
-        ld      a, (x86_pic_auto_eoi)
-        or      a
-        jr      nz, .deliver_vector
-        ld      a, (x86_pic_in_service)
-        set     1, a
-        ld      (x86_pic_in_service), a
-.deliver_vector:
         ld      a, 1
         ld      (x86_io_irq_delivered), a
         ld      a, (x86_pic_vector)
@@ -1184,6 +1160,14 @@ x86_io_tick:
         ld      a, (x86_io_irq_index)
         add     a, b
         call    x86_int_enter
+        ret
+.irq_next:
+        inc     c
+        ld      a, c
+        and     7
+        ld      c, a
+        djnz    .irq_scan
+.irq_none:
         ret
 
 x86_ppi_read_port_a:
