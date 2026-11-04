@@ -370,6 +370,8 @@ x86_real_dispatch:
 .not_moffs:
         cp      #D1
         jp      z, x86_real_shift_word_one
+        cp      #F7
+        jp      z, x86_real_group_f7
         cp      #04
         jp      z, x86_real_alu8_accumulator_immediate
         cp      #05
@@ -1867,3 +1869,29 @@ x86_real_shift_unsupported:
 x86_shift_result:     dw 0
 x86_shift_new_flags:  dw 0
 x86_shift_carry:      db 0
+
+; F7 D0: NOT AX. NOT changes no guest FLAGS bits.
+; Other F7 group-3 encodings remain explicit unsupported-opcode stops until
+; their exact operand forms are implemented.
+x86_real_group_f7:
+        call    x86_real_fetch8
+        ret     c
+        cp      #D0
+        jp      nz, x86_real_group_f7_unsupported
+        ld      hl, (x86_reg_ax)
+        ld      a, l
+        cpl
+        ld      l, a
+        ld      a, h
+        cpl
+        ld      h, a
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
+x86_real_group_f7_unsupported:
+        ld      a, #F7
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
