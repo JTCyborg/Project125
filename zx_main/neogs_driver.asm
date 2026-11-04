@@ -208,9 +208,7 @@ neo_fw_read_next_sector:
         ld      (#5D10), a
         ; Sector reads are intentionally silent; only file-level milestones
         ; and first-sector acquisition are logged by the caller.
-        push    hl
         call    #3D13
-        pop     hl
         ld      a, (#5D0F)
         ld      b, a
         ld      a, (#5D10)
