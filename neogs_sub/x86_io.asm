@@ -179,12 +179,12 @@ x86_io_write8:
         ld      de, #0043
         or      a
         sbc     hl, de
-        jr      z, x86_pit_write_control
+        jp      z, x86_pit_write_control
         ld      hl, (x86_io_port)
         ld      de, #0040
         or      a
         sbc     hl, de
-        jr      z, x86_pit_write_channel0
+        jp      z, x86_pit_write_channel0
         jp      x86_io_trace_write8
 
 ; Master 8259, single-controller PC/XT subset. IRQ0 is fully serviced.
