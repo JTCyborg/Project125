@@ -1775,3 +1775,16 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Это восстановление ещё одного отличия от известного рабочего старта, не заявление о подтверждённом исправлении.
 
 | 2026-11-04 | A1.39 ATM #EFF7 reset before TR-DOS | SOURCE COMMITTED | Restore the explicit OUT (#EFF7),0 from the working main/0 startup before ATM window setup and the first TR-DOS catalogue call; build/runtime pending. |
+
+
+## A1.40 — не переназначать ATM window 0 (#0000-#3FFF) (2026-11-04)
+
+- [x] Runtime A35 повторяет зависание после `[NLOAD 01]`; значения границы поиска не изменились: `BANKM=18`, `EXT=43`, `MODE=09`, `SP=AFF1`, `NAME=NEOLOAD`.
+- [x] Сопоставление с рабочим `main/0/zx_main/main.asm`: рабочая последовательность выбирала ROM через `#7FFD=#10`, сбрасывала `#EFF7`, но не программировала `#3FF7`.
+- [x] Удалена запись `#3FF7=#BF` из `p125_atm_video_init`. Window 0 оставлен штатному ATM ROM/ROM2 decoder, чтобы не подменять ROM-страницу, на которой должен срабатывать TR-DOS overlay для `#3Dxx`. Окна 1/3 для видеопамяти и staging остаются настроенными как прежде.
+- [x] `#7FFD=#18` (ROM select + alternate screen) и сброс `#EFF7=0` сохранены. RTC, UI renderer, TR-DOS ABI и NeoGS transfer не менялись.
+- [ ] Build: проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: подтвердить возврат `[NLOAD 02]`, затем descriptor и sector read.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. A35 показал, что одного сброса `#EFF7` недостаточно; изменение A1.40 проверяет отличие от рабочего startup — отсутствие принудительного paging window 0.
+
+| 2026-11-04 | A1.40 Keep native ATM TR-DOS ROM mapping | SOURCE COMMITTED | Remove the non-baseline `#3FF7=#BF` write; retain native ROM/ROM2 decoder for TR-DOS #3Dxx overlay. Build/runtime pending. |
