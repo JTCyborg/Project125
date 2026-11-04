@@ -2323,9 +2323,10 @@ x86_real_incdec_r8:
 .incdec8_store:
         ld      (x86_incdec8_result), a
         call    x86_real_incdec_r8_flags
-        ld      a, (x86_incdec8_reg)
+        ; The shared byte-register writer consumes x86_alu8_result.
+        ; Store the INC/DEC result there before selecting the destination.
         ld      a, (x86_incdec8_result)
-        ld      c, a
+        ld      (x86_alu8_result), a
         ld      a, (x86_incdec8_reg)
         call    x86_alu8_write_reg
         jp      x86_real_next
