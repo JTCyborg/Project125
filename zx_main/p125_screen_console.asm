@@ -24,6 +24,7 @@ P125_VIDEO_PAGE7   EQU #78          ; RAM page 7, inverted page number
 P125_VIDEO_PAGE3   EQU #FC          ; RAM page 3 + D7 mux enable (inverted page number)
 P125_HOST_PAGE5    EQU #7A          ; RAM page 5, host code at #6000
 P125_HOST_PAGE0    EQU #FF          ; RAM page 0 + D7 mux enable; TR-DOS auto-select
+P125_ROM_PAGE0     EQU #BF          ; ROM page 0 + D7 auto-select for lower 16K
 
 Console_X: db 0
 Console_Y: db BIOS_DEBUG_TOP
@@ -58,6 +59,15 @@ p125_atm_ports_open_done:
         ld      bc, #7FFD
         out     (c), a
         ld      (#5C3B), a
+
+        ; Configure window 0 (#0000-#3FFF), not window 3. D6=0 selects ROM,
+        ; D7=1 enables the #7FFD ROM2 mux and TR-DOS shadow-ROM auto-select
+        ; on opcode fetches at #3Dxx. Lower six bits select ROM page 0.
+        ; Host code is in window 1 and the stack is in window 2, so this
+        ; mapping change does not disturb the running host.
+        ld      a, P125_ROM_PAGE0
+        ld      bc, #3FF7
+        out     (c), a
 
         ; Map the alternate screen pages while the 32-byte mode trampoline
         ; is installed at #FFEC. Keep D7 set on #FFF7: it enables #7FFD
