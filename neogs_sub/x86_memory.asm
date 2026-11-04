@@ -387,6 +387,49 @@ x86_mem_test:
         ld      (x86_exit_status), a
         ret
 
+; Trace the effective address used by BIOS F6 TEST r/m8,imm8.
+; This distinguishes a missing physical 00415h read from bad ES:offset
+; decoding. Preserve all guest-visible registers and flags.
+x86_mem_trace_f6_address:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_mem_f6_prefix
+        call    x86_mem_watch_string
+        ld      hl, (x86_mem_segment)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_mem_offset_work)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, '='
+        out     (#EF), a
+        ld      a, (x86_mem_addr+2)
+        call    x86_mem_watch_hex8
+        ld      a, (x86_mem_addr+1)
+        call    x86_mem_watch_hex8
+        ld      a, (x86_mem_addr)
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_mem_f6_prefix:
+        db      "[F6EA] ", 0
+
 ; -------------------------------------------------------------------------
 ; Segment:offset -> physical address.
 ; Uses x86_mem_segment and x86_mem_offset_work; result in x86_mem_addr.
