@@ -1,6 +1,6 @@
 ; =========================================================================
 ; PROJECT125 — Dallas DS12887 RTC driver for ATM Turbo 2+
-; Version: D1.03
+; Version: D1.04
 ;
 ; ATM710 dual interface:
 ;   Native GLUK: EFF7 bit 7 gate, DFF7 index, BFF7 data.
@@ -438,7 +438,7 @@ DS12887_PRINT_CHAR:
         pop     bc
         ret
 
-ds12887_banner:      defb "[DS12887 D1.03] GLUK/SMUC AUTO", 13, 10, 0
+ds12887_banner:      defb "[DS12887 D1.04] GLUK/SMUC AUTO", 13, 10, 0
 ds12887_found:       defb "[DS12887] VRT OK; READ-ONLY CLOCK ACCESS", 13, 10, 0
 ds12887_status_dump: defb "[DS12887] STATUS D/A/B=", 0
 ds12887_smuc_dump:   defb "[DS12887] SMUC FFBA READBACK=", 0
