@@ -392,6 +392,8 @@ x86_real_dispatch:
         jp      z, x86_real_logic8_accumulator_immediate
         cp      #24
         jp      z, x86_real_logic8_accumulator_immediate
+        cp      #34
+        jp      z, x86_real_logic8_accumulator_immediate
         cp      #35
         jp      z, x86_real_logic16_accumulator_immediate
         cp      #04
