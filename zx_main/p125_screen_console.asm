@@ -62,6 +62,13 @@ p125_atm_ports_open_done:
         out     (c), a
         ld      (#5C3B), a
 
+        ; The known-working Project125 main/0 startup also cleared the ATM
+        ; paging/control latch before the first TR-DOS catalogue operation.
+        ; Reproduce that reset before programming the explicit ATM windows.
+        xor     a
+        ld      bc, #EFF7
+        out     (c), a
+
         ; Configure window 0 (#0000-#3FFF), not window 3. D6=0 selects ROM,
         ; D7=1 enables the #7FFD ROM2 mux and TR-DOS shadow-ROM auto-select
         ; on opcode fetches at #3Dxx. Lower six bits select ROM page 0.
