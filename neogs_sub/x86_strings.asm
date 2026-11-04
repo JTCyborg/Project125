@@ -50,12 +50,9 @@ x86_real_string_instruction:
         bit     6, a
         jp      z, x86_real_next
 .repeat:
-        ld      hl, (x86_real_steps)
-        ld      a, h
-        or      l
-        jp      z, x86_real_budget_fail
-        dec     hl
-        ld      (x86_real_steps), hl
+        ; REP is one architectural instruction, not one instruction per
+        ; element. CX is the iteration bound; do not consume the CPU opcode
+        ; budget here. BIOS POST uses REP STOSW for many 16 KiB memory sweeps.
         call    x86_string_iteration
         ret     c
         jr      .after_iteration
