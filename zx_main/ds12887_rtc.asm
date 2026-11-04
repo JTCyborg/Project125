@@ -72,21 +72,6 @@ DS12887_PROBE::
         call    p125_trace_port
 
 ds12887_probe_status_ready:
-        ld      hl, ds12887_status_dump
-        call    p125_trace_port
-        ld      a, (ds12887_status_d)
-        call    DS12887_PRINT_HEX8
-        ld      a, ' '
-        call    DS12887_PRINT_CHAR
-        ld      a, (ds12887_status_a)
-        call    DS12887_PRINT_HEX8
-        ld      a, ' '
-        call    DS12887_PRINT_CHAR
-        ld      a, (ds12887_status_b)
-        call    DS12887_PRINT_HEX8
-        ld      hl, ds12887_crlf
-        call    p125_trace_port
-
         ld      hl, ds12887_selected_dump
         call    p125_trace_port
         call    DS12887_PRINT_STATUS
