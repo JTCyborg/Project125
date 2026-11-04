@@ -139,13 +139,17 @@ neogs_bios_transfer_finish:
 
 ; Run BIOS and drain the NeoGS debug stream while CBIT remains asserted.
 ; Every received byte is mirrored to the ATM/emulator debug port #EF.
-; BIOS POST performs large REP string sweeps over guest RAM, so this wait
-; allows up to 96 x 65535 status polls (~6x the former 21-second window).
+; BIOS POST performs extensive memory sweeps. A full pass through the
+; Turbo XT BIOS can take several minutes on the current Z80 interpreter.
+; Use a 16-bit outer timeout (2048 x 65535 polls), while continuing to drain
+; DBIT whenever the NeoGS firmware emits progress. This is a watchdog, not
+; an instruction budget; normal completion is still signalled by CBIT=0.
 ; OUT: carry clear when the NeoGS command completes; call get_result next.
 neogs_bios_boot_and_wait:
         ld      a, CMD_BOOT_BIOS
         out     (GSCOM), a
-        ld      d, 255
+        ld      hl, #0800
+        ld      (bios_boot_timeout_outer), hl
 .bios_boot_outer:
         ld      bc, BIOS_HOST_WAIT_LIMIT
 .bios_boot_inner:
@@ -162,7 +166,11 @@ neogs_bios_boot_and_wait:
         ld      a, b
         or      c
         jr      nz, .bios_boot_inner
-        dec     d
+        ld      hl, (bios_boot_timeout_outer)
+        dec     hl
+        ld      (bios_boot_timeout_outer), hl
+        ld      a, h
+        or      l
         jr      nz, .bios_boot_outer
         ld      a, 7
         ld      (bios_host_transfer_error), a
@@ -324,6 +332,8 @@ bios_host_tail_prefix:
         defb    "[BIOS DST FFF0] ", 0
 bios_host_tail_error:
         defb    "[BIOS DST FFF0] !", 0
+bios_boot_timeout_outer: dw 0
+
 bios_host_tail_data:
         defs    5, 0
 
