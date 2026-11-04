@@ -9,7 +9,7 @@
 ; Logical instructions clear CF/OF and deterministically clear undefined AF.
 ; =========================================================================
 
-; ADD AL,imm8 (04). Route through the byte ALU arithmetic/FLAGS engine.
+; ADD AL,imm8 (04) and ADC AL,imm8 (14). Route through byte ALU.
 x86_real_alu8_accumulator_immediate:
         ld      (x86_real_opcode), a
         call    x86_real_fetch8
@@ -24,7 +24,15 @@ x86_real_alu8_accumulator_immediate:
         ld      (x86_alu8_is_logic), a
         ld      a, (x86_real_opcode)
         and     #38
-        ld      (x86_alu8_mode), a        ; ADD=00, SUB=28
+        ld      (x86_alu8_mode), a
+        xor     a
+        ld      (x86_alu8_carry_in), a
+        ld      a, (x86_alu8_mode)
+        cp      #10
+        jp      nz, x86_real_alu8_execute_core
+        ; ADC consumes the incoming x86 CF.
+        ld      a, (x86_reg_flags)
+        and     1
         ld      (x86_alu8_carry_in), a
         jp      x86_real_alu8_execute_core
 
