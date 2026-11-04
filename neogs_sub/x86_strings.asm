@@ -27,7 +27,10 @@ x86_real_string_instruction:
         ld      (x86_reg_cx), hl
         ld      a, h
         or      l
-        jp      z, x86_real_next
+        jr      nz, .rep_remaining
+        call    x86_string_rep_scas_summary
+        jp      x86_real_next
+.rep_remaining:
 
         ; REP can perform thousands of memory operations inside one opcode.
         ; Report progress independently of the architectural instruction budget.
@@ -56,12 +59,15 @@ x86_real_string_instruction:
         jr      z, .repe
         ld      a, (x86_reg_flags)
         bit     6, a
-        jp      nz, x86_real_next
-        jr      .repeat
+        jr      z, .repeat
+        call    x86_string_rep_scas_summary
+        jp      x86_real_next
 .repe:
         ld      a, (x86_reg_flags)
         bit     6, a
-        jp      z, x86_real_next
+        jr      nz, .repeat
+        call    x86_string_rep_scas_summary
+        jp      x86_real_next
 .repeat:
         ; REP is one architectural instruction, not one instruction per
         ; element. CX is the iteration bound; do not consume the CPU opcode
@@ -69,6 +75,91 @@ x86_real_string_instruction:
         call    x86_string_iteration
         ret     c
         jr      .after_iteration
+
+; Emit the terminal state of REP SCAS after CX/DI have been updated.
+; The last compared byte remains in x86_string_value/other and FLAGS.
+x86_string_rep_scas_summary:
+        ld      a, (x86_string_opcode)
+        and     #FE
+        cp      #AE
+        ret     nz
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      a, '['
+        out     (#EF), a
+        ld      a, 'S'
+        out     (#EF), a
+        ld      a, 'C'
+        out     (#EF), a
+        ld      a, 'A'
+        out     (#EF), a
+        ld      a, 'S'
+        out     (#EF), a
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'E'
+        out     (#EF), a
+        ld      a, 'N'
+        out     (#EF), a
+        ld      a, 'D'
+        out     (#EF), a
+        ld      a, ']'
+        out     (#EF), a
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'C'
+        out     (#EF), a
+        ld      a, 'X'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      hl, (x86_reg_cx)
+        call    x86_resident_memtest_hex16
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'D'
+        out     (#EF), a
+        ld      a, 'I'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      hl, (x86_reg_di)
+        call    x86_resident_memtest_hex16
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'F'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      hl, (x86_reg_flags)
+        call    x86_resident_memtest_hex16
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'A'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      a, (x86_string_value)
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'M'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      a, (x86_string_other)
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
 
 x86_string_iteration:
         ld      a, (x86_string_opcode)
