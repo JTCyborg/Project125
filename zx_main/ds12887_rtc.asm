@@ -1,6 +1,6 @@
 ; =========================================================================
 ; PROJECT125 — Dallas DS12887 RTC driver for ATM Turbo 2+
-; Version: D1.06
+; Version: D1.07
 ;
 ; ATM710 dual interface:
 ;   Native GLUK: EFF7 bit 7 gate, DFF7 index, BFF7 data.
@@ -235,9 +235,13 @@ DS12887_OPEN:
         out     (c), a
         jr      ds12887_open_done
 ds12887_open_smuc:
-        ; SMUC bit 7 = 0 selects CMOS address mode on DFBA.
+        ; SMUC FFBA is not a plain 0/1 selector: D6-D4 and D0
+        ; must retain the documented fixed pattern 111...1. With D7=0,
+        ; #71 selects RTC address/read mode on DFBA. Writing #00 corrupts
+        ; the SMUC multiplexed ISA address/control configuration and can
+        ; interfere with later TR-DOS disk operations.
         ld      bc, #FFBA
-        xor     a
+        ld      a, #71
         out     (c), a
 ds12887_open_done:
         pop     bc
