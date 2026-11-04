@@ -191,14 +191,20 @@ ds12887_snapshot_stable:
 
 ; Bounded UIP wait: 256 polls maximum. READ_REG preserves BC.
 DS12887_WAIT_UIP:
+        push    bc
         ld      b, 0
 ds12887_uip_loop:
         ld      a, #0A
         call    DS12887_READ_REG
         bit     7, a
-        ret     z
+        jr      nz, ds12887_uip_busy
+        or      a                       ; clear carry on successful UIP wait
+        pop     bc
+        ret
+ds12887_uip_busy:
         djnz    ds12887_uip_loop
         scf
+        pop     bc
         ret
 
 ; -------------------------------------------------------------------------
