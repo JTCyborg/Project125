@@ -41,6 +41,21 @@ DS12887_PROBE::
         ld      (ds12887_backend), a
         call    DS12887_OPEN
         call    DS12887_READ_STATUS
+        ; Read back the SMUC system port after selecting address mode.
+        ; Unreal Speccy decodes SMUC only while CF_DOSPORTS is active;
+        ; an FF readback therefore identifies a closed DOS-port gate.
+        ld      a, (ds12887_backend)
+        or      a
+        jr      z, ds12887_probe_status_ready
+        ld      bc, #FFBA
+        in      a, (c)
+        ld      (ds12887_smuc_control), a
+        ld      hl, ds12887_smuc_dump
+        call    p125_trace_port
+        ld      a, (ds12887_smuc_control)
+        call    DS12887_PRINT_HEX8
+        ld      hl, ds12887_crlf
+        call    p125_trace_port
 
 ds12887_probe_status_ready:
         ld      hl, ds12887_status_dump
@@ -426,6 +441,7 @@ DS12887_PRINT_CHAR:
 ds12887_banner:      defb "[DS12887 D1.03] GLUK/SMUC AUTO", 13, 10, 0
 ds12887_found:       defb "[DS12887] VRT OK; READ-ONLY CLOCK ACCESS", 13, 10, 0
 ds12887_status_dump: defb "[DS12887] STATUS D/A/B=", 0
+ds12887_smuc_dump:   defb "[DS12887] SMUC FFBA READBACK=", 0
 ds12887_invalid:     defb "[DS12887] VRT BIT 7 CLEAR (CHECK CMOS PORT/POWER)", 13, 10, 0
 ds12887_read_error:  defb "[DS12887] UIP/SNAPSHOT READ ERROR", 13, 10, 0
 ds12887_raw_time:    defb "[DS12887] RAW H:M:S=", 0
@@ -433,6 +449,7 @@ ds12887_crlf:        defb 13, 10, 0
 
 ds12887_available:   defb 0
 ds12887_backend:     defb 0
+ds12887_smuc_control: defb 0
 ds12887_status_a:    defb 0
 ds12887_status_b:    defb 0
 ds12887_status_d:    defb 0
