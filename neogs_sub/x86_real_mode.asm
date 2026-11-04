@@ -286,6 +286,8 @@ x86_real_fetch_out_of_range:
         ret
 
 x86_real_execute:
+        xor     a
+        ld      (x86_real_unsupported_opcode), a
         ld      hl, X86_REAL_STEP_LIMIT
         ld      (x86_real_steps), hl
 x86_real_next:
@@ -490,6 +492,7 @@ x86_real_dispatch:
         cp      #CF
         jp      z, x86_real_iret
 
+        ld      (x86_real_unsupported_opcode), a
         ld      a, 2
         ld      (x86_exit_status), a
         scf
@@ -1268,6 +1271,7 @@ x86_real_imm_low:    db 0
 x86_real_imm_high:   db 0
 x86_real_int_vector: db 0
 x86_real_opcode: db 0
+x86_real_unsupported_opcode: db 0
 x86_real_imm_byte: db 0
 x86_real_incdec_mode: db 0
 x86_real_old_low: db 0
