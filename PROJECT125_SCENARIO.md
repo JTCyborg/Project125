@@ -1831,3 +1831,15 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME PENDING. Успешное открытие файла не заявляется.
 
 | 2026-11-04 | A1.43 Direct Project124 catalogue search ABI | SOURCE COMMITTED | Remove the diagnostic C=#14 call and ROM/workspace snapshot; retain legacy #10 paging and issue C=#0A directly. Build/runtime pending. |
+
+
+## A1.44 — корректная конфигурация SMUC FFBA для DS12887 (2026-11-04)
+
+- [x] Runtime A39/A59: TR-DOS C=#0A зависает; до поиска выполняются DS12887 SMUC fallback и запись `OUT (#FFBA),0`.
+- [x] По документации SMUC FFBA — мультиплексированный системный регистр. Его фиксированные биты должны соответствовать шаблону `0 111 0 A8 A7 1`; произвольное `#00` недопустимо и может нарушить работу контроллера.
+- [x] Для RTC address/read mode с A8=A7=0 установлен корректный байт `#71`. Остальная последовательность доступа к DS12887 через `#DFBA` не изменена.
+- [x] RTC driver D1.07. Проверка DS12887 должна по-прежнему показывать SMUC D/A/B, ID #5FBE=57 и RAW H:M:S.
+- [ ] Build/runtime pending. Критерий: после RTC timestamp TR-DOS C=#0A должен вернуть управление и показать `[NLOAD 02]`.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME PENDING. Причина является сильной аппаратно-документальной гипотезой, пока не подтверждена runtime.
+
+| 2026-11-04 | A1.44 SMUC FFBA fixed-bit correction | SOURCE COMMITTED | Replace invalid FFBA=#00 with documented #71 RTC address/read mode; validate TR-DOS search and RTC. |
