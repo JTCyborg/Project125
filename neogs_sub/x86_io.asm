@@ -109,17 +109,16 @@ x86_io_read8:
         or      a
         sbc     hl, de
         jr      z, x86_pit_read_channel0
-        ; IBM PC/XT 8255: PB system-control latch and PC memory-size input.
-        ld      hl, (x86_io_port)
-        ld      de, #0061
+        ; IBM PC/XT 8255 PB latch and memory-size sense input.
+        ld      a, (x86_io_port+1)
         or      a
-        sbc     hl, de
+        jr      nz, .read8_open_bus
+        ld      a, (x86_io_port)
+        cp      #61
         jp      z, x86_ppi_read_port_b
-        ld      hl, (x86_io_port)
-        ld      de, #0062
-        or      a
-        sbc     hl, de
+        cp      #62
         jp      z, x86_ppi_read_port_c
+.read8_open_bus:
         ld      a, #FF
         jp      x86_io_trace_read8
 
@@ -185,7 +184,7 @@ x86_io_write8:
         ld      de, #0021
         or      a
         sbc     hl, de
-        jr      z, x86_pic_write_data
+        jp      z, x86_pic_write_data
         ld      hl, (x86_io_port)
         ld      de, #0043
         or      a
@@ -196,11 +195,13 @@ x86_io_write8:
         or      a
         sbc     hl, de
         jp      z, x86_pit_write_channel0
-        ld      hl, (x86_io_port)
-        ld      de, #0061
+        ld      a, (x86_io_port+1)
         or      a
-        sbc     hl, de
+        jr      nz, .write8_unmapped
+        ld      a, (x86_io_port)
+        cp      #61
         jp      z, x86_ppi_write_port_b
+.write8_unmapped:
         jp      x86_io_trace_write8
 .write8_ppi_ignored:
         ret
@@ -217,11 +218,9 @@ x86_ppi_read_port_b:
 x86_ppi_read_port_c:
         ld      a, (x86_ppi_port_b)
         bit     2, a
-        jr      nz, .low_nibble
         ld      a, 1
-        ret
-.low_nibble:
-        ld      a, 2
+        ret     z
+        inc     a
         ret
 
 x86_ppi_write_port_b:
