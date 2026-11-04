@@ -1697,3 +1697,14 @@ A1.50–A1.53 признаны неудачными экспериментами
 - Added runtime marker `[NLOAD E1] TRDOS DOSENV READY`; driver A52, host A29.
 - Build and hardware runtime are pending. The error-hook from `dv093d13.txt` is intentionally not installed because its BASIC/BIOS interception requires a separate ATM-specific implementation.
 - Status: SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+
+## A1.33 — исправление адреса ERR_SP (2026-11-04)
+
+- [x] Runtime A29/A52: `[NLOAD T1]` появился, но `[NLOAD 02]` отсутствует. Это доказывает возврат из недискового сервиса `C=#14`; зависание ограничено сервисом поиска каталога `C=#0A`.
+- [x] Повторная арифметическая проверка адресов статьи `dv093d13.txt`: десятичный адрес 23613 соответствует `#5C3D`, а не `#5C5D`. Предыдущая запись `SP` по `#5C5D` была ошибочной.
+- [x] Исправлено сохранение `SP` в `ERR_SP=#5C3D`. Значение `SP=BFF1` не попадает в запрещённый для TR-DOS диапазон `#AAxx`, отмеченный в `ig7d3d13.txt`.
+- [x] Driver banner A53; host build marker A30.
+- [ ] Build: собрать `build_project125.bat`; проверить отсутствие ошибок и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить `[NLOAD E1]`, `[NLOAD T0]`, `[NLOAD T1]`, затем `[NLOAD 02]`. Если поиск вернётся, продолжить descriptor/sector tests.
+- **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT VERIFIED.
