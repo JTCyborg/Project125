@@ -33,9 +33,8 @@ IPC_WAIT_LIMIT   EQU #FFFF
 ; Firmware entry vector
         jp      start_neoprogram
         BLOCK   53, 0
-        ei
-        ret
-        BLOCK   198, 0
+        jp      neo_timer_isr
+        BLOCK   197, 0
 
 start_neoprogram:
         di
@@ -71,6 +70,10 @@ start_neoprogram:
         ld      (x86_exit_status), a
         ld      (neo_command), a
         ld      (neo_tx_byte), a
+
+        ; Start the FPGA 37.5 kHz timer interrupt as the monotonic timebase.
+        call    neo_timer_init
+        ei
 
         ; Copy the ROM-return trampoline into unoverlaid RAM at $4000.
         ld      hl, rom_return_trampoline_code
@@ -977,10 +980,398 @@ x86_reg_ds:    dw 0
 x86_reg_ip:    dw 0
 x86_reg_flags: dw 0
 
+; PC/XT parallel-port data-register latches for the three standard
+; BIOS probe addresses. These are guest-side software devices, not NeoGS I/O.
+x86_lpt1_data_latch: db 0       ; 03BCh
+x86_lpt2_data_latch: db 0       ; 0378h
+x86_lpt3_data_latch: db 0       ; 0278h
+
+; Dispatch all three LPT data ports in resident memory. Carry clear means
+; the port was handled; carry set means the caller should continue decoding.
+x86_resident_lpt_read_dispatch:
+        ld      a, (x86_io_port+1)
+        cp      3
+        jr      nz, .read_lpt3
+        ld      a, (x86_io_port)
+        cp      #BC
+        jr      z, .read_lpt1
+        cp      #78
+        jr      z, .read_lpt2
+        scf
+        ret
+.read_lpt3:
+        cp      2
+        jr      nz, .read_not_lpt
+        ld      a, (x86_io_port)
+        cp      #78
+        jr      nz, .read_not_lpt
+        ld      a, (x86_lpt3_data_latch)
+        or      a
+        ret
+.read_lpt1:
+        ld      a, (x86_lpt1_data_latch)
+        or      a
+        ret
+.read_lpt2:
+        ld      a, (x86_lpt2_data_latch)
+        or      a
+        ret
+.read_not_lpt:
+        scf
+        ret
+
+x86_resident_lpt_write_dispatch:
+        ld      a, (x86_io_port+1)
+        cp      3
+        jr      nz, .write_lpt3
+        ld      a, (x86_io_port)
+        cp      #BC
+        jr      z, .write_lpt1
+        cp      #78
+        jr      z, .write_lpt2
+        scf
+        ret
+.write_lpt3:
+        cp      2
+        jr      nz, .write_not_lpt
+        ld      a, (x86_io_port)
+        cp      #78
+        jr      nz, .write_not_lpt
+        ld      a, (x86_io_value)
+        ld      (x86_lpt3_data_latch), a
+        or      a
+        ret
+.write_lpt1:
+        ld      a, (x86_io_value)
+        ld      (x86_lpt1_data_latch), a
+        or      a
+        ret
+.write_lpt2:
+        ld      a, (x86_io_value)
+        ld      (x86_lpt2_data_latch), a
+        or      a
+        ret
+.write_not_lpt:
+        scf
+        ret
+
+; Resident one-shot trace for the first unmapped BIOS I/O read.
+; The interpreter calls this from overlay68; keeping the logger resident
+; avoids consuming the already-full 16 KiB interpreter overlay.
+; Minimal PC/XT COM1 8250 UART register bank. The BIOS probes 03FBh.
+; All state is guest-side software; NeoGS has no physical UART.
+x86_resident_uart_read_dispatch:
+        ; COM1 = 03F8-03FF, COM2 = 02F8-02FF.
+        ld      a, (x86_io_port+1)
+        cp      3
+        jr      z, .uart_read_com1
+        cp      2
+        jr      nz, .uart_read_unmapped
+        ld      hl, x86_uart_com2_regs
+        jr      .uart_read_base_ok
+.uart_read_com1:
+        ld      hl, x86_uart_com1_regs
+.uart_read_base_ok:
+        ld      a, (x86_io_port)
+        cp      #F8
+        jr      c, .uart_read_unmapped
+        sub     #F8
+        ld      b, a
+        cp      2
+        jr      z, .uart_read_iir
+        cp      5
+        jr      z, .uart_read_lsr
+        cp      6
+        jr      z, .uart_read_msr
+        ld      e, b
+        ld      d, 0
+        add     hl, de
+        ld      a, (hl)
+        or      a
+        ret
+.uart_read_iir:
+        ld      a, 1              ; no interrupt pending
+        or      a
+        ret
+.uart_read_lsr:
+        ld      a, #60            ; THR and transmitter empty
+        or      a
+        ret
+.uart_read_msr:
+        xor     a
+        ret
+.uart_read_unmapped:
+        scf
+        ret
+
+x86_resident_uart_write_dispatch:
+        ; Select the independent software register bank for COM1 or COM2.
+        ld      a, (x86_io_port+1)
+        cp      3
+        jr      z, .uart_write_com1
+        cp      2
+        jr      nz, .uart_write_unmapped
+        ld      hl, x86_uart_com2_regs
+        jr      .uart_write_base_ok
+.uart_write_com1:
+        ld      hl, x86_uart_com1_regs
+.uart_write_base_ok:
+        ld      a, (x86_io_port)
+        cp      #F8
+        jr      c, .uart_write_unmapped
+        sub     #F8
+        cp      2
+        jr      z, .uart_write_done ; IIR/FCR is not retained
+        ld      e, a
+        ld      d, 0
+        add     hl, de
+        ld      a, (x86_io_value)
+        ld      (hl), a
+.uart_write_done:
+        or      a
+        ret
+.uart_write_unmapped:
+        scf
+        ret
+
+x86_uart_com1_regs:
+        db 0,0,0,0,0,0,0,0
+x86_uart_com2_regs:
+        db 0,0,0,0,0,0,0,0
+
+x86_resident_io_trace_read8:
+        ; Keep the first 16 unmapped reads, not just the first one.
+        ; This reveals the complete BIOS probe sequence before System error.
+        ld      a, (x86_io_trace_count)
+        cp      16
+        ret     nc
+        inc     a
+        ld      (x86_io_trace_count), a
+        push    af
+        push    hl
+        ld      a, '!'
+        out     (#EF), a
+        ld      hl, (x86_io_port)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     af
+        ret
+
+x86_io_trace_count: db 0
+
+; Trace the first four SCAS comparisons during BIOS startup.
+; The previous failure-only trace produced no output, so the current
+; diagnostic captures successful comparisons too, including ES:DI and the
+; calculated physical address. This distinguishes an uninitialized ES from
+; an actual RAM data mismatch.
+x86_resident_memtest_scas_trace:
+        ; BIOS RAM sweeps use REPE SCAS. Ignore successful comparisons and
+        ; F2/REPNE searches; retain the first four actual REPE mismatches.
+        ld      a, (x86_string_opcode)
+        and     #FE
+        cp      #AE
+        ret     nz
+        ld      a, (x86_real_rep_mode)
+        cp      3
+        ret     nz
+        ld      a, (x86_reg_flags)
+        bit     6, a
+        ret     nz
+        ld      a, (x86_memtest_scas_trace_count)
+        cp      4
+        ret     nc
+        inc     a
+        ld      (x86_memtest_scas_trace_count), a
+        push    af
+        push    bc
+        push    de
+        push    hl
+
+        ld      a, '['
+        out     (#EF), a
+        ld      a, 'S'
+        out     (#EF), a
+        ld      a, 'C'
+        out     (#EF), a
+        ld      a, 'A'
+        out     (#EF), a
+        ld      a, 'S'
+        out     (#EF), a
+        ld      a, ']'
+        out     (#EF), a
+        ld      a, ' '
+        out     (#EF), a
+
+        ; Opcode and REP mode.
+        ld      a, (x86_string_opcode)
+        call    x86_mem_watch_hex8
+        ld      a, '/'
+        out     (#EF), a
+        ld      a, (x86_real_rep_mode)
+        call    x86_mem_watch_hex8
+
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_reg_cs)
+        call    x86_resident_memtest_hex16
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        call    x86_resident_memtest_hex16
+
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'E'
+        out     (#EF), a
+        ld      a, 'S'
+        out     (#EF), a
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_es)
+        call    x86_resident_memtest_hex16
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_di)
+        call    x86_resident_memtest_hex16
+
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'P'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      a, (x86_mem_addr+2)
+        call    x86_mem_watch_hex8
+        ld      a, (x86_mem_addr+1)
+        call    x86_mem_watch_hex8
+        ld      a, (x86_mem_addr)
+        call    x86_mem_watch_hex8
+
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'C'
+        out     (#EF), a
+        ld      a, 'X'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      hl, (x86_reg_cx)
+        call    x86_resident_memtest_hex16
+
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'A'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      a, (x86_string_value)
+        call    x86_mem_watch_hex8
+
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'M'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      a, (x86_string_other)
+        call    x86_mem_watch_hex8
+
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'F'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      hl, (x86_reg_flags)
+        call    x86_resident_memtest_hex16
+
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+; IN: HL=word. Preserves HL; emits four uppercase hexadecimal digits.
+x86_resident_memtest_hex16:
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        jp      x86_mem_watch_hex8
+
+x86_memtest_scas_trace_count:
+        db      0
+
 ; Shared bounds/diagnostic state accessed by resident BIOS and overlay CPU.
 x86_real_unsupported_opcode: db 0
 x86_real_bounds_enable:      db 0
 x86_real_task_end:           dw 0
+
+; 32-bit count of the independent NeoGS FPGA timer interrupts (37,500 Hz).
+; Updated only by the fixed-bank IM1 ISR; consumers take an atomic snapshot.
+neo_timer_ticks:             dw 0, 0
+
+; Configure the NeoGS hardware timer. INTREQ is cleared with bit 7=0;
+; INTENA uses bit 7=1 to set the timer-enable bit 0.
+neo_timer_init:
+        xor     a
+        ld      (neo_timer_ticks), a
+        ld      (neo_timer_ticks+1), a
+        ld      (neo_timer_ticks+2), a
+        ld      (neo_timer_ticks+3), a
+        xor     a
+        out     (TIM_FRQ), a            ; 37,500 Hz, no divider
+        ld      a, 1
+        out     (INTREQ), a             ; discard a stale timer request
+        ld      a, #81
+        out     (INTENA), a             ; enable timer interrupt source
+        ret
+
+; IM1 vector at 0038h. The hardware timer request is cleared by the FPGA
+; interrupt-acknowledge cycle. Keep this ISR short: no DMA, paging or calls.
+neo_timer_isr:
+        push    af
+        push    hl
+        ld      a, M_TIMER_INT
+        out     (INTREQ), a             ; acknowledge/clear timer request
+        ld      hl, (neo_timer_ticks)
+        inc     hl
+        ld      (neo_timer_ticks), hl
+        ld      a, h
+        or      l
+        jr      nz, .timer_isr_done
+        ld      hl, (neo_timer_ticks+2)
+        inc     hl
+        ld      (neo_timer_ticks+2), hl
+.timer_isr_done:
+        pop     hl
+        pop     af
+        ei
+        reti
 
 
 ; -------------------------------------------------------------------------
@@ -988,19 +1379,69 @@ x86_real_task_end:           dw 0
 ; these routines directly while its overlay remains mapped.
 ; -------------------------------------------------------------------------
 x86_io_tick:
-        ; The XT keyboard controller is polled independently of guest IF.
-        ; When PB6 is enabled, move one queued scan byte into the PA latch
-        ; and assert IRQ1; the BIOS acknowledges it through PB7.
         call    x86_kbd_load_latch
         ld      a, (x86_pit_enabled)
         or      a
-        jr      z, .check_irq
+        jr      nz, .pit_active
+        ; Keep the baseline current while PIT is stopped, so a new count
+        ; starts at the instant the guest enables the counter.
+        ld      hl, (neo_timer_ticks)
+        ld      (x86_pit_last_tick), hl
+        xor     a
+        ld      (x86_pit_fraction), a
+        ld      (x86_pit_fraction+1), a
+        jr      .check_irq
+.pit_active:
+        push    bc
+        ld      hl, (neo_timer_ticks)
+        ld      de, (x86_pit_last_tick)
+        ld      (x86_pit_last_tick), hl
+        or      a
+        sbc     hl, de
+        ld      b, h
+        ld      c, l
+        ld      a, b
+        or      c
+        jp      z, .pit_elapsed_done
+.pit_elapsed_loop:
+        ld      hl, (x86_pit_fraction)
+        ld      de, 30682
+        add     hl, de
+        jr      c, .pit_fraction_carry
+        ld      de, 37500
+        or      a
+        sbc     hl, de
+        jr      c, .pit_fraction_31
+        ld      (x86_pit_fraction), hl
+        ld      de, 32
+        jr      .pit_apply
+.pit_fraction_carry:
+        ld      de, 28036
+        add     hl, de
+        ld      (x86_pit_fraction), hl
+        ld      de, 32
+        jr      .pit_apply
+.pit_fraction_31:
+        add     hl, de
+        ld      (x86_pit_fraction), hl
+        ld      de, 31
+.pit_apply:
         ld      hl, (x86_pit_countdown)
-        dec     hl
-        ld      (x86_pit_countdown), hl
         ld      a, h
         or      l
-        jr      nz, .check_irq
+        jr      z, .pit_count_65536
+        or      a
+        sbc     hl, de
+        jr      c, .pit_terminal
+        jr      z, .pit_terminal
+        ld      (x86_pit_countdown), hl
+        jr      .pit_elapsed_next
+.pit_count_65536:
+        xor     a
+        sbc     hl, de
+        ld      (x86_pit_countdown), hl
+        jr      .pit_elapsed_next
+.pit_terminal:
         ld      hl, (x86_pit_reload)
         ld      (x86_pit_countdown), hl
         ld      a, (x86_pic_pending)
@@ -1008,72 +1449,56 @@ x86_io_tick:
         ld      (x86_pic_pending), a
         ld      a, (x86_pit_mode)
         cp      0
-        jr      nz, .check_irq
+        jr      nz, .pit_elapsed_next
         xor     a
         ld      (x86_pit_enabled), a
+        jr      .pit_elapsed_done
+.pit_elapsed_next:
+        dec     bc
+        ld      a, b
+        or      c
+        jp      nz, .pit_elapsed_loop
+.pit_elapsed_done:
+        pop     bc
 .check_irq:
         ld      a, (x86_reg_flags+1)
         bit     1, a
-        jr      nz, .if_enabled
-        or      a
-        ret
-.if_enabled:
-        ld      a, (x86_pic_pending)
-        bit     0, a
-        jr      z, .try_irq1
-        ld      a, (x86_pic_mask)
-        bit     0, a
-        jr      nz, .try_irq1
+        ret     z
+        ; Scan IRQs in programmed priority order. A higher-priority ISR
+        ; blocks itself and all lower-priority requests, but permits a
+        ; higher-priority request to nest.
+        ld      a, (x86_pic_priority_base)
+        ld      c, a
+        ld      b, 8
+.irq_scan:
+        ld      a, c
+        call    x86_pic_get_bit
+        ld      d, a
         ld      a, (x86_pic_in_service)
-        bit     0, a
-        jr      nz, .try_irq1
-        xor     a
-        jr      .deliver
-.try_irq1:
+        and     d
+        jr      nz, .irq_none
         ld      a, (x86_pic_pending)
-        bit     1, a
-        jr      nz, .irq1_pending
-        or      a
-        ret
-.irq1_pending:
+        and     d
+        jr      z, .irq_next
         ld      a, (x86_pic_mask)
-        bit     1, a
-        jr      z, .irq1_unmasked
+        and     d
+        jr      nz, .irq_next
+        ; Acknowledge selected request.
+        ld      a, d
+        cpl
+        ld      e, a
+        ld      a, (x86_pic_pending)
+        and     e
+        ld      (x86_pic_pending), a
+        ld      a, (x86_pic_auto_eoi)
         or      a
-        ret
-.irq1_unmasked:
+        jr      nz, .irq_vector
         ld      a, (x86_pic_in_service)
-        bit     1, a
-        jr      z, .irq1_ready
-        or      a
-        ret
-.irq1_ready:
-        ld      a, 1
-.deliver:
+        or      d
+        ld      (x86_pic_in_service), a
+.irq_vector:
+        ld      a, c
         ld      (x86_io_irq_index), a
-        or      a
-        jr      nz, .deliver_irq1
-        ld      a, (x86_pic_pending)
-        res     0, a
-        ld      (x86_pic_pending), a
-        ld      a, (x86_pic_auto_eoi)
-        or      a
-        jr      nz, .deliver_vector
-        ld      a, (x86_pic_in_service)
-        set     0, a
-        ld      (x86_pic_in_service), a
-        jr      .deliver_vector
-.deliver_irq1:
-        ld      a, (x86_pic_pending)
-        res     1, a
-        ld      (x86_pic_pending), a
-        ld      a, (x86_pic_auto_eoi)
-        or      a
-        jr      nz, .deliver_vector
-        ld      a, (x86_pic_in_service)
-        set     1, a
-        ld      (x86_pic_in_service), a
-.deliver_vector:
         ld      a, 1
         ld      (x86_io_irq_delivered), a
         ld      a, (x86_pic_vector)
@@ -1081,6 +1506,14 @@ x86_io_tick:
         ld      a, (x86_io_irq_index)
         add     a, b
         call    x86_int_enter
+        ret
+.irq_next:
+        inc     c
+        ld      a, c
+        and     7
+        ld      c, a
+        djnz    .irq_scan
+.irq_none:
         ret
 
 x86_ppi_read_port_a:
@@ -1449,6 +1882,114 @@ x86_kbd_queue_count: db 0
 x86_ppi_keyboard_ready: db 0
 x86_kbd_latch_from_queue: db 0
 x86_io_irq_index: db 0
+
+; Emit the terminal state of REP SCAS after CX/DI have been updated.
+; The last compared byte remains in x86_string_value/other and FLAGS.
+x86_string_rep_scas_summary:
+        ld      a, (x86_string_opcode)
+        and     #FE
+        cp      #AE
+        ret     nz
+        ; Suppress successful REP scans. For REPE, a nonzero CX means the
+        ; scan stopped on a mismatch. For REPNE, CX=0 means no match was
+        ; found before the count expired.
+        ld      a, (x86_real_rep_mode)
+        cp      3
+        jr      z, .check_repe_mismatch
+        cp      2
+        ret     nz
+        ld      hl, (x86_reg_cx)
+        ld      a, h
+        or      l
+        ret     nz
+        jr      .emit_summary
+.check_repe_mismatch:
+        ld      hl, (x86_reg_cx)
+        ld      a, h
+        or      l
+        ret     z
+        ld      a, (x86_reg_flags)
+        bit     6, a
+        ret     nz
+.emit_summary:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      a, '['
+        out     (#EF), a
+        ld      a, 'S'
+        out     (#EF), a
+        ld      a, 'C'
+        out     (#EF), a
+        ld      a, 'A'
+        out     (#EF), a
+        ld      a, 'S'
+        out     (#EF), a
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'E'
+        out     (#EF), a
+        ld      a, 'N'
+        out     (#EF), a
+        ld      a, 'D'
+        out     (#EF), a
+        ld      a, ']'
+        out     (#EF), a
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'C'
+        out     (#EF), a
+        ld      a, 'X'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      hl, (x86_reg_cx)
+        call    x86_resident_memtest_hex16
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'D'
+        out     (#EF), a
+        ld      a, 'I'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      hl, (x86_reg_di)
+        call    x86_resident_memtest_hex16
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'F'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      hl, (x86_reg_flags)
+        call    x86_resident_memtest_hex16
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'A'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      a, (x86_string_value)
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'M'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      a, (x86_string_other)
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
 
 neogs_resident_end:
 

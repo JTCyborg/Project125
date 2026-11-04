@@ -102,8 +102,71 @@ x86_mem_read8:
         call    x86_mem_map_addr
         ret     c
         ld      a, (hl)
+        call    x86_mem_watch_low_read
         or      a
         ret
+
+; Trace every BIOS read of the conventional-memory-size and equipment/error
+; bytes. This is deliberately independent of the write-watch budget.
+; The helper preserves AF/BC/DE/HL and therefore the guest read result.
+x86_mem_watch_low_read:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      a, (x86_mem_addr+2)
+        or      a
+        jr      nz, .done
+        ld      a, (x86_mem_addr+1)
+        cp      #04
+        jr      nz, .done
+        ld      a, (x86_mem_addr)
+        cp      #13
+        jr      c, .done
+        cp      #16
+        jr      nc, .done
+        ld      hl, x86_mem_read_prefix
+        call    x86_mem_watch_string
+        ld      a, (x86_mem_addr+2)
+        and     #0F
+        call    x86_mem_watch_hex8_low
+        ld      a, (x86_mem_addr+1)
+        call    x86_mem_watch_hex8
+        ld      a, (x86_mem_addr)
+        call    x86_mem_watch_hex8
+        ld      a, '='
+        out     (#EF), a
+        pop     hl
+        push    hl
+        ld      a, (hl)
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.done:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_mem_read_prefix:
+        db      "[MEMR] ", 0
 
 ; Write one byte. IN x86_mem_addr[0..2], x86_mem_value.
 x86_mem_write8:
@@ -117,6 +180,17 @@ x86_mem_write8:
 .write_allowed:
         call    x86_mem_map_addr
         ret     c
+        ; Trace only changed writes in the BDA (00400h-004FFh).
+        ; Conventional-memory POST writes must not consume the diagnostic
+        ; budget before BIOS error flags such as 00415h are reached.
+        ld      a, (x86_mem_addr+2)
+        or      a
+        jr      nz, .store
+        ld      a, (x86_mem_addr+1)
+        cp      #04
+        jr      nz, .store
+        call    x86_mem_watch_low_write
+.store:
         ld      a, (x86_mem_value)
         ld      (hl), a
         or      a
@@ -124,6 +198,119 @@ x86_mem_write8:
 .write_protected:
         scf
         ret
+
+; Log up to 64 changed writes in physical BDA range 00400h-004FFh.
+; The trace includes physical address, old/new values and guest CS:IP.
+; No guest registers or memory backend address state are modified.
+x86_mem_watch_low_write:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ; Always trace the ER_RAM byte at physical 00415h, even after
+        ; the ordinary 64-entry BDA watch budget has been exhausted. Log
+        ; this address even when the stored value is unchanged: reaching
+        ; BADRAM is itself the evidence we need.
+        ld      a, (x86_mem_addr)
+        cp      #15
+        jr      z, .force_er_ram
+        ld      a, (hl)
+        ld      b, a
+        ld      a, (x86_mem_value)
+        cp      b
+        jr      z, .done
+        ld      a, (x86_mem_watch_count)
+        cp      64
+        jr      nc, .done
+        inc     a
+        ld      (x86_mem_watch_count), a
+        jr      .emit
+
+.force_er_ram:
+        ld      a, (hl)
+        ld      b, a
+
+.emit:
+        ld      hl, x86_mem_watch_prefix
+        call    x86_mem_watch_string
+        ld      a, (x86_mem_addr+2)
+        and     #0F
+        call    x86_mem_watch_hex8_low
+        ld      a, (x86_mem_addr+1)
+        call    x86_mem_watch_hex8
+        ld      a, (x86_mem_addr)
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, b
+        call    x86_mem_watch_hex8
+        ld      a, '>'
+        out     (#EF), a
+        ld      a, (x86_mem_value)
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.done:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+; Print the low nibble of A as one hexadecimal digit.
+x86_mem_watch_hex8_low:
+        and     #0F
+        jp      x86_mem_watch_nibble
+
+x86_mem_watch_string:
+        ld      a, (hl)
+        inc     hl
+        or      a
+        ret     z
+        out     (#EF), a
+        jr      x86_mem_watch_string
+
+x86_mem_watch_hex8:
+        push    af
+        rrca
+        rrca
+        rrca
+        rrca
+        and     #0F
+        call    x86_mem_watch_nibble
+        pop     af
+        and     #0F
+        jp      x86_mem_watch_nibble
+
+x86_mem_watch_nibble:
+        add     a, '0'
+        cp      '9'+1
+        jr      c, .digit
+        add     a, 7
+.digit:
+        out     (#EF), a
+        ret
+
+x86_mem_watch_prefix:
+        db      "[MEMW] ", 0
+x86_mem_watch_count:
+        db      0
 
 ; -------------------------------------------------------------------------
 ; Destructive physical RAM mapping test.

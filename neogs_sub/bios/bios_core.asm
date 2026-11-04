@@ -44,6 +44,11 @@ BIOS_ROM_BACKING_PAGE     EQU 75
 ; The BIOS reset-vector instruction then far-jumps to F000:E05B.
 bios_rom_reset_state:
         call    x86_mem_init
+        ; A cold PC/XT reset must not inherit random bytes from backing RAM.
+        ; In particular, BIOS error flags at 0040:0015 must start at zero,
+        ; otherwise the ROM reports a spurious System error #FF.
+        call    bios_clear_ivt_bda
+        or      a
         ld      hl, 0
         ld      (x86_reg_ax), hl
         ld      (x86_reg_bx), hl

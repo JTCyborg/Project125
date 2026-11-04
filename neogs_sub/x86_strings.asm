@@ -27,7 +27,10 @@ x86_real_string_instruction:
         ld      (x86_reg_cx), hl
         ld      a, h
         or      l
-        jp      z, x86_real_next
+        jr      nz, .rep_remaining
+        call    x86_string_rep_scas_summary
+        jp      x86_real_next
+.rep_remaining:
 
         ; REP can perform thousands of memory operations inside one opcode.
         ; Report progress independently of the architectural instruction budget.
@@ -56,12 +59,15 @@ x86_real_string_instruction:
         jr      z, .repe
         ld      a, (x86_reg_flags)
         bit     6, a
-        jp      nz, x86_real_next
-        jr      .repeat
+        jr      z, .repeat
+        call    x86_string_rep_scas_summary
+        jp      x86_real_next
 .repe:
         ld      a, (x86_reg_flags)
         bit     6, a
-        jp      z, x86_real_next
+        jr      nz, .repeat
+        call    x86_string_rep_scas_summary
+        jp      x86_real_next
 .repeat:
         ; REP is one architectural instruction, not one instruction per
         ; element. CX is the iteration bound; do not consume the CPU opcode
@@ -162,6 +168,7 @@ x86_string_scas:
 .compare:
         ld      (x86_string_value), hl
         call    x86_string_compare
+        call    x86_resident_memtest_scas_trace
         call    x86_string_advance_di
         ret
 
