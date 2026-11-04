@@ -39,6 +39,26 @@ foreach ($section in @(
 
 # P125 package: ASCII "P125", then three little-endian WORD lengths,
 # followed by resident page 0, overlay page 68 and overlay page 69 payloads.
+function Get-Crc16Ccitt([byte[]]$Bytes) {
+    [UInt16]$crc = 0xFFFF
+    foreach ($value in $Bytes) {
+        $crc = [UInt16]($crc -bxor ([UInt16]$value -shl 8))
+        for ($bit = 0; $bit -lt 8; $bit++) {
+            if (($crc -band 0x8000) -ne 0) {
+                $crc = [UInt16]((($crc -shl 1) -bxor 0x1021) -band 0xFFFF)
+            }
+            else {
+                $crc = [UInt16](($crc -shl 1) -band 0xFFFF)
+            }
+        }
+    }
+    return $crc
+}
+
+[UInt16]$residentCrc = Get-Crc16Ccitt $resident
+[UInt16]$overlay68Crc = Get-Crc16Ccitt $overlay68
+[UInt16]$overlay69Crc = Get-Crc16Ccitt $overlay69
+
 $packageStream = New-Object System.IO.MemoryStream
 $writer = New-Object System.IO.BinaryWriter($packageStream)
 try {
@@ -46,6 +66,9 @@ try {
     $writer.Write([UInt16]$resident.Length)
     $writer.Write([UInt16]$overlay68.Length)
     $writer.Write([UInt16]$overlay69.Length)
+    $writer.Write($residentCrc)
+    $writer.Write($overlay68Crc)
+    $writer.Write($overlay69Crc)
     $writer.Write($resident)
     $writer.Write($overlay68)
     $writer.Write($overlay69)
@@ -57,8 +80,8 @@ finally {
     $packageStream.Dispose()
 }
 
-if ($package.Length -gt 0xC00A) {
-    throw ("NEOFW.C package size {0} exceeds the 48-KiB payload plus 10-byte manifest limit (0xC00A)." -f $package.Length)
+if ($package.Length -gt 0xC010) {
+    throw ("NEOFW.C package size {0} exceeds the 48-KiB payload plus 16-byte manifest limit (0xC010)." -f $package.Length)
 }
 
 [System.IO.File]::WriteAllBytes($loaderOutput, $loader)
@@ -77,4 +100,4 @@ Write-Host ("NEOLOAD.C:       {0} bytes (unchanged V1 bootstrap)" -f $loader.Len
 Write-Host ("Resident page 0: {0} / 16384 bytes" -f $resident.Length)
 Write-Host ("Overlay page 68: {0} / 16384 bytes" -f $overlay68.Length)
 Write-Host ("Overlay page 69: {0} / 16384 bytes" -f $overlay69.Length)
-Write-Host ("NEOFW.C:         {0} bytes (P125 segmented package)" -f $package.Length)
+Write-Host ("NEOFW.C:         {0} bytes (P125 segmented package, CRC16 per bank)" -f $package.Length)
