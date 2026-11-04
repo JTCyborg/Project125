@@ -481,68 +481,6 @@ x86_ppi_write_port_b:
 x86_ppi_write_control:
         ld      a, (x86_io_value)
         ld      (x86_ppi_control), a
-        ; Bit set/reset commands affect the selected PC port-C output bit.
-        bit     7, a
-        ret     nz
-        and     #0E
-        rrca
-        ld      b, a
-        ld      a, (x86_ppi_port_c)
-        ld      c, a
-        ld      a, (x86_io_value)
-        bit     0, a
-        jr      z, .ppi_bsr_clear
-        ld      a, 1
-        jr      .ppi_bsr_apply
-.ppi_bsr_clear:
-        xor     a
-.ppi_bsr_apply:
-        ld      a, b
-        and     7
-        ld      b, a
-        ld      a, (x86_io_value)
-        bit     0, a
-        ld      a, c
-        jr      z, .ppi_bsr_reset
-        ld      a, b
-        call    x86_ppi_set_port_c_bit
-        ret
-.ppi_bsr_reset:
-        ld      a, b
-        call    x86_ppi_clear_port_c_bit
-        ret
-
-x86_ppi_set_port_c_bit:
-        ld      b, a
-        ld      a, 1
-        jr      x86_ppi_change_port_c_bit
-x86_ppi_clear_port_c_bit:
-        ld      b, a
-        xor     a
-x86_ppi_change_port_c_bit:
-        push    af
-        ld      a, b
-        and     7
-        ld      c, a
-        ld      a, 1
-.ppi_c_shift:
-        dec     c
-        jr      c, .ppi_c_shift_done
-        add     a, a
-        jr      .ppi_c_shift
-.ppi_c_shift_done:
-        ld      b, a
-        pop     af
-        ld      a, (x86_ppi_port_c)
-        jr      z, .ppi_c_clear
-        or      b
-        jr      .ppi_c_store
-.ppi_c_clear:
-        cpl
-        and     b
-        cpl
-.ppi_c_store:
-        ld      (x86_ppi_port_c), a
         ret
 
 x86_io_read16:
