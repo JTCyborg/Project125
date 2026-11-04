@@ -247,12 +247,14 @@ BIOS_DebugConsole_PrintAt::
         ld      a, (hl)
         or      a
         jr      z, .p125_print_at_done
+        ld      (bios_dbg_char), a
         inc     hl
         ld      (bios_dbg_text_ptr), hl
         ld      a, (bios_dbg_print_row)
         ld      d, a
         ld      a, (bios_dbg_print_col)
         ld      e, a
+        ld      a, (bios_dbg_char)
         call    p125_screen_write_char
         ld      a, (bios_dbg_print_col)
         inc     a
