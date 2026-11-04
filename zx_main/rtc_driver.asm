@@ -14,6 +14,11 @@ txt_sec::           DEFB "00"
 CHECK_AND_INIT_CMOS::
         PUSH    AF: PUSH BC
 
+        ; Always identify the exact RTC driver revision in the raw #EF log.
+        ; Keep this before every RTC initialization checkpoint.
+        LD      HL, rtc_driver_version
+        CALL    p125_trace_port
+
         LD      HL, rtc_trace_01_open_begin
         CALL    p125_trace_port
         CALL    open_cmos
@@ -65,6 +70,7 @@ rtc_already_active:
         POP     BC: POP     AF
         RET
 
+rtc_driver_version:              DEFB "[RTC DRIVER A1.87]", 13, 10, 0
 rtc_trace_01_open_begin:          DEFB "[RTC 01] OPEN BEGIN", 13, 10, 0
 rtc_trace_02_open_done:           DEFB "[RTC 02] OPEN DONE", 13, 10, 0
 rtc_trace_03_signature_read_begin: DEFB "[RTC 03] SIGNATURE READ BEGIN", 13, 10, 0
