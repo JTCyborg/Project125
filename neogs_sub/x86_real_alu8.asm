@@ -40,6 +40,14 @@ x86_real_logic8_accumulator_immediate:
         ld      a, (x86_real_opcode)
         cp      #0C
         jr      z, .or_immediate
+        cp      #24
+        jr      z, .and_immediate
+        ld      a, (x86_logic_dst)
+        ld      b, a
+        ld      a, (x86_logic_src)
+        xor     b
+        jr      .logic_immediate_done
+.and_immediate:
         ld      a, (x86_logic_dst)
         ld      b, a
         ld      a, (x86_logic_src)
@@ -1665,6 +1673,7 @@ x86_guest_alu8_logic_image:
         db #B0,#0F                 ; MOV AL,0F
         db #0C,#30                 ; OR AL,30 -> 3F
         db #24,#CF                 ; AND AL,CF -> 0F
+        db #34,#80                 ; XOR AL,80 -> 8F
         db #B0,#F0                 ; Restore AL for AX regression
         db #F4
 x86_guest_alu8_logic_image_end:
