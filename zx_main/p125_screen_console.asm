@@ -49,13 +49,15 @@ p125_atm_video_init::
         jp      #3D2F
 
 p125_atm_ports_open_done:
-        ; Preserve the active ROM selection from the Spectrum 128K BANKM
-        ; shadow. In particular, do NOT force bit 4: TR-DOS must remain mapped
-        ; after video init because later file operations call ROM entry #3D13.
-        ; Set only bit 3 to select the alternate screen while preserving all
-        ; other #7FFD latch bits, including the TR-DOS ROM selection.
-        ld      a, (#5C3B)
-        or      #08
+        ; Match the known-working Project124/Project125-main startup:
+        ; force 128K ROM1 (bit 4 = 1, TR-DOS) and select the alternate screen
+        ; (bit 3 = 1). The old working host explicitly wrote #7FFD=#10 before
+        ; any TR-DOS file operation; merely preserving BANKM here was unsafe
+        ; because the inherited value may have bit 4 clear.
+        ; Low RAM-bank bits and paging lock are reset exactly as in that
+        ; proven startup, then the ATM window ports below establish the
+        ; host/video/staging pages independently.
+        ld      a, #18
         ld      bc, #7FFD
         out     (c), a
         ld      (#5C3B), a
