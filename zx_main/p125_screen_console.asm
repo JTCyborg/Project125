@@ -149,12 +149,12 @@ BIOS_DebugConsole_Clear::
         ld      hl, #E1C0
         ld      de, #E1C1
         ld      (hl), #4F
-        ld      bc, #0300
+        ld      bc, #02FF
         ldir
         ld      hl, #C1C1
         ld      de, #C1C2
         ld      (hl), #4F
-        ld      bc, #0300
+        ld      bc, #02FF
         ldir
 
         ; Lower log area: black background, green foreground.
