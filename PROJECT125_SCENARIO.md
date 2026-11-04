@@ -1874,3 +1874,12 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Diagnostic only; it does not claim to fix the catalogue-search hang.
 
 | 2026-11-04 | A1.47 TR-DOS search-key diagnostic | SOURCE COMMITTED | Dump exact filename+extension bytes before C=#0A without changing API registers. Build/runtime pending. |
+
+
+## A1.48 — TR-DOS ROM boundary diagnostic (2026-11-04)
+
+- [x] A1.47 runtime confirms the exact search key is `NEOLOAD C` (`4E454F4C4F41442043`).
+- [x] Add the existing register-preserving, read-only `neo_diag_search_state` immediately before the `C=#0A` search. It reports BANKM, extension, DOS mode, SP, eight bytes visible at `#3D13`, and the raw eight-byte filename.
+- [ ] Build and verify marker A43 / driver A61.
+- [ ] Runtime: capture the complete `[NLOAD D]` diagnostic through the `[NLOAD 01]` call boundary.
+- **Status:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. No claim that the search hang is fixed.
