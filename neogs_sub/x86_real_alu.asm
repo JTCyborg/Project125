@@ -23,7 +23,9 @@ x86_real_alu_accumulator_immediate:
         xor     a
         ld      (x86_alu_dst_is_mem), a
         ld      (x86_alu_dst_reg), a       ; AX is register 0
-        ld      (x86_alu_mode), a          ; ADD
+        ld      a, (x86_real_opcode)
+        and     #38
+        ld      (x86_alu_mode), a          ; ADD=00, SUB=28
         ld      (x86_alu_carry_in), a
         jp      x86_real_alu_execute
 
