@@ -142,8 +142,10 @@ neo_fw_read_next_sector:
         xor     a
         ld      (#5D0F), a
         ld      (#5D10), a
+        push    hl
         ld      hl, trace_noload_07_trdos_read_call
         call    p125_trace_port
+        pop     hl
         call    #3D13
         ld      hl, trace_noload_08_trdos_read_return
         call    p125_trace_port
