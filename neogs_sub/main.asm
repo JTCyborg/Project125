@@ -33,9 +33,8 @@ IPC_WAIT_LIMIT   EQU #FFFF
 ; Firmware entry vector
         jp      start_neoprogram
         BLOCK   53, 0
-        ei
-        ret
-        BLOCK   198, 0
+        jp      neo_timer_isr
+        BLOCK   197, 0
 
 start_neoprogram:
         di
@@ -71,6 +70,10 @@ start_neoprogram:
         ld      (x86_exit_status), a
         ld      (neo_command), a
         ld      (neo_tx_byte), a
+
+        ; Start the FPGA 37.5 kHz timer interrupt as the monotonic timebase.
+        call    neo_timer_init
+        ei
 
         ; Copy the ROM-return trampoline into unoverlaid RAM at $4000.
         ld      hl, rom_return_trampoline_code
@@ -981,6 +984,46 @@ x86_reg_flags: dw 0
 x86_real_unsupported_opcode: db 0
 x86_real_bounds_enable:      db 0
 x86_real_task_end:           dw 0
+
+; 32-bit count of the independent NeoGS FPGA timer interrupts (37,500 Hz).
+; Updated only by the fixed-bank IM1 ISR; consumers take an atomic snapshot.
+neo_timer_ticks:             dw 0, 0
+
+; Configure the NeoGS hardware timer. INTREQ is cleared with bit 7=0;
+; INTENA uses bit 7=1 to set the timer-enable bit 0.
+neo_timer_init:
+        xor     a
+        ld      (neo_timer_ticks), a
+        ld      (neo_timer_ticks+1), a
+        ld      (neo_timer_ticks+2), a
+        ld      (neo_timer_ticks+3), a
+        xor     a
+        out     (TIM_FRQ), a            ; 37,500 Hz, no divider
+        ld      a, 1
+        out     (INTREQ), a             ; discard a stale timer request
+        ld      a, #81
+        out     (INTENA), a             ; enable timer interrupt source
+        ret
+
+; IM1 vector at 0038h. The hardware timer request is cleared by the FPGA
+; interrupt-acknowledge cycle. Keep this ISR short: no DMA, paging or calls.
+neo_timer_isr:
+        push    af
+        push    hl
+        ld      hl, (neo_timer_ticks)
+        inc     hl
+        ld      (neo_timer_ticks), hl
+        ld      a, h
+        or      l
+        jr      nz, .timer_isr_done
+        ld      hl, (neo_timer_ticks+2)
+        inc     hl
+        ld      (neo_timer_ticks+2), hl
+.timer_isr_done:
+        pop     hl
+        pop     af
+        ei
+        reti
 
 
 ; -------------------------------------------------------------------------
