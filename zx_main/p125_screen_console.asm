@@ -21,9 +21,9 @@ BIOS_DEBUG_COLUMNS EQU 80
 BIOS_DEBUG_ROWS    EQU 13
 BIOS_DEBUG_TOP     EQU 12
 P125_VIDEO_PAGE7   EQU #78          ; RAM page 7, inverted page number
-P125_VIDEO_PAGE3   EQU #FC          ; RAM page 3 + D7 mux enable (inverted page number)
+P125_VIDEO_PAGE3   EQU #7C          ; RAM page 3, inverted page number
 P125_HOST_PAGE5    EQU #7A          ; RAM page 5, host code at #6000
-P125_HOST_PAGE0    EQU #FF          ; RAM page 0 + D7 mux enable; TR-DOS auto-select
+P125_HOST_PAGE0    EQU #7F          ; RAM page 0, TR-DOS staging at #C000
 P125_ROM_PAGE0     EQU #BF          ; ROM page 0 + D7 auto-select for lower 16K
 
 Console_X: db 0
@@ -70,8 +70,8 @@ p125_atm_ports_open_done:
         out     (c), a
 
         ; Map the alternate screen pages while the 32-byte mode trampoline
-        ; is installed at #FFEC. Keep D7 set on #FFF7: it enables #7FFD
-        ; muxing and TR-DOS shadow-ROM auto-selection in the lower 16K.
+        ; is installed at #FFEC. Window 3 uses a fixed RAM page here; the
+        ; TR-DOS auto-select mux is configured separately in window 0.
         ld      a, P125_VIDEO_PAGE7
         ld      bc, #7FF7
         out     (c), a
@@ -102,8 +102,8 @@ p125_atm_ports_open_done:
         jp      #FFEC
 
 p125_atm_video_mode_ready:
-        ; Restore CPU-visible host/staging pages. Keep D7 set on #FFF7 while
-        ; selecting RAM page 0; clearing D7 disables #7FFD mux / TR-DOS ROM.
+        ; Restore CPU-visible host/staging pages. Keep D7 clear on #FFF7 so
+        ; window 3 remains fixed to RAM page 0 for the TR-DOS staging buffer.
         ld      a, P125_HOST_PAGE5
         ld      bc, #7FF7
         out     (c), a
