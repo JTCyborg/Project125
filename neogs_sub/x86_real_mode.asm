@@ -2530,6 +2530,7 @@ x86_real_group_f6:
 .f6_segment_ready:
         ld      (x86_mem_segment), hl
         call    x86_mem_calc_phys
+        call    x86_mem_trace_f6_address
         call    x86_mem_read8
         ret     c
         ld      (x86_f6_operand), a
