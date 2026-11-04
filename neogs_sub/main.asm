@@ -988,6 +988,10 @@ x86_real_task_end:           dw 0
 ; these routines directly while its overlay remains mapped.
 ; -------------------------------------------------------------------------
 x86_io_tick:
+        ; The XT keyboard controller is polled independently of guest IF.
+        ; When PB6 is enabled, move one queued scan byte into the PA latch
+        ; and assert IRQ1; the BIOS acknowledges it through PB7.
+        call    x86_kbd_load_latch
         ld      a, (x86_pit_enabled)
         or      a
         jr      z, .check_irq
@@ -1100,33 +1104,36 @@ x86_ppi_read_control:
         ret
 
 x86_ppi_write_port_b:
-        ; PB7 rising edge acknowledges the current XT keyboard byte.
+        ; IBM XT keyboard acknowledge is level-qualified by PB7: every write
+        ; with PB7 high clears the current PA byte (not only a rising edge).
         ld      a, (x86_ppi_keyboard_pb)
         ld      b, a
         ld      a, (x86_io_value)
         ld      (x86_ppi_port_b), a
         ld      (x86_ppi_keyboard_pb), a
-        bit     7, b
-        jr      nz, .ppi_no_ack
         bit     7, a
         call    nz, x86_kbd_acknowledge
-.ppi_no_ack:
-        ; PB6 low-to-high resets the keyboard interface and returns BAT AAh.
+
+        ; PB6 low-to-high is the XT keyboard reset pulse. PCem's reference
+        ; model flushes pending keys and queues BAT AA; reproduce that order.
         ld      a, (x86_ppi_keyboard_pb)
         bit     6, b
         ret     nz
         bit     6, a
         ret     z
-        ld      a, #AA
-        ld      (x86_ppi_keyboard_data), a
-        ld      a, 1
-        ld      (x86_ppi_keyboard_ready), a
         xor     a
+        ld      (x86_kbd_queue_read), a
+        ld      (x86_kbd_queue_write), a
+        ld      (x86_kbd_queue_count), a
+        ld      (x86_ppi_keyboard_ready), a
+        ld      (x86_ppi_keyboard_data), a
         ld      (x86_kbd_latch_from_queue), a
         ld      a, (x86_pic_pending)
-        set     1, a
+        res     1, a
         ld      (x86_pic_pending), a
-        ret
+        ld      a, #AA
+        ld      (x86_kbd_key_code), a
+        jp      x86_kbd_enqueue
 
 x86_ppi_write_control:
         ld      a, (x86_io_value)
@@ -1280,7 +1287,6 @@ x86_kbd_enqueue:
         ld      a, (x86_kbd_queue_count)
         inc     a
         ld      (x86_kbd_queue_count), a
-        call    x86_kbd_load_latch
 .enqueue_done:
         pop     hl
         pop     de
@@ -1289,6 +1295,11 @@ x86_kbd_enqueue:
         ret
 
 x86_kbd_load_latch:
+        ; XT keyboard scanning is inhibited while PB6 holds the interface in
+        ; reset. A queued event is presented only after the BIOS releases it.
+        ld      a, (x86_ppi_port_b)
+        bit     6, a
+        ret     z
         ld      a, (x86_ppi_keyboard_ready)
         or      a
         ret     nz
@@ -1302,9 +1313,16 @@ x86_kbd_load_latch:
         add     hl, de
         ld      a, (hl)
         ld      (x86_ppi_keyboard_data), a
+        ; Remove the byte from the FIFO when it enters the XT data latch.
+        ld      a, (x86_kbd_queue_read)
+        inc     a
+        and     #1F
+        ld      (x86_kbd_queue_read), a
+        ld      a, (x86_kbd_queue_count)
+        dec     a
+        ld      (x86_kbd_queue_count), a
         ld      a, 1
         ld      (x86_ppi_keyboard_ready), a
-        ld      a, 1
         ld      (x86_kbd_latch_from_queue), a
         ld      a, (x86_pic_pending)
         set     1, a
@@ -1317,25 +1335,14 @@ x86_kbd_acknowledge:
         ret     z
         xor     a
         ld      (x86_ppi_keyboard_ready), a
+        ld      (x86_ppi_keyboard_data), a
+        ld      (x86_kbd_latch_from_queue), a
         ld      a, (x86_pic_pending)
         res     1, a
         ld      (x86_pic_pending), a
-        ld      a, (x86_kbd_latch_from_queue)
-        or      a
-        jr      z, .ack_bat
-        ld      a, (x86_kbd_queue_count)
-        or      a
-        jr      z, .ack_bat
-        dec     a
-        ld      (x86_kbd_queue_count), a
-        ld      a, (x86_kbd_queue_read)
-        inc     a
-        and     #1F
-        ld      (x86_kbd_queue_read), a
-.ack_bat:
-        xor     a
-        ld      (x86_kbd_latch_from_queue), a
-        jp      x86_kbd_load_latch
+        ; Do not load the next byte here. The next instruction-boundary
+        ; keyboard poll presents it, matching the XT controller's delay. 
+        ret
 
 x86_kbd_scancode_table:
         db #2A,#2C,#2D,#2E,#2F
