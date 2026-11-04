@@ -459,7 +459,7 @@ DS12887_PRINT_CHAR:
         pop     bc
         ret
 
-ds12887_banner:      defb "[DS12887 D1.06] GLUK/SMUC AUTO", 13, 10, 0
+ds12887_banner:      defb "[DS12887 D1.07] GLUK/SMUC AUTO", 13, 10, 0
 ds12887_found:       defb "[DS12887] VRT OK; READ-ONLY CLOCK ACCESS", 13, 10, 0
 ds12887_gluk_dump:   defb "[DS12887] GLUK D/A/B=", 0
 ds12887_smuc_status_dump: defb "[DS12887] SMUC D/A/B=", 0
