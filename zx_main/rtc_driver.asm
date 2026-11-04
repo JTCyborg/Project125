@@ -30,8 +30,16 @@ CHECK_AND_INIT_CMOS::
         CALL    p125_trace_port
         LD      A, #11
         CALL    read_byte_raw
+        LD      (rtc_diag_value), A
         LD      HL, rtc_trace_04_signature_read_done
         CALL    p125_trace_port
+        LD      HL, rtc_trace_signature_value
+        CALL    p125_trace_port
+        LD      A, (rtc_diag_value)
+        CALL    rtc_trace_hex8
+        LD      HL, rtc_trace_line_end
+        CALL    p125_trace_port
+        LD      A, (rtc_diag_value)
         CP      #AA
         JP      Z, rtc_already_active
 
@@ -42,6 +50,27 @@ CHECK_AND_INIT_CMOS::
         LD      L, #AA
         CALL    write_byte_raw
 rtc_signature_write_return:
+        ; Read the same register back. OUT completion alone does not prove
+        ; that the CMOS decoder accepted the write.
+        LD      A, #11
+        CALL    read_byte_raw
+        LD      (rtc_diag_value), A
+        LD      HL, rtc_trace_signature_readback
+        CALL    p125_trace_port
+        LD      A, (rtc_diag_value)
+        CALL    rtc_trace_hex8
+        LD      HL, rtc_trace_line_end
+        CALL    p125_trace_port
+        LD      A, (rtc_diag_value)
+        CP      #AA
+        JR      Z, .signature_verified
+        LD      HL, rtc_trace_signature_bad
+        CALL    p125_trace_port
+        JR      .signature_check_done
+.signature_verified:
+        LD      HL, rtc_trace_signature_ok
+        CALL    p125_trace_port
+.signature_check_done:
         LD      HL, rtc_trace_06_signature_write_done
         CALL    p125_trace_port
 
@@ -70,7 +99,7 @@ rtc_already_active:
         POP     BC: POP     AF
         RET
 
-rtc_driver_version:              DEFB "[RTC DRIVER A1.93]", 13, 10, 0
+rtc_driver_version:              DEFB "[RTC DRIVER A1.94]", 13, 10, 0
 rtc_trace_01_open_begin:          DEFB "[RTC 01] OPEN BEGIN", 13, 10, 0
 rtc_trace_02_open_done:           DEFB "[RTC 02] OPEN DONE", 13, 10, 0
 rtc_trace_03_signature_read_begin: DEFB "[RTC 03] SIGNATURE READ BEGIN", 13, 10, 0
@@ -83,6 +112,11 @@ rtc_trace_09_reg_b_write_begin:   DEFB "[RTC 09] REG B WRITE BEGIN", 13, 10, 0
 rtc_trace_0A_reg_b_write_done:    DEFB "[RTC 0A] REG B WRITE DONE", 13, 10, 0
 rtc_trace_0B_close_begin:         DEFB "[RTC 0B] CLOSE BEGIN", 13, 10, 0
 rtc_trace_0C_close_done:          DEFB "[RTC 0C] CLOSE DONE", 13, 10, 0
+rtc_trace_signature_value:       DEFB "[RTC] SIGNATURE READ #11=", 0
+rtc_trace_signature_readback:    DEFB "[RTC] SIGNATURE READBACK #11=", 0
+rtc_trace_signature_ok:          DEFB "[RTC] SIGNATURE WRITE VERIFIED", 13, 10, 0
+rtc_trace_signature_bad:         DEFB "[RTC] SIGNATURE WRITE MISMATCH", 13, 10, 0
+rtc_trace_line_end:              DEFB 13, 10, 0
 
 ; =========================================================================
 ; ПРОЦЕДУРА ЧТЕНИЯ ТЕКУЩЕГО ВРЕМЕНИ ИЗ ЧИПА RTC
@@ -369,5 +403,6 @@ rtc_write_index:    DEFB 0
 rtc_exit_sp:        DEFW 0
 rtc_exit_ret:       DEFW 0
 rtc_expected_addr:  DEFW 0
+rtc_diag_value:     DEFB 0
 
 ; =========================================================================
