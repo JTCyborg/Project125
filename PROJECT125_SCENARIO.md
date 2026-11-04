@@ -1315,3 +1315,14 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING. Версия в логе подтверждает исходник драйвера, но сама по себе не подтверждает, что собранный бинарник был обновлён.
 
 | 2026-11-04 | A1.87 RTC driver revision in runtime log | SOURCE COMMITTED | Added an unmistakable `[RTC DRIVER A1.87]` banner before RTC initialization checkpoints; build/runtime remain unverified. |
+
+
+## A1.88 — вывод фактического и ожидаемого адреса возврата RTC (2026-11-04)
+
+- [x] Runtime A1.87: маркеры `>` и `<` присутствуют; `p125_trace_port` завершает оба вызова; сравнение вершины стека выдаёт `[RTC 13] RETURN ADDRESS BAD`.
+- [x] В ветке несовпадения добавлен вывод `ACTUAL=xxxx EXPECTED=xxxx` в порт `#EF`, шестнадцатерично, без изменения RTC I/O и без записи в стек вызывающего кода.
+- [ ] Сборка `build_project125.bat`; проверить синтаксис SjASMPlus и лимит host image.
+- [ ] Runtime: зафиксировать оба адреса; по их разнице определить источник смещения стека/неверного адреса продолжения.
+- **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.88 print RTC return-address mismatch values | SOURCE COMMITTED | Added ACTUAL/EXPECTED hexadecimal address output on mismatch; build and runtime remain unverified. |
