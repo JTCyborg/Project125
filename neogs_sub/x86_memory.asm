@@ -120,12 +120,20 @@ x86_mem_watch_low_read:
         jr      nz, .done
         ld      a, (x86_mem_addr+1)
         cp      #04
+        jr      z, .check_bda
+        cp      #3F
         jr      nz, .done
+        ld      a, (x86_mem_addr)
+        cp      #95
+        jr      nz, .done
+        jr      .trace
+.check_bda:
         ld      a, (x86_mem_addr)
         cp      #10
         jr      c, .done
         cp      #16
         jr      nc, .done
+.trace:
         ld      hl, x86_mem_read_prefix
         call    x86_mem_watch_string
         ld      a, (x86_mem_addr+2)
