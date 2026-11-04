@@ -28,6 +28,42 @@ x86_real_alu8_accumulator_immediate:
         ld      (x86_alu8_carry_in), a
         jp      x86_real_alu8_execute_core
 
+; OR AL,imm8 (0C) and AND AL,imm8 (24).
+; Logical flags use the common byte-width helper (CF/AF/OF cleared).
+x86_real_logic8_accumulator_immediate:
+        ld      (x86_real_opcode), a
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_logic_src), a
+        ld      a, (x86_reg_ax)
+        ld      (x86_logic_dst), a
+        ld      a, (x86_real_opcode)
+        cp      #0C
+        jr      z, .or_immediate
+        ld      a, (x86_logic_dst)
+        ld      b, a
+        ld      a, (x86_logic_src)
+        and     b
+        jr      .logic_immediate_done
+.or_immediate:
+        ld      a, (x86_logic_dst)
+        ld      b, a
+        ld      a, (x86_logic_src)
+        or      b
+.logic_immediate_done:
+        ld      (x86_logic_result), a
+        xor     a
+        ld      (x86_logic_result+1), a
+        ld      a, 1
+        ld      (x86_logic_width), a
+        call    x86_real_logic_update_flags
+        ld      a, (x86_reg_ax+1)
+        ld      h, a
+        ld      a, (x86_logic_result)
+        ld      l, a
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
 ; -------------------------------------------------------------------------
 ; 8-bit arithmetic and logical ModR/M forms.
 ; A=opcode. Byte register encoding: AL,CL,DL,BL,AH,CH,DH,BH.
@@ -1626,5 +1662,9 @@ x86_guest_alu8_logic_image:
         db #B1,#01                 ; MOV CL,01
         db #02,#D1                 ; ADD DL,CL -> 80
         db #B1,#0F                 ; Restore CL; CX=0F0F
+        db #B0,#0F                 ; MOV AL,0F
+        db #0C,#30                 ; OR AL,30 -> 3F
+        db #24,#CF                 ; AND AL,CF -> 0F
+        db #B0,#F0                 ; Restore AL for AX regression
         db #F4
 x86_guest_alu8_logic_image_end:
