@@ -1970,3 +1970,30 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Build: SjASMPlus firmware and host; check assembly and resident image size.
 - [ ] Runtime: confirm BIOS passes FA and capture the next stop/instruction.
 - **Status:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+## A1.56 — broad 8086 base-instruction expansion (2026-11-04)
+
+Reference: Project124/PCem PCem/808x.c, PCem/x86.h (I_FLAG=0200h) and the XT BIOS opcode audit. Project124 remains read-only; only Project125 is modified.
+
+Added active decode/execute paths in neogs_sub/x86_real_mode.asm for:
+- 91h..97h: XCHG AX,r16 (90h remains NOP).
+- 98h/99h: CBW/CWD.
+- 9Bh: WAIT as a no-op because no 8087 device is attached.
+- 9Dh: POPF through the SS:SP memory backend.
+- 9Eh/9Fh: SAHF/LAHF.
+- A0h..A3h: accumulator/moffs byte and word MOV, including segment overrides.
+- C2h/CAh: near/far RET with immediate stack adjustment.
+- F8h..FDh: CLC/STC/CLI/STI/CLD/STD.
+
+Existing support retained: segment MOV 8C/8E, immediate MOV C6/C7, string/REP, ALU/logical ModR/M, near/far control transfer, interrupts, I/O, memory and video/RTC services.
+
+Implementation notes:
+- XCHG and flag operations do not alter unrelated FLAGS bits.
+- moffs accesses use the existing x86 physical-memory backend, not Z80 physical I/O.
+- RET immediate forms use the existing checked guest SS:SP stack path.
+- No changes to TR-DOS 5.03 loading order, NeoGS DMA/IPC, RTC, UI/video ABI or Project124.
+
+- [ ] SjASMPlus build and resident firmware-size ASSERT.
+- [ ] Regression tests for every newly routed instruction family.
+- [ ] BIOS runtime: capture next CS:IP after current FA stop.
+- **Status:** SOURCE COMMITTED AND POST-WRITE FETCH VERIFIED; BUILD/RUNTIME NOT VERIFIED.
