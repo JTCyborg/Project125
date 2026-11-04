@@ -90,7 +90,9 @@ neo_fw_open_file:
         ld      de, #C010
         or      a
         sbc     hl, de
-        jp      nc, .bad_length
+        jr      c, .firmware_length_in_range
+        jp      nz, .bad_length
+.firmware_length_in_range:
         ld      hl, (neo_fw_file_length)
         ld      de, 255
         add     hl, de
