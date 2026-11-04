@@ -119,6 +119,8 @@ main_loop:
         jp      z, command_boot_bios
         cp      CMD_VIDEO_CRC_TEST
         jp      z, command_video_crc_test
+        cp      CMD_DMA_READ_TEST
+        jp      z, command_dma_read_test
 
         ; Unknown command: release CBIT so the host cannot deadlock.
         xor     a
@@ -371,6 +373,71 @@ command_video_crc_test:
         ld      (x86_exit_status), a
 .video_crc_test_done:
         xor     a
+        out     (CLRCBIT), a
+        jp      main_loop
+
+; -------------------------------------------------------------------------
+; CMD_DMA_READ_TEST — verify NeoGS -> ATM transfer through the ZX DMA window.
+; NeoGS stages 256 bytes at physical 00E000h (WIN1 page 03, logical 6000h).
+; The host reads 256 bytes from its DMA window at 0000h with LDIR.
+; GSCOM/CBIT are used only as a doorbell/end marker; payload is DMA-only.
+; -------------------------------------------------------------------------
+command_dma_read_test:
+        ld      a, #03
+        call    neo_set_pg1
+
+        ; Deterministic 00..FF test pattern in the DMA source buffer.
+        ld      hl, #6000
+        xor     a
+        ld      b, 0
+.dma_read_test_fill:
+        ld      (hl), a
+        inc     hl
+        inc     a
+        djnz    .dma_read_test_fill
+
+        ld      a, C_DMA_ZX
+        out     (DMA_MOD), a
+        ld      a, NGS_DMA_TEST_SOURCE_HAD
+        out     (DMA_HAD), a
+        ld      a, NGS_DMA_TEST_SOURCE_MAD
+        out     (DMA_MAD), a
+        ld      a, NGS_DMA_TEST_SOURCE_LAD
+        out     (DMA_LAD), a
+        ld      a, #80
+        out     (DMA_CST), a
+
+        xor     a
+        out     (CLRCBIT), a
+
+        ld      d, DMA_WAIT_OUTER
+.dma_read_test_outer:
+        ld      bc, DMA_WAIT_LIMIT
+.dma_read_test_wait:
+        in      a, (ZXSTAT)
+        bit     B_CBIT, a
+        jr      nz, .dma_read_test_done
+        dec     bc
+        ld      a, b
+        or      c
+        jr      nz, .dma_read_test_wait
+        dec     d
+        jr      nz, .dma_read_test_outer
+
+        ; Timeout: always disable DMA before releasing the command.
+        xor     a
+        out     (DMA_CST), a
+        ld      a, 1
+        ld      (neo_dma_error), a
+        xor     a
+        out     (CLRCBIT), a
+        jp      main_loop
+
+.dma_read_test_done:
+        xor     a
+        out     (DMA_CST), a
+        xor     a
+        ld      (neo_dma_error), a
         out     (CLRCBIT), a
         jp      main_loop
 
