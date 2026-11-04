@@ -1907,3 +1907,16 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
 
 | 2026-11-04 | A1.50 Archive-first TR-DOS boot order | SOURCE COMMITTED | Restore exact #7FFD/BANKM=#10 + #EFF7=0 startup and defer ATM video/window-0/DOSEN/RTC UI until NEOLOAD.C, NEOFW.C and BIOS.C disk I/O have completed. Remove per-call #10/#18 paging toggles. |
+
+
+## A1.51 — исправление младшего байта физического адреса segment:offset (2026-11-04)
+
+- [x] Runtime A45/A63: TR-DOS 5.03 успешно выполняет C=#0A (каталог), C=#08 (дескриптор) и C=#05 (сектора); NEOLOAD.C и NEOFW.C открываются, поток прошивки завершается, BIOS.C загружается в page 75.
+- [x] NeoGS dump физического адреса FFFF0h подтверждает reset-vector bytes `EA 5B E0 00 F0`, то есть `JMP F000:E05B`.
+- [x] Runtime остановился с `CS:IP=FFFF:0001 OP=DC`. Анализ `x86_mem_calc_phys` выявил ошибку: при вычислении младшего байта `(segment << 4) + offset` исходный код вращал весь младший байт сегмента без маски. Для сегмента FFFFh это давало FFh вместо F0h, поэтому fetch из FFFF:0000 фактически обращался к FFFFFh (последнему байту BIOS ROM, DC), а не FFFF0h (EA).
+- [x] Исправлен `neogs_sub/x86_memory.asm`: перед четырьмя `RLCA` добавлено `AND #0F`. Это сохраняет только младшую тетраду сегмента, которая и должна стать старшей тетрадой младшего байта физического адреса.
+- [ ] Build: SjASMPlus / build_project125.bat; проверить все сценарии адресации и отсутствие новых ошибок.
+- [ ] Runtime: ожидать, что первая выборка FFFF:0000 даст EA, far JMP установит CS:IP=F000:E05B, затем зафиксировать следующий неподдержанный BIOS opcode/инструкцию.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Исправление обосновано точным вычислением адреса и runtime-дампом, но запуск BIOS после него ещё не проверен.
+
+| 2026-11-04 | A1.51 Fix physical address low byte for FFFF:0000 | SOURCE COMMITTED | Mask segment low nibble before shifting into physical address byte 0; correct FFFF:0000 from FFFFFh to FFFF0h. Build/runtime pending. |
