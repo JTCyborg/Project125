@@ -60,7 +60,10 @@ neo_fw_open_file:
 .search_gate_ready:
         ld      hl, trace_noload_gate_done
         call    p125_trace_port
-        ld      c, 10
+        ; The DOSEN trampoline leaves BC=#0177 (B=1). The TR-DOS
+        ; catalogue API expects the original Project124 entry context with
+        ; BC=#000A; setting only C would accidentally pass B=1.
+        ld      bc, 10
         call    #3D13
         ld      hl, trace_noload_02_search_return
         call    p125_trace_port
@@ -74,7 +77,7 @@ neo_fw_open_file:
         ld      (#5D0F), a
         ld      (#5D10), a
         pop     af
-        ld      c, 8
+        ld      bc, 8
         ld      hl, trace_noload_03_descriptor_call
         call    p125_trace_port
         call    #3D13
