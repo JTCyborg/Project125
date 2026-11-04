@@ -1279,3 +1279,15 @@ A1.50–A1.53 признаны неудачными экспериментами
 - **Статус:** DIAGNOSTIC SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
 
 | 2026-11-04 | A1.84 RTC return-address validation | SOURCE COMMITTED | Added stack-top return-address comparison before RET; no RTC I/O protocol changes. |
+
+
+## A1.85 — исправление ошибок сборки RTC-диагностики (2026-11-04)
+
+- [x] Получена ошибка SjASMPlus: `CHECK_AND_INIT_CMOS.already_active` не найден; переход `JR` также выдавал недопустимое смещение из-за неразрешённой локальной метки.
+- [x] Локальная метка ветки уже активной RTC заменена на глобальную `rtc_already_active`; условный переход заменён на `JP Z`, чтобы исключить ограничение относительного диапазона.
+- [x] Исправлена логическая ошибка A1.84: `HL=SP` давало адрес вершины стека, а не адрес возврата. Теперь слово возврата временно снимается `POP DE`, немедленно возвращается `PUSH DE` и сравнивается с `rtc_signature_write_return`; исходный стек для RET сохраняется.
+- [ ] Повторить сборку через `build_project125.bat`; проверить синтаксис RTC и общий лимит resident host image.
+- [ ] Runtime: прислать полный лог RTC. Ожидаемые диагностические исходы — `[RTC 12] RETURN ADDRESS OK` либо `[RTC 13] RETURN ADDRESS BAD`, затем проверить появление `[RTC 06] SIGNATURE WRITE DONE`.
+- **Статус:** SOURCE COMMITTED / BUILD NOT VERIFIED / RUNTIME PENDING.
+
+| 2026-11-04 | A1.85 RTC assembler and stack-check correction | SOURCE COMMITTED | Fixed unresolved local branch/range error and corrected stack return-address comparison; build and runtime remain unverified. |
