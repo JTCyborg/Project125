@@ -36,6 +36,7 @@ CHECK_AND_INIT_CMOS::
         LD      A, #11
         LD      L, #AA
         CALL    write_byte_raw
+rtc_signature_write_return:
         LD      HL, rtc_trace_06_signature_write_done
         CALL    p125_trace_port
 
@@ -154,6 +155,21 @@ write_byte_raw
         ; not, investigate the RET target/stack rather than either OUT cycle.
         LD      HL, rtc_trace_11_write_ret
         CALL    p125_trace_port
+
+        ; Compare the stacked return address with the exact caller continuation.
+        ; At this point SP must point to rtc_signature_write_return.
+        LD      HL, 0
+        ADD     HL, SP
+        LD      DE, rtc_signature_write_return
+        OR      A
+        SBC     HL, DE
+        JR      Z, .return_address_ok
+        LD      HL, rtc_trace_13_return_bad
+        CALL    p125_trace_port
+        RET
+.return_address_ok
+        LD      HL, rtc_trace_12_return_ok
+        CALL    p125_trace_port
         RET
 
 rtc_trace_0D_index_out_begin: DEFB "[RTC 0D] INDEX OUT BEGIN", 13, 10, 0
@@ -161,6 +177,8 @@ rtc_trace_0E_index_out_done:  DEFB "[RTC 0E] INDEX OUT DONE", 13, 10, 0
 rtc_trace_0F_data_out_begin:  DEFB "[RTC 0F] DATA OUT BEGIN", 13, 10, 0
 rtc_trace_10_data_out_done:   DEFB "[RTC 10] DATA OUT DONE", 13, 10, 0
 rtc_trace_11_write_ret:        DEFB "[RTC 11] WRITE RET", 13, 10, 0
+rtc_trace_12_return_ok:        DEFB "[RTC 12] RETURN ADDRESS OK", 13, 10, 0
+rtc_trace_13_return_bad:       DEFB "[RTC 13] RETURN ADDRESS BAD", 13, 10, 0
 
 open_cmos
         LD      BC, #EFF7
