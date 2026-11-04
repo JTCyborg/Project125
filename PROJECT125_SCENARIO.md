@@ -1708,3 +1708,38 @@ A1.50–A1.53 признаны неудачными экспериментами
 - [ ] Build: собрать `build_project125.bat`; проверить отсутствие ошибок и `ProgramEnd <= #A800`.
 - [ ] Runtime: проверить `[NLOAD E1]`, `[NLOAD T0]`, `[NLOAD T1]`, затем `[NLOAD 02]`. Если поиск вернётся, продолжить descriptor/sector tests.
 - **Статус:** SOURCE COMMITTED / BUILD AND RUNTIME NOT VERIFIED.
+
+
+## A1.34 — возврат к проверенному TR-DOS open из Project124 (2026-11-04)
+
+- [x] Сверен архивный рабочий файл `Project125/neogs_driver.asm` из ветки `main` (blob `156f64798ccc9feb5f0fdaa242fd8b246ce9231a`) с активным `zx_main/neogs_driver.asm`.
+- [x] В `neo_fw_open_file` восстановлена последовательность рабочего драйвера: копирование имени в `#5CDD`, `A=9`, `#5D06=9`, `C=10`, прямой `CALL #3D13`; затем descriptor через `C=8` без изменения остальных возвращённых регистров.
+- [x] Удалены из критического пути открытия: DOSEN trampoline, диагностический `C=#14` probe, дополнительная инициализация DOSENV/ERR_SP, сохранение/подмена HL и trace-вызовы между подготовкой и ROM API.
+- [x] Остальная логика чтения первого сектора, потоковой передачи NeoGS, RTC и экранный код не менялись.
+- [x] Driver banner A54; host build marker A31.
+- [ ] Build: собрать проект и проверить SjASMPlus, размер resident image и `ProgramEnd <= #A800`.
+- [ ] Runtime: проверить возврат каталожного поиска `C=#0A`, descriptor `C=#08`, чтение первого сектора, затем полный запуск NeoGS.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED. Это восстановление известной рабочей последовательности, а не заявление о подтверждённом runtime.
+
+| 2026-11-04 | A1.34 Legacy TR-DOS open restore | SOURCE COMMITTED | Restore the exact archived Project124 TR-DOS open sequence in the active driver; remove added pre-call probes/trampoline/environment writes from this critical path. Build/runtime pending. |
+
+
+## A1.35 — трассировка границ TR-DOS open без изменения ABI (2026-11-04)
+
+- Runtime A31/A54: вывод доходит до `[TRACE 70] NEOLOAD READ BEGIN`, но не появляется `[TRACE 71]`; по этому логу нельзя определить, зависает ли каталог, descriptor или чтение первого сектора.
+- Добавлены только контрольные сообщения вокруг прежних вызовов: OPEN ENTRY, перед/после `C=10), перед/после `C=8), перед/после чтения первого сектора.
+- `p125_trace_port` сохраняет AF/BC/HL и не меняет DE; контрольные вызовы размещены так, чтобы значения регистров TR-DOS ABI перед ROM-вызовами оставались прежними.
+- Сама последовательность API инициализации, параметры `#5CDD/#5CE5/#5D06), вызовы `C=10)/`C=8`, sector read и NeoGS transfer не изменялись.
+- Driver A55; host build A32.
+- [ ] Build: проверить SjASMPlus и `ProgramEnd <= #A800`.
+- [ ] Runtime: последний появившийся маркер однозначно локализует проблемный участок.
+- **Статус:** SOURCE COMMITTED; BUILD/RUNTIME NOT VERIFIED.
+
+| 2026-11-04 | A1.35 TR-DOS open boundary trace | SOURCE COMMITTED | Add register-preserving markers around the archived TR-DOS calls to localize the stall without changing their inputs. |
+
+
+## A1.36 — TR-DOS catalogue search hang: stack placement
+- [x] Runtime A55 log localizes the hang inside TR-DOS `#3D13` catalogue search (`C=#0A`): `[NLOAD 01]` appears and `[NLOAD 02]` does not.
+- [x] Static comparison: Project124 sets the host stack to `#AFFF`; Project125 had moved it to `#BFFF` while calling the same TR-DOS ROM API.
+- [x] Restored Project124's `#AFFF` stack top in Project125. The resident screen module is constrained to end at or below `#A800`, leaving the stack above it.
+- [ ] Rebuild and run on ATM/Unreal; confirm `[NLOAD 02]` and subsequent descriptor/sector markers. This change is not yet runtime-verified.
