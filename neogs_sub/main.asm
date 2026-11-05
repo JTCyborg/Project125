@@ -1808,8 +1808,8 @@ x86_ppi_write_control:
 X86_KBD_DMA_WAIT EQU #FFFF
 
 x86_host_input_service_poll:
-        ; The host drains DBIT/GSDAT while waiting for DMA READY and completion.
-        ; Use that same established IPC stream for service diagnostics.
+        ; #EF is the independent shared debug port. Do not put diagnostics
+        ; into DBIT/GSDAT here: the host may be waiting for this READY edge.
         push    af
         push    bc
         push    de
@@ -1820,7 +1820,7 @@ x86_host_input_service_poll:
         inc     a
         ld      (x86_host_input_poll_seen), a
         ld      hl, x86_kbd_poll_message
-        call    neo_debug_send_string
+        call    neo_debug_port_string
 .kbd_poll_marker_done:
         ; CMD_BOOT_BIOS has already been acknowledged. A new CBIT edge while
         ; the interpreter runs is the host keyboard mailbox doorbell.
@@ -1833,7 +1833,7 @@ x86_host_input_service_poll:
         cp      CMD_HOST_INPUT
         jr      nz, .kbd_service_done
         ld      hl, x86_kbd_request_message
-        call    neo_debug_send_string
+        call    neo_debug_port_string
         ; Arm the complete DMA receiver before releasing CBIT to the host.
         ld      a, C_DMA_ZX
         out     (DMA_MOD), a
@@ -1866,7 +1866,7 @@ x86_host_input_service_poll:
         out     (DMA_CST), a
         out     (CLRCBIT), a
         ld      hl, x86_kbd_timeout_message
-        call    neo_debug_send_string
+        call    neo_debug_port_string
         jr      .kbd_service_done
 .kbd_dma_done:
         xor     a
@@ -1874,7 +1874,7 @@ x86_host_input_service_poll:
         out     (CLRCBIT), a
         call    x86_kbd_process_matrix
         ld      hl, x86_kbd_done_message
-        call    neo_debug_send_string
+        call    neo_debug_port_string
 .kbd_service_done:
         pop     hl
         pop     de
