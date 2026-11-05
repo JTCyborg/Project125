@@ -376,9 +376,8 @@ x86_real_fetch_out_of_range:
         jp      x86_real_fetch_out_of_range_resident
 
 x86_real_execute:
-        ; Emit the entry marker through the resident #EF trace routine.
-        ; x86_debug_port_string uses the DBIT transport path and can wait for
-        ; the ATM host; this marker must remain independent of DMA/DBIT.
+        ; Emit a complete entry record through the resident #EF trace
+        ; helper so it uses the same shared-log path as the gateway markers.
         ld      hl, x86_dbg_core_enter
         call    neo_trace_ef_string
         xor     a
