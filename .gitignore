@@ -1,0 +1,7 @@
+# Project125 generated build outputs
+/build/
+/disk_A.trd
+/neogs_code.bin
+/neogs_bootstrap.bin
+/zx_main/neoprog_part*.bin
+/zx_main/neoprog_chunks.inc

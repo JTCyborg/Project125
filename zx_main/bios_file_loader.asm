@@ -137,7 +137,6 @@ neogs_bios_load_from_trdos:
         ld      hl, #C000
         ld      (hl), #FF
         ld      de, #C001
-        dec     hl
         ld      bc, (bios_trdos_prefix_size)
         dec     bc
         ldir

@@ -463,7 +463,7 @@ command_run_x86_real:
 
 ; -------------------------------------------------------------------------
 ; Project125 BIOS ROM transfer.
-; Host streams an 8 KiB backing window through the existing ZX DMA channel.
+; Host streams exactly 8192 bytes through the existing ZX DMA channel.
 ; DMA physical target 12C000h is the start of NeoGS physical page 75.
 ; Host ends the transfer by asserting CBIT after the last byte.
 ; -------------------------------------------------------------------------
@@ -510,9 +510,25 @@ command_load_bios:
 .bios_dma_host_end:
         xor     a
         out     (DMA_CST), a
-        ; Report the raw top-of-ROM bytes for diagnostics only. They are
-        ; never compared against a vendor signature or a reset-vector pattern.
+        ; Compare the final reset-vector bytes in physical page 75 before
+        ; the ROM overlay validator reads them through x86_mem_read8.
         call    bios_rom_debug_dump_tail
+        call    bios_rom_validate
+        jr      nc, .bios_image_valid
+        ; Report the actual byte read at the failing ROM address.
+        ; AX=B2xx, where xx is the byte returned by x86_mem_read8.
+        ; The failed address remains identified by bios_rom_check_id.
+        ld      a, (bios_rom_actual)
+        ld      l, a
+        ld      h, #B2
+        ld      (saved_x86_ax), hl
+        ld      a, 13
+        ld      (x86_exit_status), a
+        xor     a
+        out     (CLRCBIT), a
+        jp      main_loop
+
+.bios_image_valid:
         ld      a, 1
         ld      (bios_rom_loaded), a
         ld      hl, #B105
