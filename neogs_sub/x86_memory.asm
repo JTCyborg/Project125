@@ -103,7 +103,6 @@ x86_mem_read8:
         ret     c
         ld      a, (hl)
         ; Capture the exact backend address and byte returned by this read.
-        ; This is independent of the instruction-fetch helper's bookkeeping.
         ld      (x86_mem_last_read_value), a
         ld      a, (x86_mem_addr)
         ld      (x86_mem_last_read_addr), a
@@ -111,6 +110,18 @@ x86_mem_read8:
         ld      (x86_mem_last_read_addr+1), a
         ld      a, (x86_mem_addr+2)
         ld      (x86_mem_last_read_addr+2), a
+        ; If the fetch helper armed stage 1, preserve this specific fetch
+        ; separately from later operand/data reads.
+        ld      a, (x86_fetch_diag_stage)
+        cp      1
+        jr      nz, .not_instruction_fetch
+        ld      hl, (x86_mem_last_read_addr)
+        ld      (x86_fetch_exact_addr), hl
+        ld      a, (x86_mem_last_read_addr+2)
+        ld      (x86_fetch_exact_addr+2), a
+        ld      a, (x86_mem_last_read_value)
+        ld      (x86_fetch_exact_value), a
+.not_instruction_fetch:
         ld      a, (x86_mem_last_read_value)
         call    x86_mem_watch_low_read
         ld      a, (x86_mem_last_read_value)
