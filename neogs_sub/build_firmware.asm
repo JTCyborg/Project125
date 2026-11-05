@@ -24,8 +24,6 @@
 
         SAVEBIN "neogs_resident.bin", 0, neogs_resident_end
         SAVEBIN "build/neogs_resident.bin", 0, neogs_resident_end
-        SAVEBIN "neogs_overlay68.bin", neogs_overlay68_start, neogs_overlay68_end - neogs_overlay68_start
-        SAVEBIN "build/neogs_overlay68.bin", neogs_overlay68_start, neogs_overlay68_end - neogs_overlay68_start
         SAVEBIN "neogs_overlay69.bin", neogs_overlay69_start, neogs_overlay69_end - neogs_overlay69_start
         SAVEBIN "build/neogs_overlay69.bin", neogs_overlay69_start, neogs_overlay69_end - neogs_overlay69_start
 

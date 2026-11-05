@@ -317,8 +317,9 @@ x86_trace_instruction_fetch:
         call    x86_trace_hex8
         ld      a, ':'
         out     (#EF), a
+        ; x86_real_fetch8 calls this trace before incrementing IP, so
+        ; the current IP is already the exact address of the byte just read.
         ld      hl, (x86_reg_ip)
-        dec     hl
         ld      a, h
         call    x86_trace_hex8
         ld      a, l
@@ -371,6 +372,10 @@ x86_trace_fetch_count: db 0
 x86_trace_decode_once: db 0
 x86_trace_fetch_text:  db "[NGS X86] FETCH ",0
 x86_trace_decode_text: db "[NGS X86] MAIN DECODER ENTER",13,10,0
+x86_trace_decode_opcode_text: db "[NGS X86] DECODE OPCODE=",0
+x86_trace_decode_opcode: db 0
+x86_trace_jmp_far_once: db 0
+x86_trace_jmp_far_text: db "[NGS X86] JMP FAR HANDLER ENTER",13,10,0
 
 x86_real_fetch_out_of_range:
         jp      x86_real_fetch_out_of_range_resident
@@ -564,6 +569,10 @@ x86_real_dispatch_no_progress:
         pop     af
         ret
 .fetch_succeeded:
+        ; Preserve the fetched opcode and flags across the one-shot diagnostic.
+        ; The marker uses A as its state variable; it must not replace the
+        ; instruction byte returned by x86_real_fetch8.
+        push    af
         ; This marker proves x86_mem_read8 returned an instruction byte.
         ld      a, (x86_dbg_fetch_ok_once)
         or      a
@@ -577,6 +586,7 @@ x86_real_dispatch_no_progress:
         pop     hl
         pop     af
 .fetch_ok_marked:
+        pop     af
         ; Emit the exact first successfully fetched BIOS opcode before decode.
         ld      a, (bios_first_instruction_trace)
         cp      1
@@ -593,6 +603,9 @@ x86_real_dispatch_no_progress:
         jp      z, x86_real_next
         ; The opcode survived resident escape dispatch and is now entering
         ; the main interpreter decoder. Emit this milestone once per run.
+        ; Preserve AF: the trace counter uses A, but the decoder still needs
+        ; the original opcode returned by x86_real_fetch8.
+        push    af
         ld      a, (x86_trace_decode_once)
         or      a
         jr      nz, .decode_trace_done
@@ -609,6 +622,27 @@ x86_real_dispatch_no_progress:
         pop     bc
         pop     af
 .decode_trace_done:
+        pop     af
+        ; Record the opcode that actually reaches the main dispatch table.
+        ; The fetch trace alone is insufficient: helpers may preserve a
+        ; diagnostic copy while accidentally changing the live opcode in A.
+        ld      (x86_trace_decode_opcode), a
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_trace_decode_opcode_text
+        call    x86_trace_puts
+        ld      a, (x86_trace_decode_opcode)
+        call    x86_trace_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
 
         ; 8086 segment-override prefixes. Multiple prefixes are accepted;
         ; the last segment prefix before the instruction takes effect.
@@ -1136,6 +1170,19 @@ x86_real_jmp_near:
 
 ; EA ptr16:16 — far JMP. Fetch the complete pointer before changing CS:IP.
 x86_real_jmp_far:
+        ; One-shot proof that the EA dispatch branch reached this handler.
+        ld      a, (x86_trace_jmp_far_once)
+        or      a
+        jr      nz, .jmp_far_trace_done
+        inc     a
+        ld      (x86_trace_jmp_far_once), a
+        push    af
+        push    hl
+        ld      hl, x86_trace_jmp_far_text
+        call    x86_trace_puts
+        pop     hl
+        pop     af
+.jmp_far_trace_done:
         call    x86_real_fetch8
         ret     c
         ld      (x86_real_far_ip), a
