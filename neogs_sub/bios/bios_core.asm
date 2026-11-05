@@ -476,8 +476,8 @@ bios_work_value:      db 0
 
 ; -------------------------------------------------------------------------
 ; BIOS INT 16h keyboard service backed by the physical ATM-to-XT bridge.
-; AH=00/10 dequeue an AX-format key, AH=01/11 peek, AH=02 returns shift flags.
-; Empty reads retain the project's nonblocking return behavior (AX=0).
+; AH=00/10 block until an AX-format key arrives, AH=01/11 peek,
+; AH=02 returns the current XT shift flags.
 ; -------------------------------------------------------------------------
 bios_int16_dispatch:
         ld      a, (x86_reg_ax+1)
