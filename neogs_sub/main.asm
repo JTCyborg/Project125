@@ -2813,9 +2813,13 @@ x86_real_group_f7:
         ; ModR/M decode without changing the guest architectural state.
         ld      a, #F0
         ld      (x86_shift_diag_stage), a
-        ; Record the guest IP before fetching ModR/M. The fetch helper must
-        ; read exactly CS:IP and advance IP once on success.
+        ; Project124 PCem's F7 path calls fetchea(), whose FETCH() reads
+        ; the byte following the opcode. In this resident bridge the observed
+        ; dispatcher entry IP is one byte behind the post-opcode IP, so align
+        ; it with the PCem contract before consuming ModR/M.
         ld      hl, (x86_reg_ip)
+        inc     hl
+        ld      (x86_reg_ip), hl
         ld      (x86_f7_diag_ip), hl
         call    x86_real_fetch8
         ret     c
