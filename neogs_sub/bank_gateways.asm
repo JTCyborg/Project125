@@ -197,3 +197,9 @@ bank69_call_x86_mov_write_rm:
         out     (MPAG), a
         pop     af
         ret
+
+; Overlay69 -> overlay68: advance the guest instruction stream.
+bank69_jump_x86_real_next:
+        ld      a, NGS_FW_BANK68_MPAG
+        out     (MPAG), a
+        jp      x86_real_next
