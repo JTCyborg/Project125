@@ -1070,8 +1070,8 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261106-22",13,10
-        defb "[NGS] BASE COMMIT ADD69F6",13,10,0
+        defb "[NGS] BUILD 20261106-23",13,10
+        defb "[NGS] BASE COMMIT 72D340D",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
 trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
@@ -3101,13 +3101,11 @@ x86_real_group_f7:
         ; ModR/M decode without changing the guest architectural state.
         ld      a, #F0
         ld      (x86_shift_diag_stage), a
-        ; Project124 PCem's F7 path calls fetchea(), whose FETCH() reads
-        ; the byte following the opcode. In this resident bridge the observed
-        ; dispatcher entry IP is one byte behind the post-opcode IP, so align
-        ; it with the PCem contract before consuming ModR/M.
+        ; The opcode fetch has already advanced IP to the ModR/M byte.
+        ; Do not increment it here: x86_real_fetch8 reads at IP and advances
+        ; it only after a successful read. The previous extra INC skipped the
+        ; ModR/M (F7 D0 became a read of the following 8B opcode).
         ld      hl, (x86_reg_ip)
-        inc     hl
-        ld      (x86_reg_ip), hl
         ld      (x86_f7_diag_ip), hl
         call    x86_real_fetch8
         ret     c
