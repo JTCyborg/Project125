@@ -2347,6 +2347,88 @@ x86_resident_shift_word_mem_shl_cl:
         ld      a, b
         jp      bank_call_x86_shift_shl_cl
 
+; D0 E0: SHL AL,1. Matches PCem 808x.c D0 /4 and /6 handling.
+; Called after ModR/M fetch; this BIOS instruction is register-direct AL.
+x86_resident_shift_byte_shl_one:
+        ld      a, (x86_reg_ax)
+        ld      (x86_shift_original), a
+        sla     a
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      a, #10                ; PCem sets AF for SHL
+        ld      (x86_shift_new_flags+1), a
+
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shl8_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.shl8_parity:
+        ld      a, (x86_shift_result)
+        and     a
+        jp      pe, .shl8_set_pf
+        jr      .shl8_zero
+.shl8_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.shl8_zero:
+        ld      a, (x86_shift_result)
+        or      a
+        jr      nz, .shl8_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.shl8_sign:
+        ld      a, (x86_shift_result)
+        bit     7, a
+        jr      z, .shl8_overflow
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.shl8_overflow:
+        ld      a, (x86_shift_result)
+        and     #80
+        ld      b, a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shl8_cf_ready
+        ld      a, #80
+.shl8_cf_ready:
+        xor     b
+        or      a
+        jr      z, .shl8_merge
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+.shl8_merge:
+        ; Clear CF/PF/AF/ZF/SF/OF, then install the new status flags.
+        ld      hl, (x86_reg_flags)
+        ld      de, #F62A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+
+        ; Update AL and preserve AH.
+        ld      a, (x86_reg_ax+1)
+        ld      h, a
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
 ; Resident helpers keep the overlay68 fetch path within its 16 KiB bank.
 x86_fetch_diag_begin:
         xor     a
