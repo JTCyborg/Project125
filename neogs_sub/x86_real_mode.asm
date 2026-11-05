@@ -327,11 +327,12 @@ x86_real_dispatch:
         or      a
         ; call  nz, bios_progress_emit
 x86_real_dispatch_no_progress:
-        ; Service a pending ATM keyboard DMA snapshot every 256 guest
-        ; instructions. The mailbox is independent of the guest I/O bus.
-        ld      a, l
-        or      a
-        call    z, x86_host_input_service_poll
+        ; Poll the host-input doorbell at every guest instruction boundary.
+        ; A 256-instruction interval can leave a short CBIT request pending
+        ; while the BIOS is executing a long instruction sequence; keyboard
+        ; DMA is an asynchronous host service and must not depend on guest
+        ; register L or on a change in the physical key matrix.
+        call    x86_host_input_service_poll
         call    x86_io_tick
         ret     c
         ; The IRQ-delivery marker is only consumed by the HLT wait loop.
