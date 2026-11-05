@@ -1907,8 +1907,11 @@ x86_guest_handler_image_end:
 x86_real_shift_byte_one:
         call    x86_real_fetch8
         ret     c
-        ; x86_real_fetch8 returns the exact fetched ModR/M in A. Do not
-        ; reload the diagnostic byte: it is shared with opcode fetch tracing.
+        ; Capture the D0 ModR/M at the fetch boundary, before crossing into
+        ; the resident selector. This also records its exact physical address
+        ; and byte, independently of the last opcode-fetch diagnostics.
+        ld      (x86_shift_diag_modrm), a
+        call    x86_fetch_capture_modrm
         jp      x86_resident_shift_byte_dispatch
 
 ; D0 C8: SHR AL,1. Entered from the resident ModR/M selector.
