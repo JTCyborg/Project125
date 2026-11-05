@@ -283,10 +283,7 @@ x86_real_fetch8:
         ret
 
 x86_real_fetch_out_of_range:
-        ld      a, 4
-        ld      (x86_exit_status), a
-        scf
-        ret
+        jp      x86_real_fetch_out_of_range_resident
 
 x86_real_execute:
         xor     a
