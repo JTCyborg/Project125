@@ -303,6 +303,7 @@ x86_real_execute:
         ld      (x86_real_unsupported_opcode), a
         ld      (x86_real_dispatch_seen), a
         ld      (x86_real_poll_return_seen), a
+        ld      (x86_real_first_fetch_seen), a
         ; Emit the exact initial guest CS:IP before the first opcode fetch.
         call    bios_progress_emit
         ld      hl, X86_REAL_STEP_LIMIT
@@ -366,6 +367,19 @@ x86_real_dispatch_no_progress:
         ld      (x86_io_irq_delivered), a
         call    x86_real_fetch8
         ret     c
+        ; This is the first point where a real guest opcode byte has been
+        ; fetched successfully from emulated x86 memory. Emit it once.
+        ld      (x86_real_opcode), a
+        ld      b, a
+        ld      a, (x86_real_first_fetch_seen)
+        or      a
+        jr      nz, .first_fetch_reported
+        inc     a
+        ld      (x86_real_first_fetch_seen), a
+        ld      a, b
+        call    bios_first_fetch_emit
+.first_fetch_reported:
+        ld      a, (x86_real_opcode)
         call    x86_resident_escape_dispatch
         ret     c
         jr      z, x86_real_next
@@ -2921,4 +2935,6 @@ x86_real_poll_return_message:
 x86_real_dispatch_seen:
         db 0
 x86_real_poll_return_seen:
+        db 0
+x86_real_first_fetch_seen:
         db 0
