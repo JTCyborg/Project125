@@ -683,6 +683,27 @@ bios_stop_dump_state:
         call    neo_debug_send_string
         ld      a, (bios_video_stream_errors)
         call    neo_debug_hex8
+        ld      hl, bios_stop_shift_label
+        call    neo_debug_send_string
+        ld      a, (x86_shift_stage69)
+        call    neo_debug_hex8
+        ld      hl, (x86_mov_segment)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, ':'
+        call    neo_send_data_byte
+        ld      hl, (x86_mov_offset)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      hl, (x86_shift_result69)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
         pop     hl
         pop     de
         pop     bc
@@ -697,6 +718,8 @@ bios_stop_flags_label:
         defb    " FLAGS=", 0
 bios_stop_video_errors_label:
         defb    " VERR=", 0
+bios_stop_shift_label:
+        defb    " SH=", 0
 
 ; Dump physical page-75 bytes at image offset 1FF0 (guest FFFF0..FFFF4).
 ; This is deliberately performed after DMA is disabled and before validation.
