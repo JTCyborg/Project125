@@ -439,9 +439,9 @@ atm_keyboard_poll_and_send:
         call    p125_emit_char
         call    atm_keyboard_log_scancodes
 
-        ; ATM lines are tagged [ATM]; received NeoGS DBIT lines are tagged [NGS].
-        ld      hl, msg_kbd_request_send
-        call    p125_print_string
+        ; Replace the current BIOS command with a short keyboard DMA request.
+        ; NeoGS notices it at an instruction boundary and clears CBIT when
+        ; its DMA receiver is armed.
         ld      a, CMD_HOST_INPUT
         out     (GSCOM), a
         ld      d, 8
@@ -473,8 +473,6 @@ atm_keyboard_poll_and_send:
         jr      .atm_kbd_ready_timeout
 
 .atm_kbd_dma_ready:
-        ld      hl, msg_kbd_ready
-        call    p125_print_string
         ld      hl, atm_keyboard_matrix
         ld      de, BIOS_HOST_DMA_WINDOW
         ld      bc, NGS_KBD_MATRIX_SIZE
@@ -482,8 +480,6 @@ atm_keyboard_poll_and_send:
         ldir
         ; End marker is control-plane only; the eight matrix bytes above
         ; were transferred exclusively through the ZX DMA memory window.
-        ld      hl, msg_kbd_payload_sent
-        call    p125_print_string
         ld      a, #FF
         out     (GSCOM), a
 
@@ -526,8 +522,6 @@ atm_keyboard_poll_and_send:
         ldir
         ld      a, 1
         ld      (atm_keyboard_initialized), a
-        ld      hl, msg_kbd_end_ack
-        call    p125_print_string
         ld      hl, msg_kbd_dma_ok
         call    p125_print_string
         jr      .atm_kbd_done
@@ -708,14 +702,6 @@ atm_kbd_log_old:   db 0
 atm_kbd_log_bit:   db 0
 atm_kbd_log_code:  db 0
 
-msg_kbd_request_send:
-        defb    "[KBD] REQUEST CMD_HOST_INPUT", 13, 10, 0
-msg_kbd_ready:
-        defb    "[KBD] NGS READY; DMA RECEIVER ARMED", 13, 10, 0
-msg_kbd_payload_sent:
-        defb    "[KBD] MATRIX DMA SENT; END MARKER", 13, 10, 0
-msg_kbd_end_ack:
-        defb    "[KBD] NGS END ACK", 13, 10, 0
 msg_kbd_matrix:
         defb    "[KBD] MATRIX ", 0
 msg_kbd_dma_ok:
