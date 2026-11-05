@@ -3260,11 +3260,17 @@ neogs_resident_end:
 neogs_overlay68_start:
 ; Temporary bank-window probe: this code must execute from physical page 68.
 neogs_overlay68_probe:
-        push    af
-        ld      a, 'P'
-        out     (#EF), a
-        pop     af
+        ; A complete CR/LF record is visible in the shared log. A lone 'P'
+        ; was not a reliable probe because the log reader may discard
+        ; unterminated single-character output.
+        push    hl
+        ld      hl, trace_overlay68_probe
+        call    neo_trace_ef_string
+        pop     hl
         ret
+
+trace_overlay68_probe:
+        defb "[NGS BANK68 PROBE]",13,10,0
         INCLUDE "x86_modrm.asm"
         INCLUDE "x86_real_mode.asm"
         INCLUDE "x86_real_alu8.asm"
