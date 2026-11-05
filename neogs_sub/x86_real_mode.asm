@@ -296,16 +296,8 @@ x86_real_fetch_out_of_range:
         jp      x86_real_fetch_out_of_range_resident
 
 x86_real_execute:
-        ; Keep the entry marker as the very first executor operation.
-        ld      hl, x86_real_exec_enter_message
-        call    neo_debug_port_string
         xor     a
         ld      (x86_real_unsupported_opcode), a
-        ld      (x86_real_dispatch_seen), a
-        ld      (x86_real_poll_return_seen), a
-        ld      (x86_real_first_fetch_seen), a
-        ; Emit the exact initial guest CS:IP before the first opcode fetch.
-        call    bios_progress_emit
         ld      hl, X86_REAL_STEP_LIMIT
         ld      (x86_real_steps), hl
 x86_real_next:
@@ -321,15 +313,6 @@ x86_real_dispatch:
         dec     hl
         ld      (x86_real_steps), hl
 
-        ; One-shot #EF trace proves that the guest instruction dispatcher is live.
-        ld      a, (x86_real_dispatch_seen)
-        or      a
-        jr      nz, .dispatch_marker_done
-        inc     a
-        ld      (x86_real_dispatch_seen), a
-        ld      hl, x86_real_dispatch_message
-        call    neo_debug_port_string
-.dispatch_marker_done:
         ; Live BIOS progress: emit CS:IP/CX every 2048 guest instructions.
         ; The host drains DBIT concurrently while CMD_BOOT_BIOS holds CBIT.
         ld      a, l
@@ -342,7 +325,7 @@ x86_real_dispatch:
         ; x86_real_progress_enable remains active for BIOS instruction-budget renewal.
         ld      a, (x86_real_progress_enable)
         or      a
-        call    nz, bios_progress_emit
+        ; call  nz, bios_progress_emit
 x86_real_dispatch_no_progress:
         ; Poll the host-input doorbell at every guest instruction boundary.
         ; A 256-instruction interval can leave a short CBIT request pending
@@ -350,15 +333,6 @@ x86_real_dispatch_no_progress:
         ; DMA is an asynchronous host service and must not depend on guest
         ; register L or on a change in the physical key matrix.
         call    x86_host_input_service_poll
-        ; One-shot trace proves that the keyboard service returned to the CPU loop.
-        ld      a, (x86_real_poll_return_seen)
-        or      a
-        jr      nz, .poll_return_marker_done
-        inc     a
-        ld      (x86_real_poll_return_seen), a
-        ld      hl, x86_real_poll_return_message
-        call    neo_debug_port_string
-.poll_return_marker_done:
         call    x86_io_tick
         ret     c
         ; The IRQ-delivery marker is only consumed by the HLT wait loop.
@@ -367,19 +341,6 @@ x86_real_dispatch_no_progress:
         ld      (x86_io_irq_delivered), a
         call    x86_real_fetch8
         ret     c
-        ; This is the first point where a real guest opcode byte has been
-        ; fetched successfully from emulated x86 memory. Emit it once.
-        ld      (x86_real_opcode), a
-        ld      b, a
-        ld      a, (x86_real_first_fetch_seen)
-        or      a
-        jr      nz, .first_fetch_reported
-        inc     a
-        ld      (x86_real_first_fetch_seen), a
-        ld      a, b
-        call    bios_first_fetch_emit
-.first_fetch_reported:
-        ld      a, (x86_real_opcode)
         call    x86_resident_escape_dispatch
         ret     c
         jr      z, x86_real_next
@@ -2924,17 +2885,3 @@ x86_daa_old_cf:   db 0
 x86_daa_old_af:   db 0
 x86_daa_new_cf:   db 0
 x86_daa_new_af:   db 0
-
-; One-shot BIOS execution path diagnostics, emitted on shared debug port #EF.
-x86_real_exec_enter_message:
-        defb "[NGS] BIOS EXEC ENTER", 13, 10, 0
-x86_real_dispatch_message:
-        defb "[NGS] BIOS DISPATCH ENTER", 13, 10, 0
-x86_real_poll_return_message:
-        defb "[NGS] BIOS INPUT POLL RETURN", 13, 10, 0
-x86_real_dispatch_seen:
-        db 0
-x86_real_poll_return_seen:
-        db 0
-x86_real_first_fetch_seen:
-        db 0

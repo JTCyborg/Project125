@@ -703,15 +703,15 @@ atm_kbd_log_bit:   db 0
 atm_kbd_log_code:  db 0
 
 msg_kbd_matrix:
-        defb    "[ATM] [KBD] MATRIX ", 0
+        defb    "[KBD] MATRIX ", 0
 msg_kbd_dma_ok:
-        defb    "[ATM] [KBD] DMA OK", 13, 10, 0
+        defb    "[KBD] DMA OK", 13, 10, 0
 msg_kbd_ready_timeout:
-        defb    "[ATM] [KBD] READY TIMEOUT", 13, 10, 0
+        defb    "[KBD] READY TIMEOUT", 13, 10, 0
 msg_kbd_end_timeout:
-        defb    "[ATM] [KBD] END TIMEOUT", 13, 10, 0
+        defb    "[KBD] END TIMEOUT", 13, 10, 0
 msg_kbd_timeout_status:
-        defb    "[ATM] [KBD] GSSTAT=", 0
+        defb    "[KBD] GSSTAT=", 0
 
 bios_host_tail_data:
         defs    5, 0
