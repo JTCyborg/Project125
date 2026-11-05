@@ -350,7 +350,7 @@ bios_host_tail_prefix:
 bios_host_tail_error:
         defb    "[BIOS DST FFF0] !", 0
 bios_boot_timeout_outer: dw 0
-bios_kbd_poll_counter: dw #4000
+bios_kbd_poll_counter: dw #0100
 
 ; -------------------------------------------------------------------------
 ; ATM physical keyboard scanner and DMA event transport.
