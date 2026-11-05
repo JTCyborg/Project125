@@ -1797,27 +1797,16 @@ x86_host_input_service_poll:
         push    de
         push    hl
 
-        ; While the BIOS executor is active, CBIT is the host-input doorbell.
-        ; The original CMD_BOOT_BIOS token has already been consumed by the
-        ; outer command loop; depending on GS command-latch timing, ZXCMD may
-        ; still expose that old byte even though a new CBIT edge is pending.
-        ; No other host command is valid during this service window.
+        ; During the BIOS executor, the boot command has already been
+        ; acknowledged and no other command is permitted. Therefore any new
+        ; CBIT edge here is the host keyboard mailbox request. Do not read
+        ; ZXCMD: the command latch is not a reliable discriminator while the
+        ; previous long-running command owns the interpreter.
         in      a, (ZXSTAT)
         bit     B_CBIT, a
         jr      z, .kbd_service_done
 
-        ; Do not interpret an unrelated command as a keyboard DMA request.
-        ; ZXCMD is the command latch corresponding to the asserted CBIT.
-        in      a, (ZXCMD)
-        cp      CMD_HOST_INPUT
-        jr      z, .kbd_command_valid
-        ; Unexpected doorbell while BIOS is active: leave it asserted for
-        ; the owner rather than arming the keyboard DMA receiver.
-        jr      .kbd_service_done
-
-.kbd_command_valid:
-        ; One-byte trace marker. The ATM READY loop drains DBIT concurrently,
-        ; so this also proves the resident service observed the doorbell.
+        ; Diagnostic acknowledgement: host drains DBIT while waiting READY.
         ld      a, 'K'
         call    neo_send_data_byte
 
