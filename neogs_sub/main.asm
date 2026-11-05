@@ -542,6 +542,10 @@ bios_boot_entry_debug:
         defb "[NGS] BOOT BIOS ENTRY", 13, 10, 0
 bios_boot_reset_done_debug:
         defb "[NGS] BIOS RESET STATE DONE", 13, 10, 0
+bios_exec_call_debug:
+        defb "[NGS] CALL BIOS EXEC BANK68", 13, 10, 0
+bios_exec_return_debug:
+        defb "[NGS] BIOS EXEC RETURNED", 13, 10, 0
 
 ; Start the real 8086 reset sequence at FFFF:0000 after BIOS transfer/validation.
 command_boot_bios:
@@ -580,7 +584,12 @@ command_boot_bios:
         ld      (x86_real_bounds_enable), a
         ld      a, 1
         ld      (x86_real_progress_enable), a
-        call    x86_real_execute
+        ; The executor lives in overlay page 68; always enter through its bank gateway.
+        ld      hl, bios_exec_call_debug
+        call    neo_debug_port_string
+        call    bank_call_x86_real_execute
+        ld      hl, bios_exec_return_debug
+        call    neo_debug_port_string
         xor     a
         ld      (x86_real_progress_enable), a
         ld      (x86_io_trace_enable), a
