@@ -27,10 +27,9 @@ x86_real_mov_immediate_rm:
         ret     c
         call    x86_real_mov_decode_modrm
         ret     c
-        ld      a, (x86_mov_reg)
-        or      a
-        jp      nz, x86_real_mov_immediate_invalid
-
+        ; PCem Project124's 808x.c C7 path consumes ModR/M with fetchea()
+        ; and does not reject the reg field. Preserve that compatibility:
+        ; C7 CE is treated as MOV SI,imm16 (the /1 bits are ignored).
         ld      a, (x86_mov_opcode)
         cp      #C6
         jr      z, .byte_immediate
