@@ -552,6 +552,10 @@ command_boot_bios:
         ld      hl, bios_boot_message
         call    neo_debug_send_string
         call    bios_rom_reset_state
+        ; BIOS execution is unrestricted real-mode ROM fetch, never the
+        ; bounded 0000:5002 DMA-task sandbox.
+        xor     a
+        ld      (x86_real_bounds_enable), a
         ld      a, 1
         ld      (x86_real_progress_enable), a
         call    x86_real_execute
