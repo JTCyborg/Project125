@@ -542,6 +542,8 @@ command_boot_bios:
         ld      hl, bios_boot_message
         call    neo_debug_send_string
         call    bios_rom_reset_state
+        ld      a, 1
+        ld      (bios_first_instruction_trace), a
         ; BIOS execution is unrestricted real-mode ROM fetch, never the
         ; bounded 0000:5002 DMA-task sandbox.
         xor     a
@@ -864,6 +866,85 @@ bios_rom_debug_dump_tail:
 
 bios_boot_message:
         defb    "[BIOS] RESET FFFF:0000", 13, 10, 0
+
+; One-shot trace around the first guest instruction fetch/dispatch.
+; 1 = waiting for first opcode fetch, 2 = first opcode fetched, awaiting
+; completion of the reset-vector far JMP (EA ptr16:16).
+bios_first_instruction_trace:
+        db      0
+bios_first_opcode:
+        db      0
+
+bios_trace_first_fetch:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, bios_first_fetch_prefix
+        call    neo_debug_send_string
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, ':'
+        call    neo_send_data_byte
+        ld      hl, (x86_reg_ip)
+        dec     hl
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      hl, bios_first_fetch_opcode_label
+        call    neo_debug_send_string
+        ld      a, (bios_first_opcode)
+        call    neo_debug_hex8
+        ld      a, 13
+        call    neo_send_data_byte
+        ld      a, 10
+        call    neo_send_data_byte
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+bios_trace_first_complete:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, bios_first_complete_prefix
+        call    neo_debug_send_string
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, ':'
+        call    neo_send_data_byte
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, 13
+        call    neo_send_data_byte
+        ld      a, 10
+        call    neo_send_data_byte
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+bios_first_fetch_prefix:
+        defb    "[NGS] FIRST FETCH CS:IP=", 0
+bios_first_fetch_opcode_label:
+        defb    " OP=", 0
+bios_first_complete_prefix:
+        defb    "[NGS] FIRST INSTRUCTION COMPLETE; NEXT CS:IP=", 0
+
 bios_stop_prefix:
         defb    "[BIOS] STOP CS:IP=", 0
 
