@@ -448,7 +448,20 @@ atm_keyboard_poll_and_send:
 .atm_kbd_ready_outer:
         ld      bc, BIOS_HOST_WAIT_LIMIT
 .atm_kbd_ready_wait:
+        ; NeoGS may be blocked while sending an I/O trace byte through DBIT.
+        ; Drain that stream during the DMA READY handshake as well as in the
+        ; outer BIOS loop, otherwise the keyboard doorbell and trace deadlock.
         in      a, (GSSTAT)
+        bit     B_DBIT, a
+        jr      z, .atm_kbd_ready_check_cbit
+        in      a, (GSDAT)
+        push    bc
+        push    de
+        call    p125_debug_stream_char
+        pop     de
+        pop     bc
+        jr      .atm_kbd_ready_wait
+.atm_kbd_ready_check_cbit:
         bit     B_CBIT, a
         jr      z, .atm_kbd_dma_ready
         dec     bc
@@ -474,7 +487,19 @@ atm_keyboard_poll_and_send:
 .atm_kbd_done_outer:
         ld      bc, BIOS_HOST_WAIT_LIMIT
 .atm_kbd_done_wait:
+        ; Keep draining DBIT while NeoGS closes the DMA transaction and
+        ; resumes the guest interpreter.
         in      a, (GSSTAT)
+        bit     B_DBIT, a
+        jr      z, .atm_kbd_done_check_cbit
+        in      a, (GSDAT)
+        push    bc
+        push    de
+        call    p125_debug_stream_char
+        pop     de
+        pop     bc
+        jr      .atm_kbd_done_wait
+.atm_kbd_done_check_cbit:
         bit     B_CBIT, a
         jr      z, .atm_kbd_dma_done
         dec     bc
