@@ -2407,8 +2407,16 @@ x86_shift_original:   dw 0
 x86_real_shift_word_cl:
         call    x86_real_fetch8
         ret     c
-        cp      #B0
-        jp      z, x86_resident_shift_word_mem_shl_cl
+        ; D3 /6 is SHL r/m16,CL. Preserve the complete ModR/M byte
+        ; while selecting the operation; the resident handler decodes EA.
+        ld      (x86_shift_word_modrm), a
+        and     #38
+        cp      #30
+        jr      nz, .not_shl_word_cl
+        ld      a, (x86_shift_word_modrm)
+        jp      x86_resident_shift_word_mem_shl_cl
+.not_shl_word_cl:
+        ld      a, (x86_shift_word_modrm)
         cp      #E8
         jp      nz, x86_real_shift_cl_unsupported
         ld      a, (x86_reg_cx)
@@ -2500,6 +2508,8 @@ x86_real_shift_word_cl:
         ld      hl, (x86_shift_result)
         ld      (x86_reg_ax), hl
         jp      x86_real_next
+
+x86_shift_word_modrm: db 0
 
 x86_real_shift_cl_unsupported:
         ld      a, #D3
