@@ -2392,6 +2392,69 @@ x86_resident_shift_word_mem_shl_cl:
         ld      a, b
         jp      bank_call_x86_shift_shl_cl
 
+; D2 group-2 byte dispatch. The BIOS uses D2 /1 ROR r/m8,CL.
+; Keep the ModR/M decoder and memory operation in resident code.
+x86_resident_shift_byte_cl_dispatch:
+        ld      (x86_shift_diag_modrm), a
+        and     #38
+        cp      #08                    ; /1 ROR r/m8,CL
+        jp      z, x86_resident_shift_byte_ror_cl
+        jp      x86_real_shift_byte_cl_unsupported
+
+x86_resident_shift_byte_ror_cl:
+        ld      a, 1
+        ld      (x86_mov_width), a
+        ld      a, (x86_shift_diag_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        ld      a, (x86_reg_cx)        ; full 8086 CL count
+        or      a
+        jp      z, x86_real_next
+        ld      (x86_shift_count), a
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      a, l
+        ld      (x86_shift_result), a
+.ror_cl_loop:
+        ld      a, (x86_shift_result)
+        rrca
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+        ld      a, (x86_shift_count)
+        dec     a
+        ld      (x86_shift_count), a
+        jr      nz, .ror_cl_loop
+
+        ; PCem D2 /1: CF is the last bit rotated out. OF follows
+        ; its implementation: bit 6 XOR bit 7 of the final result.
+        ld      hl, (x86_reg_flags)
+        res     0, l
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .ror_cl_cf_ready
+        set     0, l
+.ror_cl_cf_ready:
+        res     3, h
+        ld      a, (x86_shift_result)
+        xor     b
+        ld      a, (x86_shift_result)
+        ld      b, a
+        rrca
+        xor     b
+        and     #40
+        jr      z, .ror_cl_flags_ready
+        set     3, h
+.ror_cl_flags_ready:
+        ld      (x86_reg_flags), hl
+
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      h, 0
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
 ; D0 group-2 byte dispatch. ModR/M is passed in A from overlay68.
 ; Keep this selector resident so overlay68 does not grow beyond 16 KiB.
 x86_resident_shift_byte_dispatch:
