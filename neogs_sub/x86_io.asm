@@ -828,9 +828,6 @@ x86_io_opcode:       db 0
 x86_io_port:         dw 0
 x86_io_value:        dw 0
 x86_io_test_latch:   dw 0
-x86_io_trace_value:  dw 0
-x86_io_trace_kind:   db 'R'
-x86_io_trace_width:  db '8'
 x86_io_test_ip:      dw 0
 x86_io_test_ax:      dw 0
 x86_io_test_dx:      dw 0
