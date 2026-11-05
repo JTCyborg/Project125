@@ -2210,6 +2210,113 @@ x86_resident_group_ff_invalid:
         scf
         ret
 
+; D3 B0: SHL word ptr [BX+SI+disp16],CL.
+; Resident implementation keeps the full 16 KiB interpreter overlay intact.
+x86_resident_shift_word_mem_shl_cl:
+        xor     a
+        ld      (x86_mov_width), a
+        call    x86_real_mov_decode_modrm
+        ret     c
+        ld      a, (x86_mov_reg)
+        cp      6
+        jp      nz, x86_real_shift_cl_unsupported
+        ld      a, (x86_mov_is_reg)
+        or      a
+        jp      nz, x86_real_shift_cl_unsupported
+        ld      a, (x86_reg_cx)
+        or      a
+        jp      z, x86_real_next
+        ld      (x86_shift_count), a
+        ld      (x86_shift_original_count), a
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_shift_original), hl
+        ld      (x86_shift_result), hl
+.shift_loop:
+        ld      hl, (x86_shift_result)
+        add     hl, hl
+        ld      (x86_shift_result), hl
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+        ld      a, (x86_shift_count)
+        dec     a
+        ld      (x86_shift_count), a
+        jr      nz, .shift_loop
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shl_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.shl_parity:
+        ld      hl, (x86_shift_result)
+        ld      a, l
+        and     a
+        jp      pe, .shl_set_pf
+        jr      .shl_zero
+.shl_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.shl_zero:
+        ld      hl, (x86_shift_result)
+        ld      a, h
+        or      l
+        jr      nz, .shl_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.shl_sign:
+        ld      hl, (x86_shift_result)
+        bit     7, h
+        jr      z, .shl_overflow
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.shl_overflow:
+        ld      a, (x86_shift_original_count)
+        cp      1
+        jr      nz, .shl_merge_preserve_of
+        ld      hl, (x86_shift_result)
+        bit     7, h
+        jr      z, .shl_result_msb_clear
+        ld      a, 1
+        jr      .shl_result_msb_ready
+.shl_result_msb_clear:
+        xor     a
+.shl_result_msb_ready:
+        ld      b, a
+        ld      a, (x86_shift_carry)
+        xor     b
+        or      a
+        jr      z, .shl_merge
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+.shl_merge:
+        ld      de, #F73A
+        jr      .shl_merge_apply
+.shl_merge_preserve_of:
+        ld      de, #FF3A
+.shl_merge_apply:
+        ld      hl, (x86_reg_flags)
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        ld      hl, (x86_shift_result)
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
 neogs_resident_end:
 
 ; Overlay bank 68: complete 8086 interpreter and instruction implementation.

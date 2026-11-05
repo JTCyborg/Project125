@@ -2407,8 +2407,10 @@ x86_shift_original:   dw 0
 x86_real_shift_word_cl:
         call    x86_real_fetch8
         ret     c
+        cp      #B0
+        jp      z, x86_resident_shift_word_mem_shl_cl
         cp      #E8
-        jp      nz, x86_real_shift_cl_unsupported
+        jr      nz, x86_real_shift_cl_unsupported
         ld      a, (x86_reg_cx)
         or      a
         jp      z, x86_real_next
