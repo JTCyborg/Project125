@@ -43,12 +43,20 @@ BIOS_ROM_BACKING_PAGE     EQU 75
 ; 8086 reset starts at FFFF:0000 (physical FFFF0h), not F000:FFF0.
 ; The selected Central Point BIOS V1.11 reset vector jumps to F000:E05B.
 bios_rom_reset_state:
+        ld      hl, trace_bios_mem_init
+        call    neo_trace_ef_string
         call    x86_mem_init
+        ld      hl, trace_bios_fetch_diag
+        call    neo_trace_ef_string
         call    x86_fetch_diag_begin
         ; A cold PC/XT reset must not inherit random bytes from backing RAM.
         ; In particular, BIOS error flags at 0040:0015 must start at zero,
         ; otherwise the ROM reports a spurious System error #FF.
+        ld      hl, trace_bios_clear_bda
+        call    neo_trace_ef_string
         call    bios_clear_ivt_bda
+        ld      hl, trace_bios_state_ready
+        call    neo_trace_ef_string
         or      a
         ld      hl, 0
         ld      (x86_reg_ax), hl
@@ -77,7 +85,15 @@ bios_rom_reset_state:
         ld      (bios_video_stream_errors), a
         ld      (x86_real_bounds_enable), a
         ld      (x86_exit_status), a
+        ld      hl, trace_bios_reset_done
+        call    neo_trace_ef_string
         ret
+
+trace_bios_mem_init:   defb "[BIOS MEM INIT]",13,10,0
+trace_bios_fetch_diag: defb "[BIOS FETCH DIAG]",13,10,0
+trace_bios_clear_bda:  defb "[BIOS CLEAR BDA]",13,10,0
+trace_bios_state_ready:defb "[BIOS STATE SET]",13,10,0
+trace_bios_reset_done: defb "[BIOS RESET DONE]",13,10,0
 
 ; BIOS ROM content is intentionally unrestricted. Any 8 KiB image is accepted.
 ; Only transfer length/acknowledgement is checked; reset-vector bytes are not validated.
