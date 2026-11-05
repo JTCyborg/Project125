@@ -15,6 +15,7 @@
 ; =========================================================================
 
 x86_real_io_instruction:
+        push    af
         ld      a, (trace_io_instruction_once)
         or      a
         jr      nz, .io_instruction_trace_done
@@ -22,8 +23,8 @@ x86_real_io_instruction:
         ld      (trace_io_instruction_once), a
         ld      hl, trace_io_instruction
         call    neo_trace_ef_string
-.io_instruction_trace_done:
-        ld      a, (x86_real_opcode)
+ .io_instruction_trace_done:
+        pop     af
         ld      (x86_io_opcode), a
 
         ; Immediate-port forms carry an unsigned 8-bit port number.
