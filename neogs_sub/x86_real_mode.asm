@@ -1938,9 +1938,12 @@ x86_real_shift_word_one:
         ret     c
         cp      #E0
         jr      z, .shift_word_shl_ax
-        cp      #E8                    ; /5 SHR r/m16,1 (PCem 808x.c)
-        jp      z, x86_resident_shift_word_shr_one
-        jp      x86_real_shift_unsupported
+        ld      b, a
+        and     #38
+        cp      #28                    ; /5 SHR r/m16,1 (PCem 808x.c)
+        jp      nz, x86_real_shift_unsupported
+        ld      a, b
+        jp      x86_resident_shift_word_shr_one
 
 .shift_word_shl_ax:
         ld      hl, (x86_reg_ax)
