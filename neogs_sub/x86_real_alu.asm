@@ -398,6 +398,11 @@ x86_alu_write_reg16:
         ld      a, (x86_alu_stack_trace_active)
         or      a
         call    nz, x86_stack_transition_trace
+        ; Preserve the original writer contract: A and Z80 flags on return
+        ; are those produced by the register-index AND/ADD sequence.
+        ld      a, (x86_alu_reg_index)
+        and     7
+        add     a, a
         ret
 
 ; Rebuild CF/PF/AF/ZF/SF/OF. All other guest FLAGS bits are preserved.
