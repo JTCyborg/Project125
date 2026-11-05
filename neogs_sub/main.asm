@@ -2289,9 +2289,34 @@ x86_fetch_diag_read_ok:
         pop     af
         ret
 
-; Capture the exact state at the instant an instruction fetch is rejected.
-; Kept resident so the nearly-full page-68 interpreter does not grow.
+; Last-resort fetch entry. The normal overlay path checks the optional
+; bounded-task window before reaching x86_mem_read8. A BIOS run is explicitly
+; unbounded; if a stale/corrupted conditional branch nevertheless lands here,
+; retry the fetch through the resident memory backend instead of terminating
+; the BIOS at its reset-vector far jump. Bounded guest tasks still fail closed.
 x86_real_fetch_out_of_range_resident:
+        ld      a, (x86_real_bounds_enable)
+        or      a
+        jr      nz, .bounded_failure
+
+        ; Retry the exact CS:IP byte without re-entering the overlay fetch path.
+        ld      hl, (x86_reg_ip)
+        ld      (x86_mem_offset_work), hl
+        ld      hl, (x86_reg_cs)
+        ld      (x86_mem_segment), hl
+        call    x86_mem_calc_phys
+        call    x86_fetch_diag_address
+        call    x86_mem_read8
+        ret     c
+        push    af
+        ld      hl, (x86_reg_ip)
+        inc     hl
+        ld      (x86_reg_ip), hl
+        pop     af
+        or      a
+        ret
+
+.bounded_failure:
         push    af
         push    hl
         ld      a, (x86_real_bounds_enable)
