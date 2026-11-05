@@ -1193,11 +1193,24 @@ x86_resident_memtest_scas_trace:
         and     #FE
         cp      #AE
         ret     nz
+        ; Always report the first mismatch, even after the successful
+        ; startup sample has filled its twelve-line trace budget.
+        ld      a, (x86_reg_flags)
+        bit     6, a
+        jr      z, .trace_mismatch
         ld      a, (x86_memtest_scas_trace_count)
         cp      12
         ret     nc
         inc     a
         ld      (x86_memtest_scas_trace_count), a
+        jr      .trace_emit
+.trace_mismatch:
+        ld      a, (x86_memtest_scas_mismatch_reported)
+        or      a
+        ret     nz
+        inc     a
+        ld      (x86_memtest_scas_mismatch_reported), a
+.trace_emit:
         push    af
         push    bc
         push    de
@@ -1319,6 +1332,8 @@ x86_resident_memtest_hex16:
         jp      x86_mem_watch_hex8
 
 x86_memtest_scas_trace_count:
+        db      0
+x86_memtest_scas_mismatch_reported:
         db      0
 
 ; Shared bounds/diagnostic state accessed by resident BIOS and overlay CPU.
