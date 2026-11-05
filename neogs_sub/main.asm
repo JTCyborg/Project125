@@ -2022,6 +2022,8 @@ x86_resident_escape_dispatch:
 .check_escape_end:
         cp      #E0
         jr      c, .is_escape
+        cp      #FF
+        jp      z, x86_resident_group_ff
         or      a
         ret
 .is_escape:
@@ -2066,6 +2068,147 @@ x86_resident_escape_skip:
         ret
 
 x86_resident_escape_modrm: db 0
+
+; 8086 FF /r — Group 5. This handler is resident because overlay 68 has
+; only a few free bytes. It executes while overlay 68 remains mapped and
+; reuses the common MOV ModR/M decoder and checked r/m16 accessors.
+; Supported: INC, DEC, near/far CALL, near/far JMP, PUSH. /7 is invalid.
+x86_resident_group_ff:
+        xor     a
+        ld      (x86_mov_width), a       ; word operand
+        call    x86_real_fetch8
+        ret     c
+        call    x86_real_mov_decode_modrm
+        ret     c
+        ld      a, (x86_mov_reg)
+        cp      7
+        jp      z, x86_resident_group_ff_invalid
+        cp      0
+        jp      z, x86_resident_group_ff_inc
+        cp      1
+        jp      z, x86_resident_group_ff_dec
+        cp      2
+        jp      z, x86_resident_group_ff_call_near
+        cp      3
+        jp      z, x86_resident_group_ff_call_far
+        cp      4
+        jp      z, x86_resident_group_ff_jmp_near
+        cp      5
+        jp      z, x86_resident_group_ff_jmp_far
+        jp      x86_resident_group_ff_push
+
+x86_resident_group_ff_inc:
+        xor     a
+        ld      (x86_real_incdec_mode), a
+        jp      x86_resident_group_ff_incdec
+x86_resident_group_ff_dec:
+        ld      a, 1
+        ld      (x86_real_incdec_mode), a
+x86_resident_group_ff_incdec:
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      a, l
+        ld      (x86_real_old_low), a
+        ld      a, h
+        ld      (x86_real_old_high), a
+        ld      a, (x86_real_incdec_mode)
+        or      a
+        jr      nz, .decrement
+        inc     hl
+        jr      .store
+.decrement:
+        dec     hl
+.store:
+        ld      (x86_real_result), hl
+        ld      (x86_mov_value), hl
+        call    x86_real_update_incdec_flags
+        jp      x86_real_mov_write_rm
+
+x86_resident_group_ff_call_near:
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_real_far_ip), hl
+        ld      de, (x86_reg_ip)
+        call    x86_real_stack_push
+        ret     c
+        ld      hl, (x86_real_far_ip)
+        ld      (x86_reg_ip), hl
+        jp      x86_real_next
+
+x86_resident_group_ff_jmp_near:
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_reg_ip), hl
+        jp      x86_real_next
+
+x86_resident_group_ff_push:
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      d, h
+        ld      e, l
+        call    x86_real_stack_push
+        ret     c
+        jp      x86_real_next
+
+; /3 and /5 take a 16:16 pointer from memory; register forms are invalid.
+x86_resident_group_ff_read_far:
+        ld      a, (x86_mov_is_reg)
+        or      a
+        jp      nz, x86_resident_group_ff_invalid
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_real_far_ip), hl
+        ld      hl, (x86_mov_offset)
+        inc     hl
+        inc     hl
+        ld      (x86_mem_offset), hl
+        ld      hl, (x86_mov_segment)
+        ld      (x86_mem_segment), hl
+        call    x86_mem_read16
+        ret     c
+        ld      (x86_real_far_cs), hl
+        or      a
+        ret
+
+x86_resident_group_ff_call_far:
+        call    x86_resident_group_ff_read_far
+        ret     c
+        ld      hl, (x86_reg_sp)
+        ld      (x86_real_old_sp), hl
+        ld      de, (x86_reg_cs)
+        call    x86_real_stack_push
+        ret     c
+        ld      de, (x86_reg_ip)
+        call    x86_real_stack_push
+        jr      c, x86_resident_group_ff_rollback
+        ld      hl, (x86_real_far_cs)
+        ld      (x86_reg_cs), hl
+        ld      hl, (x86_real_far_ip)
+        ld      (x86_reg_ip), hl
+        jp      x86_real_next
+
+x86_resident_group_ff_rollback:
+        ld      hl, (x86_real_old_sp)
+        ld      (x86_reg_sp), hl
+        scf
+        ret
+
+x86_resident_group_ff_jmp_far:
+        call    x86_resident_group_ff_read_far
+        ret     c
+        ld      hl, (x86_real_far_cs)
+        ld      (x86_reg_cs), hl
+        ld      hl, (x86_real_far_ip)
+        ld      (x86_reg_ip), hl
+        jp      x86_real_next
+
+x86_resident_group_ff_invalid:
+        ld      a, #FF
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
 
 neogs_resident_end:
 
