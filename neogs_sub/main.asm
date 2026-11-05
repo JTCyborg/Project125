@@ -3258,6 +3258,7 @@ x86_real_f7_divide_exception:
         jr      c, .int00_entry_failed
         ld      hl, x86_f7_int00_entered
         call    x86_f7_trace_string
+        call    x86_f7_int00_frame_trace
         jp      x86_real_next
 
 .int00_entry_failed:
@@ -3274,6 +3275,77 @@ x86_real_f7_divide_exception:
         ld      a, 10
         out     (#EF), a
         scf
+        ret
+
+; Read back the actual INT 00 stack frame and the first handler bytes.
+; PCem maps BIOS ROM with null write handlers: writes are ignored, not faults.
+; This trace verifies memory contents instead of trusting Carry.
+x86_f7_int00_frame_trace:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_f7_frame_prefix
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_ss)
+        ld      (x86_mem_segment), hl
+        ld      hl, (x86_reg_sp)
+        ld      (x86_mem_offset), hl
+        call    x86_mem_read16
+        jr      c, .frame_read_error
+        ld      (x86_f7_frame_word), hl
+        ld      hl, (x86_f7_frame_word)
+        call    x86_f7_trace_hex16
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_mem_offset)
+        inc     hl
+        inc     hl
+        ld      (x86_mem_offset), hl
+        call    x86_mem_read16
+        jr      c, .frame_read_error
+        call    x86_f7_trace_hex16
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_mem_offset)
+        inc     hl
+        inc     hl
+        ld      (x86_mem_offset), hl
+        call    x86_mem_read16
+        jr      c, .frame_read_error
+        call    x86_f7_trace_hex16
+        ld      hl, x86_f7_handler_prefix
+        call    x86_f7_trace_string
+        ld      hl, 0
+        ld      (x86_mem_segment), hl
+        ld      (x86_mem_offset), hl
+        call    x86_mem_read16
+        jr      c, .handler_read_error
+        call    x86_f7_trace_hex16
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, 2
+        ld      (x86_mem_offset), hl
+        call    x86_mem_read16
+        jr      c, .handler_read_error
+        call    x86_f7_trace_hex16
+        jr      .done
+.frame_read_error:
+        ld      hl, x86_f7_frame_read_error
+        call    x86_f7_trace_string
+        jr      .done
+.handler_read_error:
+        ld      hl, x86_f7_handler_read_error
+        call    x86_f7_trace_string
+.done:
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
         ret
 
 ; All routines below write directly to #EF. The caller's guest register
@@ -3377,6 +3449,11 @@ x86_f7_trace_dx:           defb " DX=",0
 x86_f7_trace_divisor:      defb " DIVISOR=",0
 x86_f7_trace_sssp:         defb " SS:SP=",0
 x86_f7_int00_entered:      defb "[NGS X86] INT00 ENTRY OK",13,10,0
+x86_f7_frame_prefix:       defb "[NGS X86] INT00 FRAME IP/CS/FLAGS=",0
+x86_f7_handler_prefix:     defb " HANDLER[0000:0000]=",0
+x86_f7_frame_read_error:   defb " FRAME READ ERROR",0
+x86_f7_handler_read_error: defb " HANDLER READ ERROR",0
+x86_f7_frame_word:         dw 0
 x86_f7_int00_failed:       defb "[NGS X86] INT00 ENTRY FAILED SS:SP=",0
 x86_f7_exception_kind:     db 0
 
