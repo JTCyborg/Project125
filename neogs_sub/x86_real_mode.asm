@@ -1937,8 +1937,12 @@ x86_real_shift_word_one:
         call    x86_real_fetch8
         ret     c
         cp      #E0
-        jp      nz, x86_real_shift_unsupported
+        jr      z, .shift_word_shl_ax
+        cp      #E8                    ; /5 SHR r/m16,1 (PCem 808x.c)
+        jp      z, x86_resident_shift_word_shr_one
+        jp      x86_real_shift_unsupported
 
+.shift_word_shl_ax:
         ld      hl, (x86_reg_ax)
         add     hl, hl
         ld      (x86_shift_result), hl
