@@ -512,14 +512,10 @@ atm_keyboard_poll_and_send:
 
 .atm_kbd_dma_done:
         ; The DMA copy was protected by DI. Restore host interrupts before
-        ; returning to the BIOS wait loop.
+        ; returning to the BIOS wait loop. Do NOT reissue CMD_BOOT_BIOS here:
+        ; that would assert CBIT and be mistaken for another DMA doorbell by
+        ; x86_host_input_service_poll.
         ei
-        ; Restore the long-running BIOS command token. The guest executor
-        ; ignores it while running; the outer command handler clears CBIT
-        ; only when the BIOS actually returns.
-        ld      a, CMD_BOOT_BIOS
-        out     (GSCOM), a
-
         ld      hl, atm_keyboard_matrix
         ld      de, atm_keyboard_previous
         ld      bc, NGS_KBD_MATRIX_SIZE
@@ -547,10 +543,10 @@ atm_keyboard_poll_and_send:
         call    p125_print_string
 
 .atm_kbd_restore_bios_command:
-        ; Do not let a failed input transaction leave the command register
-        ; pointing at the keyboard service.
-        ld      a, CMD_BOOT_BIOS
-        out     (GSCOM), a
+        ; Do not reissue CMD_BOOT_BIOS: the active BIOS call is still on the
+        ; NeoGS stack, and a new CBIT edge would be interpreted as a DMA
+        ; request. The host reports the timeout and lets the active service
+        ; finish its own bounded recovery path.
         ld      hl, msg_kbd_timeout_status
         call    p125_print_string
         ld      a, (atm_kbd_timeout_status)
