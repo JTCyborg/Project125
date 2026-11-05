@@ -1,14 +1,15 @@
 ; =========================================================================
 ; PROJECT 125 — ATM host-side BIOS DMA stream sender
 ;
-; This module sends the selected 8 KiB BIOS image to NeoGS page 75.
+; This module sends an 8 KiB BIOS ROM window to NeoGS page 75. The selected
+; file (1..8192 bytes) is right-aligned in this window by bios_file_loader.asm.
 ; The caller is responsible for reading BIOS.BIN from TR-DOS in 256-byte
 ; sectors into a reusable buffer (normally #C000) and calling
 ; neogs_bios_transfer_sector once for each sector.
 ;
 ; Transfer contract:
 ;   1. neogs_bios_transfer_start sends CMD_LOAD_BIOS and waits for CBIT=0.
-;   2. Caller reads exactly 32 sectors (256 bytes each).
+;   2. Caller sends exactly 32 sectors (256 bytes each), including FFh padding.
 ;   3. Each sector is copied with LDIR to host address 0000h..00FFh.
 ;      The NeoGS ZX DMA engine writes the stream to physical 12C000h.
 ;   4. neogs_bios_transfer_finish sends the #FF end marker and waits for
@@ -85,8 +86,8 @@ neogs_bios_transfer_sector:
         or      a
         ret
 
-; Finish the stream and let NeoGS validate the BIOS header/reset vector.
-; OUT: carry clear only if exactly 32 sectors were sent and NeoGS acknowledged.
+; Finish the fixed-size ROM-window stream; NeoGS does not inspect BIOS contents.
+; OUT: carry clear only if the full 8 KiB ROM window was sent and NeoGS acknowledged.
 neogs_bios_transfer_finish:
         ld      a, (bios_host_sectors_left)
         ld      (bios_host_missing_sectors), a
