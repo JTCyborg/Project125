@@ -395,6 +395,7 @@ x86_trace_loop_opcode:
         ret
 
 x86_fetch_opcode_saved: db 0
+x86_trace_decode_opcode: db 0
 x86_trace_loop_ad_once: db 0
 x86_trace_loop_02_once: db 0
 x86_trace_loop_e2_once: db 0
