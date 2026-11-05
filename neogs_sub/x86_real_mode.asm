@@ -2407,15 +2407,11 @@ x86_shift_original:   dw 0
 x86_real_shift_word_cl:
         call    x86_real_fetch8
         ret     c
-        ; D3 /6 is SHL r/m16,CL. LD preserves flags, so restore A
-        ; after testing the ModR/M reg field without losing the condition.
-        ld      b, a
-        and     #38
-        cp      #30
-        ld      a, b
-        jp      z, x86_resident_shift_word_mem_shl_cl
-        cp      #E8
-        jp      nz, x86_real_shift_cl_unsupported
+        jp      x86_resident_shift_word_mem_shl_cl
+
+; D3 E8: SHR AX,CL. Kept in the overlay; the resident dispatcher
+; enters here for /5 and sends /6 to the generic r/m16 SHL path.
+x86_real_shift_word_cl_shr:
         ld      a, (x86_reg_cx)
         or      a
         jp      z, x86_real_next
