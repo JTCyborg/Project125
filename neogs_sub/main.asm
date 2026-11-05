@@ -2778,15 +2778,28 @@ x86_mem_last_read_value: db 0
 ; DIV leaves FLAGS unchanged (undefined on the 8086). Divide-by-zero and
 ; quotient overflow enter interrupt vector 0 through the shared INT engine.
 x86_real_group_f7:
+        ; Reuse the existing BIOS STOP diagnostic fields to expose the exact
+        ; F7 dispatch path. This distinguishes a failed dispatch from a bad
+        ; ModR/M decode without changing the guest architectural state.
+        ld      a, #F0
+        ld      (x86_shift_diag_stage), a
         call    x86_real_fetch8
         ret     c
         ld      (x86_f7_modrm), a
+        ld      (x86_shift_diag_modrm), a
+        and     #38
+        ld      (x86_shift_diag_mask), a
+        ld      a, #F1
+        ld      (x86_shift_diag_stage), a
+        ld      a, (x86_f7_modrm)
         cp      #D0
         jp      z, x86_real_f7_not_ax
 
         and     #38
         cp      #30
         jp      nz, x86_real_group_f7_unsupported
+        ld      a, #F6
+        ld      (x86_shift_diag_stage), a
         jp      x86_real_f7_div_word
 
 x86_real_f7_not_ax:
