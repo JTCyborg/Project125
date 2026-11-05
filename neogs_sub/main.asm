@@ -2609,21 +2609,8 @@ x86_fetch_diag_read_ok:
 ; Called immediately after D3's ModR/M fetch, while A still
 ; contains the exact byte returned by x86_real_fetch8.
 x86_fetch_capture_modrm:
-        ; Preserve the ModR/M byte in A for the resident decoder.
-        ; Do not use x86_fetch_diag_phys here: it is a pre-read snapshot and
-        ; can be stale if a fetch path changes the memory address afterward.
-        ; x86_mem_read8 records the address and byte actually returned by the
-        ; physical-memory backend. Capture those values at this boundary.
-        push    af
-        ld      a, (x86_mem_last_read_addr)
-        ld      (x86_fetch_exact_addr), a
-        ld      a, (x86_mem_last_read_addr+1)
-        ld      (x86_fetch_exact_addr+1), a
-        ld      a, (x86_mem_last_read_addr+2)
-        ld      (x86_fetch_exact_addr+2), a
-        ld      a, (x86_mem_last_read_value)
-        ld      (x86_fetch_exact_value), a
-        pop     af
+        ; x86_real_fetch8 captures the address and byte at the actual fetch
+        ; boundary. Keep A untouched for the resident ModR/M selector.
         ret
 
 ; Last-resort fetch entry. The normal overlay path checks the optional
