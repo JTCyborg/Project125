@@ -740,6 +740,18 @@ bios_stop_dump_state:
          call    neo_debug_send_string
          ld      a, (x86_fetch_diag_value)
          call    neo_debug_hex8
+         ld      hl, bios_stop_exact_fetch_addr_label
+         call    neo_debug_send_string
+         ld      a, (x86_fetch_exact_addr+2)
+         call    neo_debug_hex8
+         ld      a, (x86_fetch_exact_addr+1)
+         call    neo_debug_hex8
+         ld      a, (x86_fetch_exact_addr)
+         call    neo_debug_hex8
+         ld      hl, bios_stop_exact_fetch_value_label
+         call    neo_debug_send_string
+         ld      a, (x86_fetch_exact_value)
+         call    neo_debug_hex8
          ld      hl, bios_stop_mem_read_addr_label
          call    neo_debug_send_string
          ld      a, (x86_mem_last_read_addr+2)
@@ -782,6 +794,10 @@ bios_stop_fetch_label:
         defb    " FCH=", 0
 bios_stop_fetch_value_label:
         defb    " FVAL=", 0
+bios_stop_exact_fetch_addr_label:
+        defb    " XFA=", 0
+bios_stop_exact_fetch_value_label:
+        defb    " XFV=", 0
 bios_stop_mem_read_addr_label:
         defb    " MRA=", 0
 bios_stop_mem_read_value_label:
@@ -2340,6 +2356,9 @@ x86_fetch_diag_begin:
 x86_fetch_diag_address:
         ld      a, 1
         ld      (x86_fetch_diag_stage), a
+        ; IP at the instant the instruction byte is about to be fetched.
+        ld      hl, (x86_reg_ip)
+        ld      (x86_shift_fetch_ip), hl
         ld      hl, (x86_mem_addr)
         ld      (x86_fetch_diag_phys), hl
         ld      a, (x86_mem_addr+2)
@@ -2411,6 +2430,8 @@ x86_shift_fetch_ip: dw 0
 x86_fetch_diag_stage: db 0
 x86_fetch_diag_phys:  ds 3, 0
 x86_fetch_diag_value: db 0
+x86_fetch_exact_addr: ds 3, 0
+x86_fetch_exact_value: db 0
 x86_mem_last_read_addr: ds 3, 0
 x86_mem_last_read_value: db 0
 
