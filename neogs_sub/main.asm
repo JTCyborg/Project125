@@ -3258,6 +3258,13 @@ neogs_resident_end:
 ; in one physical bank while executing. WIN2 is mapped at logical $8000.
         ORG     $8000
 neogs_overlay68_start:
+; Temporary bank-window probe: this code must execute from physical page 68.
+neogs_overlay68_probe:
+        push    af
+        ld      a, 'P'
+        out     (#EF), a
+        pop     af
+        ret
         INCLUDE "x86_modrm.asm"
         INCLUDE "x86_real_mode.asm"
         INCLUDE "x86_real_alu8.asm"
