@@ -81,6 +81,7 @@ trace_gate_enter:     defb "[GATE ENTER]",13,10,0
 trace_gate_mapped:    defb "[GATE BANK68]",13,10,0
 trace_gate_probe_return: defb "[GATE PROBE RET]",13,10,0
 trace_gate_call:      defb "[GATE X86 CALL]",13,10,0
+trace_x86_target:     defb "[GATE X86 TARGET] ",0
 trace_gate_after_call: defb "[GATE X86 RET]",13,10,0
 trace_gate_exit:      defb "[GATE RETURN]",13,10,0
 
