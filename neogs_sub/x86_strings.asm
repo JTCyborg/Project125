@@ -7,6 +7,16 @@
 ; =========================================================================
 
 x86_real_string_instruction:
+        push    af
+        ld      a, (trace_string_once)
+        or      a
+        jr      nz, .string_trace_done
+        ld      a, 1
+        ld      (trace_string_once), a
+        ld      hl, trace_string_entry
+        call    neo_trace_ef_string
+.string_trace_done:
+        pop     af
         ld      (x86_string_opcode), a
         ld      a, (x86_real_rep_mode)
         or      a
@@ -972,3 +982,7 @@ x86_string_ss_data_end:
 x86_string_es_data:
         db #AA,#BB,#CC,#DD,#EE,#FF,#80,#7F,#00,#66,#65,#77
 x86_string_es_data_end:
+
+; One-shot string/REP engine entry diagnostic.
+trace_string_once: db 0
+trace_string_entry: defb "[X86 STRING]",13,10,0
