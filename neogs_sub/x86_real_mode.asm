@@ -1576,6 +1576,15 @@ x86_real_mov_r16_imm16:
         ret     c
         ld      (x86_real_imm_high), a
 
+        ; MOV SP,imm16 writes the register file directly, bypassing the
+        ; shared ModR/M writer. Capture the old value before the write.
+        ld      a, (x86_real_opcode)
+        cp      #BC
+        jr      nz, .store_register
+        ld      hl, (x86_reg_sp)
+        ld      (x86_stack_trace_old), hl
+
+.store_register:
         ld      a, (x86_real_opcode)
         sub     #B8
         add     a, a
@@ -1588,6 +1597,16 @@ x86_real_mov_r16_imm16:
         inc     hl
         ld      a, (x86_real_imm_high)
         ld      (hl), a
+
+        ld      a, (x86_real_opcode)
+        cp      #BC
+        jr      nz, .done
+        ld      hl, (x86_reg_sp)
+        ld      (x86_stack_trace_new), hl
+        ld      a, 2
+        ld      (x86_stack_trace_kind), a
+        call    x86_stack_transition_trace
+.done:
         jp      x86_real_next
 
 ; B0-B7 — MOV r8,imm8 (AL,CL,DL,BL,AH,CH,DH,BH).

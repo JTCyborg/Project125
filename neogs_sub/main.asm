@@ -1070,8 +1070,8 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261106-21",13,10
-        defb "[NGS] BASE COMMIT D88B5CB",13,10,0
+        defb "[NGS] BUILD 20261106-22",13,10
+        defb "[NGS] BASE COMMIT ADD69F6",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
 trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
@@ -3349,8 +3349,8 @@ x86_f7_int00_frame_trace:
         ret
 
 ; Trace explicit SP register writes unconditionally (kind=2). Ordinary
-; PUSH/POP and interrupt stack traffic (kind=0) remains filtered to crossings
-; of the E000 high-stack boundary; SS changes use kind=1.
+; PUSH/POP and interrupt stack traffic (kind=0) are traced unconditionally;
+; SS changes use kind=1.
 ; x86_stack_trace_kind: 0=stack traffic, 1=SS transition, 2=explicit SP write.
 x86_stack_transition_trace:
         push    af
