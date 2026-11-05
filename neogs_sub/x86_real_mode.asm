@@ -273,6 +273,16 @@ x86_real_fetch8:
         call    x86_fetch_diag_address
         call    x86_mem_read8
         ret     c
+        ; Capture this exact instruction byte here, before any diagnostic
+        ; helper or following operand access can change the last-read state.
+        ; This runs for opcode bytes and ModR/M/displacement bytes alike.
+        push    af
+        ld      hl, (x86_mem_addr)
+        ld      (x86_fetch_exact_addr), hl
+        ld      a, (x86_mem_addr+2)
+        ld      (x86_fetch_exact_addr+2), a
+        pop     af
+        ld      (x86_fetch_exact_value), a
         call    x86_fetch_diag_read_ok
         push    af
         ld      hl, (x86_reg_ip)
