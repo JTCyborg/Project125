@@ -534,6 +534,8 @@ x86_real_dispatch_no_progress:
         jp      z, x86_real_mov_immediate_rm
         cp      #C7
         jp      z, x86_real_mov_immediate_rm
+        cp      #86
+        jp      z, x86_real_xchg_modrm8
         cp      #88
         jp      c, .not_mov_rm_reg
         cp      #8C
