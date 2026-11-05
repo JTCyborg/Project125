@@ -6,9 +6,13 @@
 
 x86_shift_shl_cl_impl:
         ld      (x86_shift_modrm69), a
+        ld      a, 1
+        ld      (x86_shift_diag_stage), a ; handler entered
         ld      a, (x86_shift_modrm69)
         call    bank69_call_x86_mov_decode_modrm
         ret     c
+        ld      a, 2
+        ld      (x86_shift_diag_stage), a ; effective address decoded
         ld      a, (x86_reg_cx)
         or      a
         jp      z, bank69_jump_x86_real_next
@@ -16,6 +20,8 @@ x86_shift_shl_cl_impl:
         ld      (x86_shift_original_count69), a
         call    bank69_call_x86_mov_read_rm
         ret     c
+        ld      a, 3
+        ld      (x86_shift_diag_stage), a ; operand read completed
         ld      (x86_shift_result69), hl
         ld      a, (x86_shift_count69)
         cp      17
@@ -108,6 +114,8 @@ x86_shift_shl_cl_impl:
         or      e
         ld      l, a
         ld      (x86_reg_flags), hl
+        ld      a, 4
+        ld      (x86_shift_diag_stage), a ; result ready, destination write pending
         ld      hl, (x86_shift_result69)
         jp      bank69_call_x86_mov_write_rm
 
