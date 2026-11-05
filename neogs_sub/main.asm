@@ -2395,8 +2395,12 @@ x86_resident_shift_word_mem_shl_cl:
 ; D2 group-2 byte dispatch. The BIOS uses D2 /1 ROR r/m8,CL.
 ; Keep the ModR/M decoder and memory operation in resident code.
 x86_resident_shift_byte_cl_dispatch:
-        ld      (x86_shift_diag_modrm), a
+        ; Read the ModR/M byte explicitly from the shared snapshot written
+        ; by the D2 overlay handler. Do not rely on the accumulator value
+        ; at the resident entry point.
+        ld      a, (x86_shift_diag_modrm)
         and     #38
+        ld      (x86_shift_diag_mask), a
         cp      #08                    ; /1 ROR r/m8,CL
         jp      z, x86_resident_shift_byte_ror_cl
         jp      x86_real_shift_byte_cl_unsupported
