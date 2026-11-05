@@ -1473,7 +1473,13 @@ x86_io_tick:
 .check_irq:
         ld      a, (x86_reg_flags+1)
         bit     1, a
-        ret     z
+        jr      nz, .scan_irq
+        ; No maskable interrupt can be accepted while IF=0. x86_io_tick
+        ; is called before every guest instruction, so it must not leak
+        ; Carry from keyboard/PIT bookkeeping into the CPU dispatcher.
+        or      a
+        ret
+.scan_irq:
         ; Scan IRQs in programmed priority order. A higher-priority ISR
         ; blocks itself and all lower-priority requests, but permits a
         ; higher-priority request to nest.
@@ -1524,6 +1530,9 @@ x86_io_tick:
         ld      c, a
         djnz    .irq_scan
 .irq_none:
+        ; Normal no-pending-IRQ path: return with Carry clear. Carry is
+        ; reserved for a genuine failure from x86_int_enter above.
+        or      a
         ret
 
 x86_ppi_read_port_a:
