@@ -81,6 +81,12 @@ start_neoprogram:
         ld      bc, rom_return_trampoline_end - rom_return_trampoline_code
         ldir
 
+        ; Identify this firmware image in the shared #EF log.
+        ; The embedded base commit is the exact parent revision used for this
+        ; source change; a commit cannot embed its own SHA without changing it.
+        ld      hl, neo_firmware_build_id
+        call    neo_trace_ef_string
+
         ; Notify the Spectrum only after the new firmware is executing.
         ld      a, NGS_FIRMWARE_READY_ACK
         call    neo_send_data_byte
@@ -1062,6 +1068,10 @@ neo_trace_ef_string:
         pop     bc
         pop     af
         ret
+
+neo_firmware_build_id:
+        defb "[NGS] BUILD 20261105-01",13,10
+        defb "[NGS] BASE COMMIT 90FC461",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
 trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
