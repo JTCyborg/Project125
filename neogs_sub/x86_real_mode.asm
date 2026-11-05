@@ -593,6 +593,9 @@ x86_real_dispatch_no_progress:
         jp      z, x86_real_next
         ; The opcode survived resident escape dispatch and is now entering
         ; the main interpreter decoder. Emit this milestone once per run.
+        ; Preserve AF: the trace counter uses A, but the decoder still needs
+        ; the original opcode returned by x86_real_fetch8.
+        push    af
         ld      a, (x86_trace_decode_once)
         or      a
         jr      nz, .decode_trace_done
@@ -609,6 +612,7 @@ x86_real_dispatch_no_progress:
         pop     bc
         pop     af
 .decode_trace_done:
+        pop     af
 
         ; 8086 segment-override prefixes. Multiple prefixes are accepted;
         ; the last segment prefix before the instruction takes effect.
