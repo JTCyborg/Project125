@@ -284,6 +284,10 @@ x86_real_fetch8:
         pop     af
         ld      (x86_fetch_exact_value), a
         call    x86_fetch_diag_read_ok
+        ; Capture the first 16 instruction-stream bytes at the actual fetch
+        ; boundary. This is deliberately independent of the memory-watch
+        ; diagnostics and writes directly to the shared #EF debug channel.
+        call    x86_trace_instruction_fetch
         push    af
         ld      hl, (x86_reg_ip)
         inc     hl
@@ -291,6 +295,82 @@ x86_real_fetch8:
         pop     af
         or      a
         ret
+
+; Direct #EF instruction-stream trace. Only the first 16 bytes are
+; printed so a BIOS loop cannot flood the shared ATM/NeoGS log.
+x86_trace_instruction_fetch:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      a, (x86_trace_fetch_count)
+        cp      16
+        jr      nc, .trace_fetch_done
+        inc     a
+        ld      (x86_trace_fetch_count), a
+        ld      hl, x86_trace_fetch_text
+        call    x86_trace_puts
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        dec     hl
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, (x86_fetch_exact_value)
+        call    x86_trace_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.trace_fetch_done:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_trace_puts:
+        ld      a, (hl)
+        inc     hl
+        or      a
+        ret     z
+        out     (#EF), a
+        jr      x86_trace_puts
+
+x86_trace_hex8:
+        push    af
+        rrca
+        rrca
+        rrca
+        rrca
+        and     #0F
+        call    x86_trace_nibble
+        pop     af
+        and     #0F
+        jp      x86_trace_nibble
+
+x86_trace_nibble:
+        add     a, '0'
+        cp      '9'+1
+        jr      c, .trace_digit
+        add     a, 7
+.trace_digit:
+        out     (#EF), a
+        ret
+
+x86_trace_fetch_count: db 0
+x86_trace_decode_once: db 0
+x86_trace_fetch_text:  db "[NGS X86] FETCH ",0
+x86_trace_decode_text: db "[NGS X86] MAIN DECODER ENTER",13,10,0
 
 x86_real_fetch_out_of_range:
         jp      x86_real_fetch_out_of_range_resident
@@ -315,6 +395,8 @@ x86_real_execute:
         pop     bc
         pop     af
         xor     a
+        ld      (x86_trace_fetch_count), a
+        ld      (x86_trace_decode_once), a
         ld      (x86_dbg_dispatch_once), a
         ld      (x86_dbg_fetch_once), a
         ld      (x86_dbg_fetch_ok_once), a
@@ -454,6 +536,24 @@ x86_real_dispatch_no_progress:
         call    x86_resident_escape_dispatch
         ret     c
         jp      z, x86_real_next
+        ; The opcode survived resident escape dispatch and is now entering
+        ; the main interpreter decoder. Emit this milestone once per run.
+        ld      a, (x86_trace_decode_once)
+        or      a
+        jr      nz, .decode_trace_done
+        inc     a
+        ld      (x86_trace_decode_once), a
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_trace_decode_text
+        call    x86_trace_puts
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+.decode_trace_done:
 
         ; 8086 segment-override prefixes. Multiple prefixes are accepted;
         ; the last segment prefix before the instruction takes effect.
