@@ -302,6 +302,8 @@ x86_real_execute:
         ld      (x86_real_poll_return_seen), a
         ld      hl, x86_real_exec_enter_message
         call    neo_debug_port_string
+        ; Emit the exact initial guest CS:IP before the first opcode fetch.
+        call    bios_progress_emit
         ld      hl, X86_REAL_STEP_LIMIT
         ld      (x86_real_steps), hl
 x86_real_next:
