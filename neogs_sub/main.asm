@@ -2317,35 +2317,35 @@ x86_resident_group_ff_invalid:
 
 ; D3 group-2 dispatch. Full r/m16 SHL implementation lives in overlay69.
 x86_resident_shift_word_mem_shl_cl:
-        ld      b, a                       ; preserve ModR/M before diagnostics
-        ld      (x86_shift_diag_modrm), a  ; capture exact byte delivered by decoder
+        ld      b, a                       ; preserve the complete ModR/M byte
+        ld      (x86_shift_diag_modrm), a
         and     #38
-        ld      (x86_shift_diag_mask), a   ; capture /reg field before comparison
+        ld      (x86_shift_diag_mask), a
         ld      a, #10
-        ld      (x86_shift_diag_stage), a ; resident D3 dispatcher entered
+        ld      (x86_shift_diag_stage), a
         ld      hl, (x86_reg_ip)
         ld      (x86_shift_fetch_ip), hl
+
+        ; PCem 808x.c: D3 /4 and D3 /6 are both SHL r/m16,CL.
+        ; Do not accept only /6: the BIOS emits register-direct /4 as well.
         ld      a, b
         and     #38
-        push    af
-        ld      a, #14
-        ld      (x86_shift_diag_stage), a ; ModR/M /reg mask computed
-        pop     af
+        cp      #20                    ; /4 SHL
+        jr      z, .shift_shl
         cp      #30                    ; /6 SHL (SAL)
-        push    af
-        ld      a, #15
-        ld      (x86_shift_diag_stage), a ; /reg comparison completed
-        pop     af
-        ld      a, b
-        jp      nz, .shift_not_shl
-        ld      a, #11
-        ld      (x86_shift_diag_stage), a ; /6 selected; entering bank gateway
-        jp      bank_call_x86_shift_shl_cl
+        jr      z, .shift_shl
+
 .shift_not_shl:
         ld      a, b
         cp      #E8                    ; /5 SHR AX,CL compatibility path
         jp      z, x86_real_shift_word_cl_shr
         jp      x86_real_shift_cl_unsupported
+
+.shift_shl:
+        ld      a, #11
+        ld      (x86_shift_diag_stage), a
+        ld      a, b
+        jp      bank_call_x86_shift_shl_cl
 
 ; Resident helpers keep the overlay68 fetch path within its 16 KiB bank.
 x86_fetch_diag_begin:
