@@ -37,7 +37,7 @@ bank_call_x86_real_execute:
         ; Verify that the selected WIN2 page exposes the expected first
         ; opcode at the assembled overlay entry before attempting CALL.
         ld      a, (x86_real_execute)
-        cp      #AF                     ; first instruction is XOR A
+        cp      #21                     ; first instruction is LD HL,nn
         jr      nz, .bank_gw_bad_entry
         ld      hl, bank_dbg_entry_opcode_ok
         call    bank_gateway_debug_emit
@@ -91,7 +91,7 @@ bank_dbg_before_executor:
 bank_dbg_executor_return:
         defb "[NGS] BANK GW EXEC RETURN", 13, 10, 0
 bank_dbg_entry_opcode_ok:
-        defb "[NGS] BANK GW ENTRY BYTE AF", 13, 10, 0
+        defb "[NGS] BANK GW ENTRY BYTE 21", 13, 10, 0
 bank_dbg_entry_opcode_bad:
         defb "[NGS] BANK GW ENTRY BYTE BAD", 13, 10, 0
 
