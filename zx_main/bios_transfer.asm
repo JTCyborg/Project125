@@ -137,14 +137,14 @@ neogs_bios_transfer_finish:
         or      a
         ret
 
-; Run BIOS and drain the NeoGS debug stream while CBIT remains asserted.
+; Run BIOS and drain the NeoGS debug stream until its explicit NUL terminal token.
 ; Every received byte is mirrored to the ATM/emulator debug port #EF.
 ; BIOS POST performs extensive memory sweeps. A full pass through the
 ; Turbo XT BIOS can take several minutes on the current Z80 interpreter.
 ; Use a 16-bit outer timeout (2048 x 65535 polls), while continuing to drain
 ; DBIT whenever the NeoGS firmware emits progress. This is a watchdog, not
 ; an instruction budget; normal completion is still signalled by CBIT=0.
-; OUT: carry clear when the NeoGS command completes; call get_result next.
+; OUT: carry clear after the terminal token; call get_result next.
 neogs_bios_boot_and_wait:
         ld      a, CMD_BOOT_BIOS
         out     (GSCOM), a
@@ -169,11 +169,14 @@ neogs_bios_boot_and_wait:
         bit     B_DBIT, a
         jr      z, .bios_boot_no_data
         in      a, (GSDAT)
+        or      a
+        jr      z, .bios_boot_done       ; explicit NUL terminal token
         call    p125_debug_stream_char
         jr      .bios_boot_inner
 .bios_boot_no_data:
-        bit     B_CBIT, a
-        jr      z, .bios_boot_done
+        ; CBIT is a command/DMA handshake and is deliberately released at
+        ; BIOS start so the ATM can post keyboard DMA requests. It is NOT
+        ; a BIOS-completion signal. Completion is the NUL byte above.
         dec     bc
         ld      a, b
         or      c
