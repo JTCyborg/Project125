@@ -685,24 +685,7 @@ bios_stop_dump_state:
         call    neo_debug_hex8
         ld      hl, bios_stop_shift_label
         call    neo_debug_send_string
-        ld      a, (x86_shift_stage69)
-        call    neo_debug_hex8
-        ld      hl, (x86_mov_segment)
-        ld      a, h
-        call    neo_debug_hex8
-        ld      a, l
-        call    neo_debug_hex8
-        ld      a, ':'
-        call    neo_send_data_byte
-        ld      hl, (x86_mov_offset)
-        ld      a, h
-        call    neo_debug_hex8
-        ld      a, l
-        call    neo_debug_hex8
-        ld      hl, (x86_shift_result69)
-        ld      a, h
-        call    neo_debug_hex8
-        ld      a, l
+        ld      a, (x86_shift_diag_stage)
         call    neo_debug_hex8
         pop     hl
         pop     de
@@ -2243,6 +2226,8 @@ x86_resident_shift_word_mem_shl_cl:
         cp      #E8                    ; /5 SHR AX,CL compatibility path
         jp      z, x86_real_shift_word_cl_shr
         jp      x86_real_shift_cl_unsupported
+
+x86_shift_diag_stage: db 0
 
 neogs_resident_end:
 
