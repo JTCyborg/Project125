@@ -301,7 +301,7 @@ x86_real_execute:
         ld      (x86_real_dispatch_seen), a
         ld      (x86_real_poll_return_seen), a
         ld      hl, x86_real_exec_enter_message
-        call    neo_debug_port_string
+        call    neo_debug_send_string
         ld      hl, X86_REAL_STEP_LIMIT
         ld      (x86_real_steps), hl
 x86_real_next:
@@ -324,7 +324,7 @@ x86_real_dispatch:
         inc     a
         ld      (x86_real_dispatch_seen), a
         ld      hl, x86_real_dispatch_message
-        call    neo_debug_port_string
+        call    neo_debug_send_string
 .dispatch_marker_done:
         ; Live BIOS progress: emit CS:IP/CX every 2048 guest instructions.
         ; The host drains DBIT concurrently while CMD_BOOT_BIOS holds CBIT.
@@ -353,7 +353,7 @@ x86_real_dispatch_no_progress:
         inc     a
         ld      (x86_real_poll_return_seen), a
         ld      hl, x86_real_poll_return_message
-        call    neo_debug_port_string
+        call    neo_debug_send_string
 .poll_return_marker_done:
         call    x86_io_tick
         ret     c
