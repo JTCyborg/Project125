@@ -25,6 +25,16 @@
 X86_INT_IF_TF_CLEAR_MASK EQU #FC
 
 x86_int_enter:
+        push    af
+        ld      a, (trace_int_enter_once)
+        or      a
+        jr      nz, .int_trace_done
+        ld      a, 1
+        ld      (trace_int_enter_once), a
+        ld      hl, trace_int_enter
+        call    neo_trace_ef_string
+.int_trace_done:
+        pop     af
         ld      (x86_int_vector), a
 
         ; IVT entry address = vector * 4, physical segment zero.
@@ -296,3 +306,7 @@ x86_int_vector:    db 0
 x86_int_word:      dw 0
 x86_int_target_ip: dw 0
 x86_int_target_cs: dw 0
+
+; One-shot interrupt-path diagnostics.
+trace_int_enter_once: db 0
+trace_int_enter: defb "[X86 INT ENTER]",13,10,0
