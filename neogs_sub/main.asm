@@ -719,6 +719,10 @@ bios_stop_dump_state:
         call    neo_debug_send_string
         ld      a, (x86_shift_diag_mask)
         call    neo_debug_hex8
+        ld      hl, bios_stop_shift_fetch_label
+        call    neo_debug_send_string
+        ld      a, (x86_shift_fetch_value)
+        call    neo_debug_hex8
          ld      hl, bios_stop_fetch_label
          call    neo_debug_send_string
          ld      a, (x86_fetch_diag_stage)
@@ -757,6 +761,8 @@ bios_stop_shift_modrm_label:
         defb    " MODRM=", 0
 bios_stop_shift_mask_label:
         defb    " MASK=", 0
+bios_stop_shift_fetch_label:
+        defb    " MRAW=", 0
 bios_stop_fetch_label:
         defb    " FCH=", 0
 bios_stop_fetch_value_label:
@@ -2379,6 +2385,8 @@ x86_fetch_fail_ip:     dw 0
 x86_shift_diag_stage: db 0
 x86_shift_diag_modrm: db 0
 x86_shift_diag_mask:  db 0
+x86_shift_fetch_value: db 0
+x86_shift_fetch_ip: dw 0
 ; Last guest instruction-fetch diagnostics (shared resident state).
 x86_fetch_diag_stage: db 0
 x86_fetch_diag_phys:  ds 3, 0
