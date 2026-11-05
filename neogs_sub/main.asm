@@ -2610,15 +2610,20 @@ x86_fetch_diag_read_ok:
 ; contains the exact byte returned by x86_real_fetch8.
 x86_fetch_capture_modrm:
         ; Preserve the ModR/M byte in A for the resident decoder.
+        ; Do not use x86_fetch_diag_phys here: it is a pre-read snapshot and
+        ; can be stale if a fetch path changes the memory address afterward.
+        ; x86_mem_read8 records the address and byte actually returned by the
+        ; physical-memory backend. Capture those values at this boundary.
         push    af
-        ld      a, (x86_fetch_diag_phys)
+        ld      a, (x86_mem_last_read_addr)
         ld      (x86_fetch_exact_addr), a
-        ld      a, (x86_fetch_diag_phys+1)
+        ld      a, (x86_mem_last_read_addr+1)
         ld      (x86_fetch_exact_addr+1), a
-        ld      a, (x86_fetch_diag_phys+2)
+        ld      a, (x86_mem_last_read_addr+2)
         ld      (x86_fetch_exact_addr+2), a
-        pop     af
+        ld      a, (x86_mem_last_read_value)
         ld      (x86_fetch_exact_value), a
+        pop     af
         ret
 
 ; Last-resort fetch entry. The normal overlay path checks the optional
