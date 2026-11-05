@@ -781,6 +781,26 @@ bios_stop_dump_state:
          call    neo_debug_send_string
          ld      a, (x86_mem_last_read_value)
          call    neo_debug_hex8
+         ; F7-specific fetch trace, independent of the generic last-read fields.
+         ld      hl, bios_stop_f7_ip_label
+         call    neo_debug_send_string
+         ld      hl, (x86_f7_diag_ip)
+         ld      a, h
+         call    neo_debug_hex8
+         ld      a, l
+         call    neo_debug_hex8
+         ld      hl, bios_stop_f7_addr_label
+         call    neo_debug_send_string
+         ld      a, (x86_f7_diag_addr+2)
+         call    neo_debug_hex8
+         ld      a, (x86_f7_diag_addr+1)
+         call    neo_debug_hex8
+         ld      a, (x86_f7_diag_addr)
+         call    neo_debug_hex8
+         ld      hl, bios_stop_f7_value_label
+         call    neo_debug_send_string
+         ld      a, (x86_f7_diag_value)
+         call    neo_debug_hex8
         pop     hl
         pop     de
         pop     bc
@@ -821,6 +841,12 @@ bios_stop_mem_read_addr_label:
         defb    " MRA=", 0
 bios_stop_mem_read_value_label:
         defb    " MRV=", 0
+bios_stop_f7_ip_label:
+        defb    " F7IP=", 0
+bios_stop_f7_addr_label:
+        defb    " F7ADR=", 0
+bios_stop_f7_value_label:
+        defb    " F7BYTE=", 0
 
 ; Dump physical page-75 bytes at image offset 1FF0 (guest FFFF0..FFFF4).
 ; This is deliberately performed after DMA is disabled and before validation.
@@ -2769,6 +2795,10 @@ x86_fetch_exact_addr: ds 3, 0
 x86_fetch_exact_value: db 0
 x86_mem_last_read_addr: ds 3, 0
 x86_mem_last_read_value: db 0
+; Dedicated F7 ModR/M fetch trace: IP before fetch, physical address, byte.
+x86_f7_diag_ip:    dw 0
+x86_f7_diag_addr:  ds 3, 0
+x86_f7_diag_value: db 0
 
 ; F7 group-3 handler is resident to keep overlay68 below its hard 16 KiB limit.
 ; It executes with overlay68 mapped and may call its decoder/interrupt helpers.
@@ -2783,10 +2813,21 @@ x86_real_group_f7:
         ; ModR/M decode without changing the guest architectural state.
         ld      a, #F0
         ld      (x86_shift_diag_stage), a
+        ; Record the guest IP before fetching ModR/M. The fetch helper must
+        ; read exactly CS:IP and advance IP once on success.
+        ld      hl, (x86_reg_ip)
+        ld      (x86_f7_diag_ip), hl
         call    x86_real_fetch8
         ret     c
+        ; Capture the returned byte and physical backend address immediately,
+        ; before any selector or diagnostic helper can perform another read.
+        ld      (x86_f7_diag_value), a
         ld      (x86_f7_modrm), a
         ld      (x86_shift_diag_modrm), a
+        ld      hl, (x86_mem_addr)
+        ld      (x86_f7_diag_addr), hl
+        ld      a, (x86_mem_addr+2)
+        ld      (x86_f7_diag_addr+2), a
         and     #38
         ld      (x86_shift_diag_mask), a
         ld      a, #F1
