@@ -1070,8 +1070,8 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261106-19",13,10
-        defb "[NGS] BASE COMMIT 5CF9E68",13,10,0
+        defb "[NGS] BUILD 20261106-20",13,10
+        defb "[NGS] BASE COMMIT 257CDFE",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
 trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
@@ -3434,6 +3434,53 @@ x86_stack_transition_trace:
         pop     bc
         pop     af
         ret
+; POP SP uses a direct register-file write and therefore does not pass
+; through x86_alu_write_reg16. Show all three values before that write.
+; The caller has already performed the architectural stack read/increment.
+x86_trace_pop_sp:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_trace_pop_sp_prefix
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_cs)
+        call    x86_f7_trace_hex16
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        dec     hl
+        call    x86_f7_trace_hex16
+        ld      hl, x86_trace_pop_sp_ss
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_ss)
+        call    x86_f7_trace_hex16
+        ld      hl, x86_trace_pop_sp_values
+        call    x86_f7_trace_string
+        ld      hl, (x86_real_old_sp)
+        call    x86_f7_trace_hex16
+        ld      a, '>'
+        out     (#EF), a
+        ld      hl, (x86_reg_sp)
+        call    x86_f7_trace_hex16
+        ld      a, '>'
+        out     (#EF), a
+        ld      hl, (x86_real_stack_value)
+        call    x86_f7_trace_hex16
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_trace_pop_sp_prefix: defb "[NGS X86] POP SP CS:IP=",0
+x86_trace_pop_sp_ss:     defb " SS=",0
+x86_trace_pop_sp_values: defb " SP(before>after-pop>loaded)=",0
+
 x86_stack_trace_print_cs_ip:
         ld      hl, (x86_reg_cs)
         call    x86_f7_trace_hex16

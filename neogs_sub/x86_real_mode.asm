@@ -937,6 +937,12 @@ x86_real_pop_r16:
         ld      (x86_real_opcode), a
         call    x86_real_stack_pop
         ret     c
+        ; POP SP bypasses the common register writer because this decoder
+        ; writes the popped word directly into the register-file array.
+        ; Trace the pre-pop SP, the post-increment SP and the loaded value.
+        ld      a, (x86_real_opcode)
+        cp      #5C
+        call    z, x86_trace_pop_sp
         ld      a, (x86_real_opcode)
         sub     #58
         add     a, a
