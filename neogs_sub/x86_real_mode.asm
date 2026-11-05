@@ -437,6 +437,8 @@ x86_real_dispatch_no_progress:
         jp      z, x86_real_logic8_accumulator_immediate
         cp      #34
         jp      z, x86_real_logic8_accumulator_immediate
+        cp      #25
+        jp      z, x86_real_logic16_accumulator_immediate
         cp      #35
         jp      z, x86_real_logic16_accumulator_immediate
         cp      #14
