@@ -302,7 +302,7 @@ x86_real_execute:
         push    de
         push    hl
         ld      hl, x86_dbg_core_enter
-        call    neo_debug_send_string
+        call    x86_debug_port_string
         pop     hl
         pop     de
         pop     bc
@@ -330,7 +330,7 @@ x86_real_dispatch:
         push    de
         push    hl
         ld      hl, x86_dbg_dispatch
-        call    neo_debug_send_string
+        call    x86_debug_port_string
         pop     hl
         pop     de
         pop     bc
@@ -369,7 +369,7 @@ x86_real_dispatch_no_progress:
         push    de
         push    hl
         ld      hl, x86_dbg_io_error
-        call    neo_debug_send_string
+        call    x86_debug_port_string
         pop     hl
         pop     de
         pop     bc
@@ -391,7 +391,7 @@ x86_real_dispatch_no_progress:
         push    de
         push    hl
         ld      hl, x86_dbg_fetch_begin
-        call    neo_debug_send_string
+        call    x86_debug_port_string
         pop     hl
         pop     de
         pop     bc
@@ -405,7 +405,7 @@ x86_real_dispatch_no_progress:
         push    de
         push    hl
         ld      hl, x86_dbg_fetch_error
-        call    neo_debug_send_string
+        call    x86_debug_port_string
         pop     hl
         pop     de
         pop     bc
@@ -2976,6 +2976,20 @@ x86_daa_old_cf:   db 0
 x86_daa_old_af:   db 0
 x86_daa_new_cf:   db 0
 x86_daa_new_af:   db 0
+
+; ============================================================
+; NeoGS X86 CORE DEBUG — DIRECT OUTPUT TO PORT #EF
+; IN: HL -> zero-terminated string
+; OUT: A, HL modified
+; Bypasses DBIT/DMA and host handshake.
+; ============================================================
+x86_debug_port_string:
+        ld      a, (hl)
+        inc     hl
+        or      a
+        ret     z
+        out     (#EF), a
+        jr      x86_debug_port_string
 
 ; Core diagnostics are deliberately one-shot: they identify the exact stage
 ; reached without flooding the shared ATM/NeoGS debug stream.
