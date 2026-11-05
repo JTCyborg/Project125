@@ -1070,8 +1070,8 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261105-14",13,10
-        defb "[NGS] BASE COMMIT 9BED2B9",13,10,0
+        defb "[NGS] BUILD 20261105-15",13,10
+        defb "[NGS] BASE COMMIT 5CF48A6",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
 trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
@@ -3347,6 +3347,103 @@ x86_f7_int00_frame_trace:
         pop     bc
         pop     af
         ret
+
+; Trace only transitions into/out of the high stack window. This captures
+; the instruction that first moves SS:SP into BIOS ROM without logging every
+; subsequent CALL/PUSH/POP.
+; x86_stack_trace_kind: 0=SP transition, 1=SS transition.
+x86_stack_transition_trace:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      a, (x86_stack_trace_kind)
+        or      a
+        jp      nz, .trace_ss
+        ld      hl, (x86_stack_trace_old)
+        ld      a, h
+        cp      #E0
+        jp      nc, .sp_old_high
+        ld      hl, (x86_stack_trace_new)
+        ld      a, h
+        cp      #E0
+        jp      c, .done
+        jp      .trace_sp
+.sp_old_high:
+        ld      hl, (x86_stack_trace_new)
+        ld      a, h
+        cp      #E0
+        jp      nc, .done
+.trace_sp:
+        ld      hl, x86_stack_trace_sp_prefix
+        call    x86_f7_trace_string
+        call    x86_stack_trace_print_cs_ip
+        ld      hl, x86_stack_trace_ss_label
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_ss)
+        call    x86_f7_trace_hex16
+        ld      hl, x86_stack_trace_sp_old_label
+        call    x86_f7_trace_string
+        ld      hl, (x86_stack_trace_old)
+        call    x86_f7_trace_hex16
+        ld      a, '>'
+        out     (#EF), a
+        ld      hl, (x86_stack_trace_new)
+        call    x86_f7_trace_hex16
+        jp      .line_end
+.trace_ss:
+        ld      hl, (x86_stack_trace_old)
+        ld      a, h
+        cp      #E0
+        jp      nc, .trace_ss_print
+        ld      hl, (x86_stack_trace_new)
+        ld      a, h
+        cp      #E0
+        jp      c, .done
+.trace_ss_print:
+        ld      hl, x86_stack_trace_ss_prefix
+        call    x86_f7_trace_string
+        call    x86_stack_trace_print_cs_ip
+        ld      hl, x86_stack_trace_ss_old_label
+        call    x86_f7_trace_string
+        ld      hl, (x86_stack_trace_old)
+        call    x86_f7_trace_hex16
+        ld      a, '>'
+        out     (#EF), a
+        ld      hl, (x86_stack_trace_new)
+        call    x86_f7_trace_hex16
+        ld      hl, x86_stack_trace_sp_label
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_sp)
+        call    x86_f7_trace_hex16
+.line_end:
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.done:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+x86_stack_trace_print_cs_ip:
+        ld      hl, (x86_reg_cs)
+        call    x86_f7_trace_hex16
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        call    x86_f7_trace_hex16
+        ret
+x86_stack_trace_kind: db 0
+x86_stack_trace_old:  dw 0
+x86_stack_trace_new:  dw 0
+x86_stack_trace_sp_prefix:    defb "[NGS X86] STACK SP CS:IP=",0
+x86_stack_trace_ss_prefix:    defb "[NGS X86] STACK SS CS:IP=",0
+x86_stack_trace_ss_label:     defb " SS=",0
+x86_stack_trace_sp_old_label: defb " SP=",0
+x86_stack_trace_ss_old_label: defb " SS=",0
+x86_stack_trace_sp_label:     defb " SP=",0
 
 ; All routines below write directly to #EF. The caller's guest register
 ; image is read-only; Z80 registers are preserved by the top-level tracer.

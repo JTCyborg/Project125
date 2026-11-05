@@ -119,7 +119,14 @@ x86_real_mov_segment:
 .load_ss:
         call    x86_real_mov_read_rm
         ret     c
+        ld      (x86_stack_trace_new), hl
+        ld      hl, (x86_reg_ss)
+        ld      (x86_stack_trace_old), hl
+        ld      hl, (x86_stack_trace_new)
         ld      (x86_reg_ss), hl
+        ld      a, 1
+        ld      (x86_stack_trace_kind), a
+        call    x86_stack_transition_trace
         jp      x86_real_next
 .load_ds:
         call    x86_real_mov_read_rm
