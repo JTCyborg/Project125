@@ -2263,7 +2263,15 @@ x86_resident_shift_word_mem_shl_cl:
         ld      (x86_shift_diag_stage), a ; resident D3 dispatcher entered
         ld      a, b
         and     #38
+        push    af
+        ld      a, #14
+        ld      (x86_shift_diag_stage), a ; ModR/M /reg mask computed
+        pop     af
         cp      #30                    ; /6 SHL (SAL)
+        push    af
+        ld      a, #15
+        ld      (x86_shift_diag_stage), a ; /reg comparison completed
+        pop     af
         ld      a, b
         jp      nz, .shift_not_shl
         ld      a, #11
