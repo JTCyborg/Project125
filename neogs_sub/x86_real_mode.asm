@@ -325,7 +325,7 @@ x86_real_dispatch:
         ; x86_real_progress_enable remains active for BIOS instruction-budget renewal.
         ld      a, (x86_real_progress_enable)
         or      a
-        ; call  nz, bios_progress_emit
+        call    nz, bios_progress_emit
 x86_real_dispatch_no_progress:
         ; Poll the host-input doorbell at every guest instruction boundary.
         ; A 256-instruction interval can leave a short CBIT request pending

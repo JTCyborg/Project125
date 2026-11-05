@@ -981,55 +981,73 @@ neo_debug_send_string:
         call    neo_send_data_byte
         jr      neo_debug_send_string
 
-; BIOS execution heartbeat, called from the page-68 interpreter and REP engine.
-; Preserves all guest-visible Z80 working registers; transport errors are
-; intentionally ignored so diagnostics can never change guest execution.
-; One record every 2048 instructions or REP elements:
-;   [BIOS] STEP CS:IP CX=hhhh
+; BIOS heartbeat is emitted directly to NeoGS debug port #EF.
+; It is independent of DBIT/GSDAT, so guest execution and keyboard DMA
+; cannot block each other. One record per 2048 instructions or REP elements.
 bios_progress_emit:
         push    af
         push    bc
         push    de
         push    hl
         ld      hl, bios_progress_prefix
-        call    neo_debug_send_string
+        call    neo_debug_port_string
         ld      hl, (x86_reg_cs)
         ld      a, h
-        call    neo_debug_hex8
+        call    neo_debug_port_hex8
         ld      a, l
-        call    neo_debug_hex8
+        call    neo_debug_port_hex8
         ld      a, ':'
-        call    neo_send_data_byte
+        out     (#EF), a
         ld      hl, (x86_reg_ip)
         ld      a, h
-        call    neo_debug_hex8
+        call    neo_debug_port_hex8
         ld      a, l
-        call    neo_debug_hex8
+        call    neo_debug_port_hex8
         ld      hl, (x86_reg_cx)
         ld      a, ' '
-        call    neo_send_data_byte
+        out     (#EF), a
         ld      a, 'C'
-        call    neo_send_data_byte
+        out     (#EF), a
         ld      a, 'X'
-        call    neo_send_data_byte
+        out     (#EF), a
         ld      a, '='
-        call    neo_send_data_byte
+        out     (#EF), a
         ld      a, h
-        call    neo_debug_hex8
+        call    neo_debug_port_hex8
         ld      a, l
-        call    neo_debug_hex8
+        call    neo_debug_port_hex8
         ld      a, 13
-        call    neo_send_data_byte
+        out     (#EF), a
         ld      a, 10
-        call    neo_send_data_byte
+        out     (#EF), a
         pop     hl
         pop     de
         pop     bc
         pop     af
         ret
-
 bios_progress_prefix:
-        defb    "[BIOS] STEP ", 0
+        defb "[NGS] BIOS ", 0
+
+; A=byte; write two uppercase hexadecimal digits to NeoGS debug port #EF.
+neo_debug_port_hex8:
+        push    af
+        rrca
+        rrca
+        rrca
+        rrca
+        and     #0F
+        call    neo_debug_port_hex_nibble
+        pop     af
+        and     #0F
+neo_debug_port_hex_nibble:
+        add     a, '0'
+        cp      '9'+1
+        jr      c, .neo_port_hex_digit
+        add     a, 7
+.neo_port_hex_digit:
+        out     (#EF), a
+        ret
+
 x86_real_progress_enable:
         db      0
 
@@ -1790,38 +1808,29 @@ x86_ppi_write_control:
 X86_KBD_DMA_WAIT EQU #FFFF
 
 x86_host_input_service_poll:
-        ; Preserve the interpreter's scratch registers: this service is called
-        ; from the instruction-boundary dispatcher and the HLT wait loop.
+        ; Asynchronous keyboard service: never use DBIT/GSDAT for diagnostics.
+        ; The host drains that channel while waiting for DMA READY. NGS traces
+        ; use the independent NeoGS debug port #EF.
         push    af
         push    bc
         push    de
         push    hl
-
-        ; One-shot execution marker. If the host sees P but never K, the
-        ; instruction-boundary poll is running but the local CBIT read is low.
-        ; If P is absent, the BIOS executor is not reaching this service.
         ld      a, (x86_host_input_poll_seen)
         or      a
         jr      nz, .kbd_poll_marker_done
         inc     a
         ld      (x86_host_input_poll_seen), a
-        ld      a, 'P'
-        call    neo_send_data_byte
+        ld      hl, x86_kbd_poll_message
+        call    neo_debug_port_string
 .kbd_poll_marker_done:
-
-        ; During the BIOS executor, the boot command has already been
-        ; acknowledged and no other command is permitted. Therefore any new
-        ; CBIT edge here is the host keyboard mailbox request. Do not read
-        ; ZXCMD: the command latch is not a reliable discriminator while the
-        ; previous long-running command owns the interpreter.
+        ; CMD_BOOT_BIOS has already been acknowledged. A new CBIT edge while
+        ; the interpreter runs is the host keyboard mailbox doorbell.
         in      a, (ZXSTAT)
         bit     B_CBIT, a
         jr      z, .kbd_service_done
-
-        ; Diagnostic acknowledgement: host drains DBIT while waiting READY.
-        ld      a, 'K'
-        call    neo_send_data_byte
-
+        ld      hl, x86_kbd_request_message
+        call    neo_debug_port_string
+        ; Arm the complete DMA receiver before releasing CBIT to the host.
         ld      a, C_DMA_ZX
         out     (DMA_MOD), a
         xor     a
@@ -1834,7 +1843,6 @@ x86_host_input_service_poll:
         out     (DMA_CST), a
         xor     a
         out     (CLRCBIT), a
-
         ld      d, 8
 .kbd_dma_outer:
         ld      bc, X86_KBD_DMA_WAIT
@@ -1848,21 +1856,45 @@ x86_host_input_service_poll:
         jr      nz, .kbd_dma_wait
         dec     d
         jr      nz, .kbd_dma_outer
+        ; Bounded recovery: close DMA and release the host if its end marker
+        ; never arrived. Do not leave the DMA engine armed across BIOS code.
         xor     a
         out     (DMA_CST), a
         out     (CLRCBIT), a
+        ld      hl, x86_kbd_timeout_message
+        call    neo_debug_port_string
         jr      .kbd_service_done
 .kbd_dma_done:
         xor     a
         out     (DMA_CST), a
         out     (CLRCBIT), a
         call    x86_kbd_process_matrix
+        ld      hl, x86_kbd_done_message
+        call    neo_debug_port_string
 .kbd_service_done:
         pop     hl
         pop     de
         pop     bc
         pop     af
         ret
+
+; Nonblocking, out-of-band NeoGS diagnostics. Never touches DBIT/GSDAT.
+neo_debug_port_string:
+        ld      a, (hl)
+        inc     hl
+        or      a
+        ret     z
+        out     (#EF), a
+        jr      neo_debug_port_string
+
+x86_kbd_poll_message:
+        defb "[NGS] INPUT POLL", 13, 10, 0
+x86_kbd_request_message:
+        defb "[NGS] INPUT REQUEST CBIT=1", 13, 10, 0
+x86_kbd_timeout_message:
+        defb "[NGS] INPUT DMA TIMEOUT", 13, 10, 0
+x86_kbd_done_message:
+        defb "[NGS] INPUT DMA DONE", 13, 10, 0
 
 ; Compare the eight 5-bit rows and enqueue XT make/break scan codes.
 x86_kbd_process_matrix:
