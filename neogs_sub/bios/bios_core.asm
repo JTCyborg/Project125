@@ -498,9 +498,16 @@ bios_int16_dispatch:
         ret
 
 bios_int16_read_key:
+.wait_for_key:
         ld      a, (bios_keyboard_pending)
         or      a
-        jr      z, bios_int16_no_key
+        jr      nz, .dequeue_key
+        ; INT 16h AH=00/10 is blocking on a real XT. Keep servicing the
+        ; DMA mailbox here so the host can deliver a physical key while the
+        ; guest BIOS is waiting inside this interrupt hook.
+        call    x86_host_input_service_poll
+        jr      .wait_for_key
+.dequeue_key:
         ; Pop the oldest AX-format key word from the 16-entry ring.
         ld      a, (bios_keyboard_queue_read)
         add     a, a
@@ -523,13 +530,6 @@ bios_int16_read_key:
         ld      (bios_keyboard_pending), a
         or      a
         ret
-bios_int16_no_key:
-        ; Nonblocking compatibility behavior: no key is reported as AX=0.
-        ld      hl, 0
-        ld      (x86_reg_ax), hl
-        or      a
-        ret
-
 bios_int16_check_key:
         ld      a, (bios_keyboard_pending)
         or      a
