@@ -2222,9 +2222,8 @@ x86_resident_shift_word_mem_shl_cl:
         ld      a, (x86_mov_reg)
         cp      6
         jp      nz, x86_real_shift_cl_unsupported
-        ld      a, (x86_mov_is_reg)
-        or      a
-        jp      nz, x86_real_shift_cl_unsupported
+        ; The generic r/m accessors support both register-direct and
+        ; all eight 8086 memory effective-address forms.
         ld      a, (x86_reg_cx)
         or      a
         jp      z, x86_real_next
