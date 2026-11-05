@@ -719,6 +719,23 @@ bios_stop_dump_state:
         call    neo_debug_send_string
         ld      a, (x86_shift_diag_mask)
         call    neo_debug_hex8
+        ld      hl, bios_stop_shift_dispatch_label
+        call    neo_debug_send_string
+        ld      a, (x86_shift_dispatch_byte)
+        call    neo_debug_hex8
+        ld      hl, (x86_shift_dispatch_ip)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, (x86_shift_dispatch_addr+2)
+        call    neo_debug_hex8
+        ld      a, (x86_shift_dispatch_addr+1)
+        call    neo_debug_hex8
+        ld      a, (x86_shift_dispatch_addr)
+        call    neo_debug_hex8
+        ld      a, (x86_shift_dispatch_value)
+        call    neo_debug_hex8
         ld      hl, bios_stop_shift_fetch_label
         call    neo_debug_send_string
         ld      hl, (x86_shift_fetch_ip)
@@ -787,6 +804,7 @@ bios_stop_shift_label:
 bios_stop_shift_modrm_label:
         defb    " MODRM=", 0
 bios_stop_shift_mask_label:
+bios_stop_shift_dispatch_label: db " DIN/IP/FA/V=",0
         defb    " MASK=", 0
 bios_stop_shift_fetch_label:
         defb    " MIP=", 0
@@ -2350,6 +2368,16 @@ x86_resident_shift_word_mem_shl_cl:
 ; D0 group-2 byte dispatch. ModR/M is passed in A from overlay68.
 ; Keep this selector resident so overlay68 does not grow beyond 16 KiB.
 x86_resident_shift_byte_dispatch:
+        ; Snapshot the byte delivered by x86_real_fetch8 before any helper.
+        ld      (x86_shift_dispatch_byte), a
+        ld      hl, (x86_reg_ip)
+        ld      (x86_shift_dispatch_ip), hl
+        ld      hl, (x86_fetch_exact_addr)
+        ld      (x86_shift_dispatch_addr), hl
+        ld      a, (x86_fetch_exact_addr+2)
+        ld      (x86_shift_dispatch_addr+2), a
+        ld      a, (x86_fetch_exact_value)
+        ld      (x86_shift_dispatch_value), a
         ; Capture the exact second instruction byte in resident code so the
         ; diagnostic helper does not consume overlay68 space.
         call    x86_fetch_capture_modrm
@@ -2665,6 +2693,10 @@ x86_fetch_fail_ip:     dw 0
 x86_shift_diag_stage: db 0
 x86_shift_diag_modrm: db 0
 x86_shift_diag_mask:  db 0
+x86_shift_dispatch_byte: db 0
+x86_shift_dispatch_ip: dw 0
+x86_shift_dispatch_addr: ds 3, 0
+x86_shift_dispatch_value: db 0
 x86_shift_fetch_ip: dw 0
 ; Last guest instruction-fetch diagnostics (shared resident state).
 x86_fetch_diag_stage: db 0
