@@ -2406,6 +2406,11 @@ x86_shift_original:   dw 0
 x86_real_shift_word_cl:
         call    x86_real_fetch8
         ret     c
+        ; Preserve the exact byte returned by the ModR/M fetch before the
+        ; resident dispatcher performs any masking or bank-gateway work.
+        ld      (x86_shift_fetch_value), a
+        ld      hl, (x86_reg_ip)
+        ld      (x86_shift_fetch_ip), hl
         jp      x86_resident_shift_word_mem_shl_cl
 
 ; D3 E8: SHR AX,CL. Kept in the overlay; the resident dispatcher
