@@ -601,6 +601,10 @@ command_boot_bios:
         call    neo_send_data_byte
         ld      a, 10
         call    neo_send_data_byte
+        ; Out-of-band terminal byte: host must not confuse transient CBIT
+        ; clears from keyboard DMA with completion of the BIOS executor.
+        ld      a, NGS_BIOS_DONE_MARKER
+        call    neo_send_data_byte
         ld      hl, (x86_reg_ax)
         ld      (saved_x86_ax), hl
         call    z80_stack_guard_check
