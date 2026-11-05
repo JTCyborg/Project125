@@ -1907,9 +1907,8 @@ x86_guest_handler_image_end:
 x86_real_shift_byte_one:
         call    x86_real_fetch8
         ret     c
-        ; The memory-fetch diagnostic stores the byte before advancing IP.
-        ; Reload it explicitly here so later helpers cannot corrupt ModR/M in A.
-        ld      a, (x86_fetch_diag_value)
+        ; x86_real_fetch8 returns the exact fetched ModR/M in A. Do not
+        ; reload the diagnostic byte: it is shared with opcode fetch tracing.
         jp      x86_resident_shift_byte_dispatch
 
 ; D0 C8: SHR AL,1. Entered from the resident ModR/M selector.
