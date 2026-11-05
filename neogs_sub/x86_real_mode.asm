@@ -317,8 +317,9 @@ x86_trace_instruction_fetch:
         call    x86_trace_hex8
         ld      a, ':'
         out     (#EF), a
+        ; x86_real_fetch8 calls this trace before incrementing IP, so
+        ; the current IP is already the exact address of the byte just read.
         ld      hl, (x86_reg_ip)
-        dec     hl
         ld      a, h
         call    x86_trace_hex8
         ld      a, l
