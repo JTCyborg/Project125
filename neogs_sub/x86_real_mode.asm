@@ -244,7 +244,8 @@ x86_real_copy_loop:
 ; Fetch one guest byte from physical ((CS << 4) + IP) & FFFFFh.
 ; OUT A=byte; guest IP advances only after a successful memory read.
 x86_real_fetch8:
-        call    x86_fetch_diag_begin
+        xor     a
+        ld      (x86_fetch_diag_stage), a
         ld      a, (x86_real_bounds_enable)
         or      a
         jr      z, .fetch_unbounded
