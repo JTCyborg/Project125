@@ -68,12 +68,44 @@ bios_rom_reset_state:
         ld      (x86_reg_cs), hl
         ld      hl, #0002
         ld      (x86_reg_flags), hl
-        ; The ATM host keyboard is not wired into the guest PC/XT yet.
-        ; Queue one deterministic Enter key so BIOS setup/menu waits can
-        ; complete instead of polling an absent 8255/keyboard controller.
-        ld      a, 1
-        ld      (bios_keyboard_pending), a
+        ; Cold-reset the IBM 5150 8255/XT keyboard interface. PB starts
+        ; at 40h while the keyboard's previous PB value is zero, matching
+        ; PCem's first PB6 rising-edge reset/BAT sequence.
+        ld      a, #40
+        ld      (x86_ppi_port_b), a
         xor     a
+        ld      (x86_ppi_keyboard_pb), a
+        ld      (x86_ppi_port_c), a
+        ld      (x86_ppi_keyboard_data), a
+        ld      (x86_ppi_keyboard_ready), a
+        ld      (x86_kbd_latch_from_queue), a
+        ld      (x86_kbd_wantirq), a
+        ld      (x86_kbd_key_waiting), a
+        ld      (x86_kbd_queue_read), a
+        ld      (x86_kbd_queue_write), a
+        ld      (x86_kbd_queue_count), a
+        ld      a, #99
+        ld      (x86_ppi_control), a
+        ld      a, (x86_pic_pending)
+        and     #FD
+        ld      (x86_pic_pending), a
+        ld      hl, (neo_timer_ticks)
+        ld      (x86_kbd_poll_last_tick), hl
+        ld      hl, x86_kbd_matrix_previous
+        ld      b, 8
+        ld      a, #1F
+.keyboard_matrix_reset:
+        ld      (hl), a
+        inc     hl
+        djnz    .keyboard_matrix_reset
+
+        ; The BIOS INT 16h hook consumes real make events from the same
+        ; physical keyboard matrix; no synthetic Enter is injected.
+        xor     a
+        ld      (bios_keyboard_pending), a
+        ld      (bios_keyboard_word), a
+        ld      (bios_keyboard_word+1), a
+        ld      (bios_keyboard_shift_flags), a
         ld      (bios_video_stream_errors), a
         ld      (x86_real_bounds_enable), a
         ld      (x86_exit_status), a
@@ -474,11 +506,12 @@ bios_int16_read_key:
         jr      z, bios_int16_no_key
         xor     a
         ld      (bios_keyboard_pending), a
-        ld      hl, #1C0D
+        ld      hl, (bios_keyboard_word)
         ld      (x86_reg_ax), hl
         or      a
         ret
 bios_int16_no_key:
+        ; Nonblocking compatibility behavior: no key is reported as AX=0.
         ld      hl, 0
         ld      (x86_reg_ax), hl
         or      a
@@ -488,7 +521,7 @@ bios_int16_check_key:
         ld      a, (bios_keyboard_pending)
         or      a
         jr      z, bios_int16_no_pending
-        ld      hl, #1C0D
+        ld      hl, (bios_keyboard_word)
         ld      (x86_reg_ax), hl
         ld      hl, x86_reg_flags
         res     6, (hl)              ; ZF=0: key available
@@ -501,10 +534,14 @@ bios_int16_no_pending:
         ret
 
 bios_int16_shift_flags:
-        xor     a
-        ld      (x86_reg_ax), a      ; AL=0; preserve AH=02
+        ld      a, (bios_keyboard_shift_flags)
+        ld      (x86_reg_ax), a      ; AL=XT shift flags; AH remains 02h
         or      a
         ret
 
 bios_keyboard_pending:
+        db      0
+bios_keyboard_word:
+        dw      0
+bios_keyboard_shift_flags:
         db      0
