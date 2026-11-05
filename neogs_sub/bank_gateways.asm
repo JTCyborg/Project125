@@ -23,16 +23,63 @@ bank_call_x86_real_copy_image:
         ret
 
 bank_call_x86_real_execute:
+        ld      hl, bank_dbg_gateway_enter
+        call    bank_gateway_debug_emit
+
         push    af
         ld      a, NGS_FW_BANK68_MPAG
         out     (MPAG), a
         pop     af
+
+        ld      hl, bank_dbg_page68_selected
+        call    bank_gateway_debug_emit
+
+        ; This marker is immediately before CALL. If it appears without
+        ; BIOS EXEC ENTER, the fault is at the overlay entry/call target.
+        ld      hl, bank_dbg_before_executor
+        call    bank_gateway_debug_emit
+
         call    x86_real_execute
+
+        ; Preserve the executor's AF/carry result while reporting return.
         push    af
+        ld      hl, bank_dbg_executor_return
+        call    bank_gateway_debug_emit
         ld      a, NGS_FW_BANK68_MPAG
         out     (MPAG), a
         pop     af
         ret
+
+; The gateway and these strings are resident, not in the switched overlay.
+; Preserve all Z80 registers around the diagnostic output.
+bank_gateway_debug_emit:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ; Recover the message pointer as the argument to the port writer.
+        ; Stack layout: saved HL, DE, BC, AF.
+        ld      hl, 8
+        add     hl, sp
+        ld      e, (hl)
+        inc     hl
+        ld      d, (hl)
+        ex      de, hl
+        call    neo_debug_port_string
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+bank_dbg_gateway_enter:
+        defb "[NGS] BANK GW ENTER", 13, 10, 0
+bank_dbg_page68_selected:
+        defb "[NGS] BANK GW PAGE68", 13, 10, 0
+bank_dbg_before_executor:
+        defb "[NGS] BANK GW CALL EXEC", 13, 10, 0
+bank_dbg_executor_return:
+        defb "[NGS] BANK GW EXEC RETURN", 13, 10, 0
 
 bank_call_x86_int_self_test:
         push    af
