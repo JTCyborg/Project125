@@ -34,8 +34,18 @@ bank_call_x86_real_execute:
         ld      hl, bank_dbg_page68_selected
         call    bank_gateway_debug_emit
 
-        ; This marker is immediately before CALL. If it appears without
-        ; BIOS EXEC ENTER, the fault is at the overlay entry/call target.
+        ; Verify that the selected WIN2 page exposes the expected first
+        ; opcode at the assembled overlay entry before attempting CALL.
+        ld      a, (x86_real_execute)
+        cp      #AF                     ; first instruction is XOR A
+        jr      nz, .bank_gw_bad_entry
+        ld      hl, bank_dbg_entry_opcode_ok
+        call    bank_gateway_debug_emit
+        jr      .bank_gw_call
+.bank_gw_bad_entry:
+        ld      hl, bank_dbg_entry_opcode_bad
+        call    bank_gateway_debug_emit
+.bank_gw_call:
         ld      hl, bank_dbg_before_executor
         call    bank_gateway_debug_emit
 
@@ -80,6 +90,10 @@ bank_dbg_before_executor:
         defb "[NGS] BANK GW CALL EXEC", 13, 10, 0
 bank_dbg_executor_return:
         defb "[NGS] BANK GW EXEC RETURN", 13, 10, 0
+bank_dbg_entry_opcode_ok:
+        defb "[NGS] BANK GW ENTRY BYTE AF", 13, 10, 0
+bank_dbg_entry_opcode_bad:
+        defb "[NGS] BANK GW ENTRY BYTE BAD", 13, 10, 0
 
 bank_call_x86_int_self_test:
         push    af
