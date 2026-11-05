@@ -39,6 +39,33 @@ bank_call_x86_real_execute:
         call    neo_trace_ef_string
         ld      hl, trace_gate_call
         call    neo_trace_ef_string
+        ; Report the assembler-resolved entry address and bytes at that exact
+        ; address while page 68 is mapped. Expected entry starts: 3E 5B D3 EF.
+        ld      hl, trace_x86_target
+        call    neo_trace_ef_string
+        ld      hl, x86_real_execute
+        ld      a, h
+        call    bank_trace_overlay68_hex8
+        ld      a, l
+        call    bank_trace_overlay68_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      b, 8
+.x86_target_dump:
+        ld      a, (hl)
+        push    hl
+        push    bc
+        call    bank_trace_overlay68_hex8
+        pop     bc
+        pop     hl
+        inc     hl
+        ld      a, ' '
+        out     (#EF), a
+        djnz    .x86_target_dump
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
         call    x86_real_execute
         ld      hl, trace_gate_after_call
         call    neo_trace_ef_string
