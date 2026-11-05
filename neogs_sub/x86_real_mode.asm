@@ -296,6 +296,17 @@ x86_real_fetch_out_of_range:
         jp      x86_real_fetch_out_of_range_resident
 
 x86_real_execute:
+        ; Kernel-entry marker: proves control reached the actual 8086 interpreter.
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_dbg_core_enter
+        call    neo_debug_send_string
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
         xor     a
         ld      (x86_real_unsupported_opcode), a
         ld      hl, X86_REAL_STEP_LIMIT
@@ -306,6 +317,23 @@ x86_real_next:
         ld      (x86_real_seg_override_active), a
         ld      (x86_real_rep_mode), a
 x86_real_dispatch:
+        ; One-shot dispatch marker, before any guest opcode fetch.
+        ld      a, (x86_dbg_dispatch_once)
+        or      a
+        jr      nz, .dispatch_marked
+        ld      a, 1
+        ld      (x86_dbg_dispatch_once), a
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_dbg_dispatch
+        call    neo_debug_send_string
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+.dispatch_marked:
         ld      hl, (x86_real_steps)
         ld      a, h
         or      l
@@ -333,13 +361,55 @@ x86_real_dispatch_no_progress:
         or      a
         call    z, x86_host_input_service_poll
         call    x86_io_tick
-        ret     c
+        jr      nc, .io_tick_ok
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_dbg_io_error
+        call    neo_debug_send_string
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+.io_tick_ok:
         ; The IRQ-delivery marker is only consumed by the HLT wait loop.
         ; Clear it here after ordinary instruction-boundary polling.
         xor     a
         ld      (x86_io_irq_delivered), a
+        ; Mark the fetch boundary independently of BIOS-specific one-shot traces.
+        ld      a, (x86_dbg_fetch_once)
+        or      a
+        jr      nz, .fetch_marked
+        ld      a, 1
+        ld      (x86_dbg_fetch_once), a
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_dbg_fetch_begin
+        call    neo_debug_send_string
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+.fetch_marked:
         call    x86_real_fetch8
-        ret     c
+        jr      nc, .fetch_succeeded
+        ; A carry return here means the memory fetch itself failed.
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_dbg_fetch_error
+        call    neo_debug_send_string
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+.fetch_succeeded:
         ; Emit the exact first successfully fetched BIOS opcode before decode.
         ld      a, (bios_first_instruction_trace)
         cp      1
@@ -2904,3 +2974,13 @@ x86_daa_old_cf:   db 0
 x86_daa_old_af:   db 0
 x86_daa_new_cf:   db 0
 x86_daa_new_af:   db 0
+
+; Core diagnostics are deliberately one-shot: they identify the exact stage
+; reached without flooding the shared ATM/NeoGS debug stream.
+x86_dbg_dispatch_once: db 0
+x86_dbg_fetch_once:    db 0
+x86_dbg_core_enter:    defb "[NGS X86] CORE ENTER",13,10,0
+x86_dbg_dispatch:      defb "[NGS X86] DISPATCH ENTER",13,10,0
+x86_dbg_fetch_begin:   defb "[NGS X86] FETCH BEGIN",13,10,0
+x86_dbg_fetch_error:   defb "[NGS X86] FETCH ERROR",13,10,0
+x86_dbg_io_error:      defb "[NGS X86] IO TICK ERROR",13,10,0
