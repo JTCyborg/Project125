@@ -425,7 +425,7 @@ x86_real_dispatch_no_progress:
 .first_fetch_trace_done:
         call    x86_resident_escape_dispatch
         ret     c
-        jr      z, x86_real_next
+        jp      z, x86_real_next
 
         ; 8086 segment-override prefixes. Multiple prefixes are accepted;
         ; the last segment prefix before the instruction takes effect.
