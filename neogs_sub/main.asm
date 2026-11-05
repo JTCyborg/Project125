@@ -990,7 +990,7 @@ bios_progress_emit:
         push    de
         push    hl
         ld      hl, bios_progress_prefix
-        call    neo_debug_send_string
+        call    neo_debug_port_string
         ld      hl, (x86_reg_cs)
         ld      a, h
         call    neo_debug_port_hex8
@@ -1821,7 +1821,7 @@ x86_host_input_service_poll:
         inc     a
         ld      (x86_host_input_poll_seen), a
         ld      hl, x86_kbd_poll_message
-        call    neo_debug_port_string
+        call    neo_debug_send_string
 .kbd_poll_marker_done:
         ; CMD_BOOT_BIOS has already been acknowledged. A new CBIT edge while
         ; the interpreter runs is the host keyboard mailbox doorbell.
@@ -1867,7 +1867,7 @@ x86_host_input_service_poll:
         out     (DMA_CST), a
         out     (CLRCBIT), a
         ld      hl, x86_kbd_timeout_message
-        call    neo_debug_port_string
+        call    neo_debug_send_string
         jr      .kbd_service_done
 .kbd_dma_done:
         xor     a
@@ -1875,7 +1875,7 @@ x86_host_input_service_poll:
         out     (CLRCBIT), a
         call    x86_kbd_process_matrix
         ld      hl, x86_kbd_done_message
-        call    neo_debug_port_string
+        call    neo_debug_send_string
 .kbd_service_done:
         pop     hl
         pop     de
