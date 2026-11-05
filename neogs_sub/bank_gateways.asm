@@ -23,16 +23,91 @@ bank_call_x86_real_copy_image:
         ret
 
 bank_call_x86_real_execute:
+        ld      hl, bank_dbg_gateway_enter
+        call    bank_gateway_debug_emit
+
         push    af
         ld      a, NGS_FW_BANK68_MPAG
         out     (MPAG), a
         pop     af
+
+        ld      hl, bank_dbg_page68_selected
+        call    bank_gateway_debug_emit
+
+        ; Read and report the actual first byte visible at the overlay entry.
+        ; This distinguishes a wrong MPAG/page image from a stale firmware build.
+        ld      a, (x86_real_execute)
+        ld      (bank_dbg_entry_byte), a
+        ld      hl, bank_dbg_entry_opcode_value
+        call    bank_gateway_debug_emit
+        ld      a, (bank_dbg_entry_byte)
+        call    neo_debug_port_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        ld      a, (bank_dbg_entry_byte)
+        cp      #21                     ; x86_real_execute begins with LD HL,nn
+        jr      nz, .bank_gw_bad_entry
+        ld      hl, bank_dbg_entry_opcode_ok
+        call    bank_gateway_debug_emit
+        jr      .bank_gw_call
+.bank_gw_bad_entry:
+        ld      hl, bank_dbg_entry_opcode_bad
+        call    bank_gateway_debug_emit
+.bank_gw_call:
+        ld      hl, bank_dbg_before_executor
+        call    bank_gateway_debug_emit
+
         call    x86_real_execute
+
+        ; Preserve the executor's AF/carry result while reporting return.
         push    af
+        ld      hl, bank_dbg_executor_return
+        call    bank_gateway_debug_emit
         ld      a, NGS_FW_BANK68_MPAG
         out     (MPAG), a
         pop     af
         ret
+
+; The gateway and these strings are resident, not in the switched overlay.
+; Preserve all Z80 registers around the diagnostic output.
+bank_gateway_debug_emit:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ; Recover the message pointer as the argument to the port writer.
+        ; Stack layout: saved HL, DE, BC, AF.
+        ld      hl, 0
+        add     hl, sp
+        ld      e, (hl)
+        inc     hl
+        ld      d, (hl)
+        ex      de, hl
+        call    neo_debug_port_string
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+bank_dbg_gateway_enter:
+        defb "[NGS] BANK GW ENTER", 13, 10, 0
+bank_dbg_page68_selected:
+        defb "[NGS] BANK GW PAGE68", 13, 10, 0
+bank_dbg_before_executor:
+        defb "[NGS] BANK GW CALL EXEC", 13, 10, 0
+bank_dbg_executor_return:
+        defb "[NGS] BANK GW EXEC RETURN", 13, 10, 0
+bank_dbg_entry_byte:
+        db 0
+bank_dbg_entry_opcode_value:
+        defb "[NGS] BANK GW ENTRY BYTE=", 0
+bank_dbg_entry_opcode_ok:
+        defb "[NGS] BANK GW ENTRY BYTE 21", 13, 10, 0
+bank_dbg_entry_opcode_bad:
+        defb "[NGS] BANK GW ENTRY BYTE BAD", 13, 10, 0
 
 bank_call_x86_int_self_test:
         push    af
