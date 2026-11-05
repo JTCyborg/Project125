@@ -2243,6 +2243,7 @@ neogs_overlay68_end:
         ORG     $8000
 neogs_overlay69_start:
         INCLUDE "bios/bios_video.asm"
+        INCLUDE "x86_shift.asm"
 neogs_overlay69_end:
 
 ; WIN1 layout: trampoline $4000-$400F, guard $4800-$487F, stack grows
