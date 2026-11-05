@@ -1,0 +1,31 @@
+name: Project125 build verification
+
+on:
+  push:
+    branches:
+      - neogs-driver-rewrite
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build complete Project125 disk image
+        shell: powershell
+        run: .\tools\build_project125.ps1
+
+      - name: Publish build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: project125-48k-build
+          path: |
+            disk_A.trd
+            neogs_resident.bin
+            neogs_overlay68.bin
+            neogs_overlay69.bin
+            neogs_bootstrap.bin
+            zx_main/neoload.bin
+            zx_main/neofw.bin

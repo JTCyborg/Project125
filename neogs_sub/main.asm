@@ -2213,38 +2213,18 @@ x86_resident_group_ff_invalid:
 ; D3 B0: SHL word ptr [BX+SI+disp16],CL.
 ; Resident implementation keeps the full 16 KiB interpreter overlay intact.
 x86_resident_shift_word_mem_shl_cl:
-        ; This BIOS encoding is fixed: D3 B0 disp16 is
-        ; SHL word ptr [BX+SI+disp16],CL. Decode this exact form locally.
-        ; Decode locally in the resident page; no banked ModR/M decoder call is needed.
-        ld      a, #B0
-        ld      (x86_mov_modrm), a
-        ld      a, 2
-        ld      (x86_mov_mod), a
-        ld      a, 6
-        ld      (x86_mov_reg), a
-        xor     a
-        ld      (x86_mov_rm), a
-        ld      (x86_mov_is_reg), a
-        ld      (x86_mov_width), a
-
-        ; Consume disp16 from guest CS:IP, then form BX+SI+disp16.
-        call    x86_real_mov_fetch16
+        ; A still contains the fetched ModR/M byte (#B0). Decode it before
+        ; touching A; clearing A here would silently decode ModR/M=00.
+        call    x86_real_mov_decode_modrm
         ret     c
-        ld      de, (x86_reg_bx)
-        add     hl, de
-        ld      de, (x86_reg_si)
-        add     hl, de
-        ld      (x86_mov_offset), hl
-
-        ; [BX+SI+disp16] defaults to DS; honor a segment override.
-        ld      hl, (x86_reg_ds)
-        ld      a, (x86_real_seg_override_active)
+        xor     a
+        ld      (x86_mov_width), a
+        ld      a, (x86_mov_reg)
+        cp      6
+        jp      nz, x86_real_shift_cl_unsupported
+        ld      a, (x86_mov_is_reg)
         or      a
-        jr      z, .shl_mem_segment_ready
-        ld      hl, (x86_real_seg_override)
-.shl_mem_segment_ready:
-        ld      (x86_mov_segment), hl
-
+        jp      nz, x86_real_shift_cl_unsupported
         ld      a, (x86_reg_cx)
         or      a
         jp      z, x86_real_next
