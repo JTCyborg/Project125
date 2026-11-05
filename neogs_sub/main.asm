@@ -691,6 +691,22 @@ bios_stop_dump_state:
         call    neo_debug_send_string
         ld      a, (x86_real_bounds_enable)
         call    neo_debug_hex8
+        ld      hl, bios_stop_fail_label
+        call    neo_debug_send_string
+        ld      a, (x86_fetch_fail_bounds)
+        call    neo_debug_hex8
+        ld      hl, (x86_fetch_fail_cs)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, ':'
+        call    neo_send_data_byte
+        ld      hl, (x86_fetch_fail_ip)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
         ld      hl, bios_stop_shift_label
         call    neo_debug_send_string
         ld      a, (x86_shift_diag_stage)
@@ -721,6 +737,8 @@ bios_stop_video_errors_label:
         defb    " VERR=", 0
 bios_stop_bounds_label:
         defb    " BND=", 0
+bios_stop_fail_label:
+        defb    " FERR=", 0
 bios_stop_shift_label:
         defb    " SH=", 0
 bios_stop_fetch_label:
@@ -2270,6 +2288,30 @@ x86_fetch_diag_read_ok:
         ld      (x86_fetch_diag_stage), a
         pop     af
         ret
+
+; Capture the exact state at the instant an instruction fetch is rejected.
+; Kept resident so the nearly-full page-68 interpreter does not grow.
+x86_real_fetch_out_of_range_resident:
+        push    af
+        push    hl
+        ld      a, (x86_real_bounds_enable)
+        ld      (x86_fetch_fail_bounds), a
+        ld      hl, (x86_reg_cs)
+        ld      (x86_fetch_fail_cs), hl
+        ld      hl, (x86_reg_ip)
+        ld      (x86_fetch_fail_ip), hl
+        ld      a, 4
+        ld      (x86_exit_status), a
+        ld      a, 4
+        ld      (x86_fetch_diag_stage), a
+        pop     hl
+        pop     af
+        scf
+        ret
+
+x86_fetch_fail_bounds: db 0
+x86_fetch_fail_cs:     dw 0
+x86_fetch_fail_ip:     dw 0
 
 x86_shift_diag_stage: db 0
 ; Last guest instruction-fetch diagnostics (shared resident state).
