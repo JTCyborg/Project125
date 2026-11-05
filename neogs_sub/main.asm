@@ -2359,9 +2359,9 @@ x86_resident_shift_byte_shl_one:
         ld      (x86_shift_carry), a
 
         xor     a
-        ld      (x86_shift_new_flags), a
-        ld      a, #10                ; PCem sets AF for SHL
         ld      (x86_shift_new_flags+1), a
+        ld      a, #10                ; AF is bit 4 of FLAGS low byte
+        ld      (x86_shift_new_flags), a
 
         ld      a, (x86_shift_carry)
         or      a
