@@ -1774,12 +1774,21 @@ x86_ppi_write_control:
 X86_KBD_DMA_WAIT EQU #FFFF
 
 x86_host_input_service_poll:
+        ; Preserve the interpreter's scratch registers: this service is called
+        ; from the instruction-boundary dispatcher and the HLT wait loop.
+        push    af
+        push    bc
+        push    de
+        push    hl
+
+        ; While the BIOS executor is active, CBIT is the host-input doorbell.
+        ; The original CMD_BOOT_BIOS token has already been consumed by the
+        ; outer command loop; depending on GS command-latch timing, ZXCMD may
+        ; still expose that old byte even though a new CBIT edge is pending.
+        ; No other host command is valid during this service window.
         in      a, (ZXSTAT)
         bit     B_CBIT, a
-        ret     z
-        in      a, (ZXCMD)
-        cp      CMD_HOST_INPUT
-        ret     nz
+        jr      z, .kbd_service_done
 
         ld      a, C_DMA_ZX
         out     (DMA_MOD), a
@@ -1810,12 +1819,17 @@ x86_host_input_service_poll:
         xor     a
         out     (DMA_CST), a
         out     (CLRCBIT), a
-        ret
+        jr      .kbd_service_done
 .kbd_dma_done:
         xor     a
         out     (DMA_CST), a
         out     (CLRCBIT), a
         call    x86_kbd_process_matrix
+.kbd_service_done:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
         ret
 
 ; Compare the eight 5-bit rows and enqueue XT make/break scan codes.
