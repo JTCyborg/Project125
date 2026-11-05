@@ -511,11 +511,11 @@ bios_int16_read_key:
         ld      d, 0
         ld      hl, bios_keyboard_queue
         add     hl, de
-        ld      a, (hl)
-        ld      h, a
+        ld      c, (hl)
         inc     hl
-        ld      a, (hl)
-        ld      l, a
+        ld      b, (hl)
+        ld      h, c
+        ld      l, b
         ld      (x86_reg_ax), hl
         ld      a, (bios_keyboard_queue_read)
         inc     a
@@ -544,11 +544,11 @@ bios_int16_check_key:
         ld      d, 0
         ld      hl, bios_keyboard_queue
         add     hl, de
-        ld      a, (hl)
-        ld      h, a
+        ld      c, (hl)
         inc     hl
-        ld      a, (hl)
-        ld      l, a
+        ld      b, (hl)
+        ld      h, c
+        ld      l, b
         ld      (x86_reg_ax), hl
         ld      hl, x86_reg_flags
         res     6, (hl)              ; ZF=0: key available
