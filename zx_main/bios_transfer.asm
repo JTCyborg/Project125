@@ -511,6 +511,9 @@ atm_keyboard_poll_and_send:
         jr      .atm_kbd_end_timeout
 
 .atm_kbd_dma_done:
+        ; The DMA copy was protected by DI. Restore host interrupts before
+        ; returning to the BIOS wait loop.
+        ei
         ; Restore the long-running BIOS command token. The guest executor
         ; ignores it while running; the outer command handler clears CBIT
         ; only when the BIOS actually returns.
@@ -537,6 +540,7 @@ atm_keyboard_poll_and_send:
 
 .atm_kbd_end_timeout:
         ; DMA data was sent, but NeoGS did not acknowledge the end marker.
+        ei
         in      a, (GSSTAT)
         ld      (atm_kbd_timeout_status), a
         ld      hl, msg_kbd_end_timeout
