@@ -1070,8 +1070,8 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261105-03",13,10
-        defb "[NGS] BASE COMMIT 809EA35",13,10,0
+        defb "[NGS] BUILD 20261105-04",13,10
+        defb "[NGS] BASE COMMIT F1CD84C",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
 trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
@@ -3288,6 +3288,11 @@ trace_overlay68_probe:
         INCLUDE "x86_io.asm"
         INCLUDE "x86_strings.asm"
 neogs_overlay68_end:
+
+; Save Overlay68 now. Overlay69 reuses the same logical ORG $8000 range,
+; so waiting until the end of main.asm would save Overlay69 bytes over it.
+SAVEBIN "neogs_overlay68.bin", neogs_overlay68_start, neogs_overlay68_end - neogs_overlay68_start
+SAVEBIN "build/neogs_overlay68.bin", neogs_overlay68_start, neogs_overlay68_end - neogs_overlay68_start
 
 ; Overlay bank 69: BIOS INT 10h service implementation and its test harness.
 ; Cross-bank calls go through resident gateways in bank_gateways.asm.
