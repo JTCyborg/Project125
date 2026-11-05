@@ -372,6 +372,10 @@ x86_trace_fetch_count: db 0
 x86_trace_decode_once: db 0
 x86_trace_fetch_text:  db "[NGS X86] FETCH ",0
 x86_trace_decode_text: db "[NGS X86] MAIN DECODER ENTER",13,10,0
+x86_trace_decode_opcode_text: db "[NGS X86] DECODE OPCODE=",0
+x86_trace_decode_opcode: db 0
+x86_trace_jmp_far_once: db 0
+x86_trace_jmp_far_text: db "[NGS X86] JMP FAR HANDLER ENTER",13,10,0
 
 x86_real_fetch_out_of_range:
         jp      x86_real_fetch_out_of_range_resident
@@ -618,6 +622,26 @@ x86_real_dispatch_no_progress:
         pop     bc
         pop     af
 .decode_trace_done:
+        pop     af
+        ; Record the opcode that actually reaches the main dispatch table.
+        ; The fetch trace alone is insufficient: helpers may preserve a
+        ; diagnostic copy while accidentally changing the live opcode in A.
+        ld      (x86_trace_decode_opcode), a
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_trace_decode_opcode_text
+        call    x86_trace_puts
+        ld      a, (x86_trace_decode_opcode)
+        call    x86_trace_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
         pop     af
 
         ; 8086 segment-override prefixes. Multiple prefixes are accepted;
@@ -1146,6 +1170,19 @@ x86_real_jmp_near:
 
 ; EA ptr16:16 — far JMP. Fetch the complete pointer before changing CS:IP.
 x86_real_jmp_far:
+        ; One-shot proof that the EA dispatch branch reached this handler.
+        ld      a, (x86_trace_jmp_far_once)
+        or      a
+        jr      nz, .jmp_far_trace_done
+        inc     a
+        ld      (x86_trace_jmp_far_once), a
+        push    af
+        push    hl
+        ld      hl, x86_trace_jmp_far_text
+        call    x86_trace_puts
+        pop     hl
+        pop     af
+.jmp_far_trace_done:
         call    x86_real_fetch8
         ret     c
         ld      (x86_real_far_ip), a
