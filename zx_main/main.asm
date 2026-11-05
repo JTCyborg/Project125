@@ -231,9 +231,6 @@ Init_Z80_System:
         ld      a, 10
         call    p125_emit_char
 .dma_reverse_done:
-        ld      hl, msg_bios_valid
-        call    p125_print_string
-
         ; Stage 3: execute the BIOS from the architectural 8086 reset vector.
         ld      hl, msg_bios_run
         call    p125_print_string
@@ -474,7 +471,6 @@ msg_bios_load:        defb "[P125] LOAD BIOS.C TO PAGE 75", 13, 10, 0
 msg_bios_load_error:  defb "[P125] ERROR: BIOS FILE/DMA #", 0
 msg_bios_diag_status: defb " BIOS STATUS #", 0
 msg_bios_diag_ax:     defb " AX #", 0
-msg_bios_valid:       defb "[P125] BIOS ROM VALIDATED", 13, 10, 0
 msg_bios_run:         defb "[P125] EXECUTE 8086 BIOS FROM FFFF:0000", 13, 10, 0
 msg_bios_run_error:   defb "[P125] ERROR: BIOS EXECUTION IPC #", 0
 msg_bios_result:      defb "[P125] BIOS RETURN STATUS/AX: ", 0
