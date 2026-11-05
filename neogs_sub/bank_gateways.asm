@@ -160,13 +160,14 @@ bank_call_x86_shift_shl_cl:
 ; Overlay69 -> overlay68 decoder/read/write gateways. AF (including carry)
 ; and HL return values are preserved across the physical bank switch.
 bank69_call_x86_mov_decode_modrm:
+        ld      (x86_shift_modrm_shared), a
         push    af
         ld      a, NGS_FW_BANK68_MPAG
         out     (MPAG), a
         pop     af
         xor     a
         ld      (x86_mov_width), a       ; D3 always operates on r/m16
-        ld      a, (x86_shift_modrm69)  ; restore ModR/M after width setup
+        ld      a, (x86_shift_modrm_shared)
         call    x86_real_mov_decode_modrm
         push    af
         ld      a, NGS_FW_BANK69_MPAG
@@ -206,3 +207,6 @@ bank69_jump_x86_real_next:
         ld      a, NGS_FW_BANK68_MPAG
         out     (MPAG), a
         jp      x86_real_next
+
+; Shared across WIN2 bank changes.
+x86_shift_modrm_shared: db 0
