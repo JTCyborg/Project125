@@ -85,6 +85,16 @@ x86_real_logic8_accumulator_immediate:
 ; A=opcode. Byte register encoding: AL,CL,DL,BL,AH,CH,DH,BH.
 ; -------------------------------------------------------------------------
 x86_real_alu8_modrm:
+        push    af
+        ld      a, (trace_alu8_once)
+        or      a
+        jr      nz, .alu8_trace_done
+        ld      a, 1
+        ld      (trace_alu8_once), a
+        ld      hl, trace_alu8_entry
+        call    neo_trace_ef_string
+.alu8_trace_done:
+        pop     af
         ld      (x86_real_opcode), a
         call    x86_real_fetch8
         ret     c
@@ -1756,3 +1766,7 @@ x86_guest_alu8_logic_image:
         db #B0,#F0                 ; Restore AL for AX regression
         db #F4
 x86_guest_alu8_logic_image_end:
+
+; One-shot byte ALU entry diagnostic.
+trace_alu8_once: db 0
+trace_alu8_entry: defb "[X86 ALU8]",13,10,0
