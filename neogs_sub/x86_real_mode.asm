@@ -720,6 +720,15 @@ x86_real_pop_segment:
         ld      hl, x86_reg_es
         add     hl, de
         ld      de, (x86_real_stack_value)
+        ; POP ES is another possible source of the unexpected 03F8 segment.
+        ld      a, (x86_real_opcode)
+        cp      #07
+        jr      nz, .pop_segment_store
+        ld      (x86_mov_value), de
+        call    x86_real_trace_es_load
+        ld      hl, x86_reg_es
+        ld      de, (x86_real_stack_value)
+.pop_segment_store:
         ld      (hl), e
         inc     hl
         ld      (hl), d
@@ -2530,6 +2539,7 @@ x86_real_group_f6:
 .f6_segment_ready:
         ld      (x86_mem_segment), hl
         call    x86_mem_calc_phys
+        call    x86_mem_trace_f6_address
         call    x86_mem_read8
         ret     c
         ld      (x86_f6_operand), a

@@ -106,8 +106,9 @@ x86_mem_read8:
         or      a
         ret
 
-; Trace every BIOS read of the conventional-memory-size and equipment/error
-; bytes. This is deliberately independent of the write-watch budget.
+; Trace BIOS reads of the equipment word and conventional-memory/error
+; bytes (00410h-00415h). This distinguishes the ROM's floppy/configuration
+; branch from its RAM-test/error path. It is independent of the write budget.
 ; The helper preserves AF/BC/DE/HL and therefore the guest read result.
 x86_mem_watch_low_read:
         push    af
@@ -119,12 +120,20 @@ x86_mem_watch_low_read:
         jr      nz, .done
         ld      a, (x86_mem_addr+1)
         cp      #04
+        jr      z, .check_bda
+        cp      #3F
         jr      nz, .done
         ld      a, (x86_mem_addr)
-        cp      #13
+        cp      #95
+        jr      nz, .done
+        jr      .trace
+.check_bda:
+        ld      a, (x86_mem_addr)
+        cp      #10
         jr      c, .done
         cp      #16
         jr      nc, .done
+.trace:
         ld      hl, x86_mem_read_prefix
         call    x86_mem_watch_string
         ld      a, (x86_mem_addr+2)
@@ -180,6 +189,20 @@ x86_mem_write8:
 .write_allowed:
         call    x86_mem_map_addr
         ret     c
+        ; Trace writes to the BIOS error byte candidate at physical 003F95h.
+        ; The first read was 00 and the later BIOS TEST observed 02; identify
+        ; the exact instruction that changes this byte before altering memory
+        ; semantics. This diagnostic is independent of the BDA watch budget.
+        ld      a, (x86_mem_addr+2)
+        or      a
+        jr      nz, .check_bda
+        ld      a, (x86_mem_addr+1)
+        cp      #3F
+        jr      nz, .check_bda
+        ld      a, (x86_mem_addr)
+        cp      #95
+        call    z, x86_mem_watch_3f95_write
+.check_bda:
         ; Trace only changed writes in the BDA (00400h-004FFh).
         ; Conventional-memory POST writes must not consume the diagnostic
         ; budget before BIOS error flags such as 00415h are reached.
@@ -198,6 +221,63 @@ x86_mem_write8:
 .write_protected:
         scf
         ret
+
+; Trace every write to physical 003F95h with old/new byte and guest CS:IP.
+; Preserve the mapped pointer in HL and all guest-visible state.
+x86_mem_watch_3f95_write:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      b, (hl)
+        ld      hl, x86_mem_3f95_prefix
+        call    x86_mem_watch_string
+        ld      a, '0'
+        out     (#EF), a
+        ld      a, '0'
+        out     (#EF), a
+        ld      a, '3'
+        out     (#EF), a
+        ld      a, 'F'
+        out     (#EF), a
+        ld      a, '9'
+        out     (#EF), a
+        ld      a, '5'
+        out     (#EF), a
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, b
+        call    x86_mem_watch_hex8
+        ld      a, '>'
+        out     (#EF), a
+        ld      a, (x86_mem_value)
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_mem_3f95_prefix:
+        db      "[MEMW] ", 0
 
 ; Log up to 64 changed writes in physical BDA range 00400h-004FFh.
 ; The trace includes physical address, old/new values and guest CS:IP.
@@ -385,6 +465,130 @@ x86_mem_test:
         xor     a
         ld      (x86_exit_status), a
         ret
+
+; Trace the effective address used by BIOS F6 TEST r/m8,imm8.
+; This distinguishes a missing physical 00415h read from bad ES:offset
+; decoding. Preserve all guest-visible registers and flags.
+x86_mem_trace_f6_address:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_mem_f6_prefix
+        call    x86_mem_watch_string
+        ; Report guest CS:IP and the segment registers used to select EA.
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_reg_ds)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, '/'
+        out     (#EF), a
+        ld      hl, (x86_reg_es)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, (x86_real_seg_override_active)
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_mem_segment)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_mem_offset_work)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, '='
+        out     (#EF), a
+        ld      a, (x86_mem_addr+2)
+        call    x86_mem_watch_hex8
+        ld      a, (x86_mem_addr+1)
+        call    x86_mem_watch_hex8
+        ld      a, (x86_mem_addr)
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_mem_f6_prefix:
+        db      "[F6EA] ", 0
+
+; Resident helper: trace the source of MOV Sreg,r/m16 loading ES.
+; Kept outside overlay 68 to preserve its strict 16 KiB bank limit.
+x86_real_trace_es_load:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_mem_es_prefix
+        call    x86_mem_watch_string
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_reg_es)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, '>'
+        out     (#EF), a
+        ld      hl, (x86_mov_value)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_mem_es_prefix:
+        db      "[ES<-] ", 0
 
 ; -------------------------------------------------------------------------
 ; Segment:offset -> physical address.

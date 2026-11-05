@@ -1186,23 +1186,31 @@ x86_io_trace_count: db 0
 ; calculated physical address. This distinguishes an uninitialized ES from
 ; an actual RAM data mismatch.
 x86_resident_memtest_scas_trace:
-        ; BIOS RAM sweeps use REPE SCAS. Ignore successful comparisons and
-        ; F2/REPNE searches; retain the first four actual REPE mismatches.
+        ; Capture the first twelve SCAS iterations, including successful
+        ; comparisons. This exposes the data stream and ZF before REP decides
+        ; whether to continue. Do not filter by REP mode or comparison result.
         ld      a, (x86_string_opcode)
         and     #FE
         cp      #AE
         ret     nz
-        ld      a, (x86_real_rep_mode)
-        cp      3
-        ret     nz
+        ; Always report the first mismatch, even after the successful
+        ; startup sample has filled its twelve-line trace budget.
         ld      a, (x86_reg_flags)
         bit     6, a
-        ret     nz
+        jr      z, .trace_mismatch
         ld      a, (x86_memtest_scas_trace_count)
-        cp      4
+        cp      12
         ret     nc
         inc     a
         ld      (x86_memtest_scas_trace_count), a
+        jr      .trace_emit
+.trace_mismatch:
+        ld      a, (x86_memtest_scas_mismatch_reported)
+        or      a
+        ret     nz
+        inc     a
+        ld      (x86_memtest_scas_mismatch_reported), a
+.trace_emit:
         push    af
         push    bc
         push    de
@@ -1324,6 +1332,8 @@ x86_resident_memtest_hex16:
         jp      x86_mem_watch_hex8
 
 x86_memtest_scas_trace_count:
+        db      0
+x86_memtest_scas_mismatch_reported:
         db      0
 
 ; Shared bounds/diagnostic state accessed by resident BIOS and overlay CPU.
