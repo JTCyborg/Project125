@@ -2014,7 +2014,12 @@ x86_string_rep_scas_summary:
 ; Z=1 means the ESC instruction was consumed; carry reports fetch failure.
 x86_resident_escape_dispatch:
         cp      #D8
-        ret     c
+        jr      nc, .check_escape_end
+        ; A normal opcode below D8h is not an error. Clear Carry while
+        ; preserving the comparison's Z flag for the caller's dispatch.
+        ccf
+        ret
+.check_escape_end:
         cp      #E0
         jr      c, .is_escape
         or      a
