@@ -296,6 +296,13 @@ x86_real_fetch_out_of_range:
         jp      x86_real_fetch_out_of_range_resident
 
 x86_real_execute:
+        ; First-opcode probe: distinguish a failed overlay CALL from a fault
+        ; inside the interpreter prologue. This is deliberately before all
+        ; existing register saves and diagnostic helper calls.
+        push    af
+        ld      a, '!'
+        out     (#EF), a
+        pop     af
         ; Kernel-entry marker: proves control reached the actual 8086 interpreter.
         push    af
         push    bc
