@@ -188,13 +188,18 @@ x86_mem_read_prefix:
 
 ; Write one byte. IN x86_mem_addr[0..2], x86_mem_value.
 x86_mem_write8:
-        ; FE000h-FFFFFh is the selected BIOS ROM and is never writable.
+        ; Match PCem's writemembl/writememwl behavior: writes to a ROM
+        ; mapping with no write handler are silently ignored, not bus errors.
+        ; This matters for legacy BIOS code that performs stack writes while
+        ; SS:SP temporarily points into the ROM address range.
         ld      a, (x86_mem_addr+2)
         cp      #0F
         jr      nz, .write_allowed
         ld      a, (x86_mem_addr+1)
         cp      #E0
-        jr      nc, .write_protected
+        jr      c, .write_allowed
+        or      a
+        ret
 .write_allowed:
         call    x86_mem_map_addr
         ret     c
@@ -224,9 +229,6 @@ x86_mem_write8:
         ld      a, (x86_mem_value)
         ld      (hl), a
         or      a
-        ret
-.write_protected:
-        scf
         ret
 
 ; Trace every write to physical 003F95h with old/new byte and guest CS:IP.
@@ -812,8 +814,9 @@ x86_mem_test_fail:
         ld      (x86_exit_status), a
         ret
 
-; Verify that guest writes to the BIOS ROM overlay are rejected.
-; This test does not require the BIOS image to have been loaded yet.
+; Verify PCem-compatible ROM write semantics: writes are ignored, not
+; reported as memory faults, and the ROM byte remains unchanged.
+; This test does not require a BIOS image to have been loaded.
 x86_mem_rom_protect_test:
         ld      hl, 0
         ld      (x86_mem_addr), hl
@@ -821,13 +824,22 @@ x86_mem_rom_protect_test:
         ld      (x86_mem_addr+1), a
         ld      a, #0F
         ld      (x86_mem_addr+2), a
-        ld      a, #5A
+        call    x86_mem_read8
+        ret     c
+        ld      (x86_mem_rom_test_before), a
+        cpl
         ld      (x86_mem_value), a
         call    x86_mem_write8
-        jr      nc, .rom_write_was_allowed
+        ret     c
+        call    x86_mem_read8
+        ret     c
+        ld      b, a
+        ld      a, (x86_mem_rom_test_before)
+        cp      b
+        jr      nz, .rom_write_changed
         or      a
         ret
-.rom_write_was_allowed:
+.rom_write_changed:
         scf
         ret
 
@@ -886,6 +898,7 @@ x86_mem_build_page_end:
 
 x86_mem_addr:  db 0, 0, 0
 x86_mem_value: db 0
+x86_mem_rom_test_before: db 0
 x86_mem_page:  db 0
 x86_mem_phase: db 0
 x86_mem_segment: dw 0
