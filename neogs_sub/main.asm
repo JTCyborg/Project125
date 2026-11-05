@@ -711,6 +711,14 @@ bios_stop_dump_state:
         call    neo_debug_send_string
         ld      a, (x86_shift_diag_stage)
         call    neo_debug_hex8
+        ld      hl, bios_stop_shift_modrm_label
+        call    neo_debug_send_string
+        ld      a, (x86_shift_diag_modrm)
+        call    neo_debug_hex8
+        ld      hl, bios_stop_shift_mask_label
+        call    neo_debug_send_string
+        ld      a, (x86_shift_diag_mask)
+        call    neo_debug_hex8
          ld      hl, bios_stop_fetch_label
          call    neo_debug_send_string
          ld      a, (x86_fetch_diag_stage)
@@ -741,6 +749,10 @@ bios_stop_fail_label:
         defb    " FERR=", 0
 bios_stop_shift_label:
         defb    " SH=", 0
+bios_stop_shift_modrm_label:
+        defb    " MODRM=", 0
+bios_stop_shift_mask_label:
+        defb    " MASK=", 0
 bios_stop_fetch_label:
         defb    " FCH=", 0
 
@@ -2259,6 +2271,9 @@ x86_resident_group_ff_invalid:
 ; D3 group-2 dispatch. Full r/m16 SHL implementation lives in overlay69.
 x86_resident_shift_word_mem_shl_cl:
         ld      b, a                       ; preserve ModR/M before diagnostics
+        ld      (x86_shift_diag_modrm), a  ; capture exact byte delivered by decoder
+        and     #38
+        ld      (x86_shift_diag_mask), a   ; capture /reg field before comparison
         ld      a, #10
         ld      (x86_shift_diag_stage), a ; resident D3 dispatcher entered
         ld      a, b
@@ -2355,6 +2370,8 @@ x86_fetch_fail_cs:     dw 0
 x86_fetch_fail_ip:     dw 0
 
 x86_shift_diag_stage: db 0
+x86_shift_diag_modrm: db 0
+x86_shift_diag_mask:  db 0
 ; Last guest instruction-fetch diagnostics (shared resident state).
 x86_fetch_diag_stage: db 0
 x86_fetch_diag_phys:  ds 3, 0
