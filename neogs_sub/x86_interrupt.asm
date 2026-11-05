@@ -25,7 +25,39 @@
 X86_INT_IF_TF_CLEAR_MASK EQU #FC
 
 x86_int_enter:
+        push    af
+        ld      a, (trace_int_enter_once)
+        or      a
+        jr      nz, .int_trace_done
+        ld      a, 1
+        ld      (trace_int_enter_once), a
+        ld      hl, trace_int_enter
+        call    neo_trace_ef_string
+.int_trace_done:
+        pop     af
         ld      (x86_int_vector), a
+        push    af
+        ld      a, (trace_int_vector_once)
+        or      a
+        jr      nz, .int_vector_printed
+        inc     a
+        ld      (trace_int_vector_once), a
+        push    bc
+        push    de
+        push    hl
+        ld      hl, trace_int_vector_prefix
+        call    neo_debug_send_string
+        ld      a, (x86_int_vector)
+        call    neo_debug_hex8
+        ld      a, 13
+        call    neo_send_data_byte
+        ld      a, 10
+        call    neo_send_data_byte
+        pop     hl
+        pop     de
+        pop     bc
+.int_vector_printed:
+        pop     af
 
         ; IVT entry address = vector * 4, physical segment zero.
         ld      l, a
@@ -48,6 +80,40 @@ x86_int_enter:
         call    x86_mem_read16
         ret     c
         ld      (x86_int_target_cs), hl
+
+        ; One-shot report of the resolved interrupt vector target.
+        ld      a, (trace_int_target_once)
+        or      a
+        jr      nz, .int_target_trace_done
+        inc     a
+        ld      (trace_int_target_once), a
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, trace_int_target_prefix
+        call    neo_debug_send_string
+        ld      hl, (x86_int_target_cs)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, ':'
+        call    neo_send_data_byte
+        ld      hl, (x86_int_target_ip)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, 13
+        call    neo_send_data_byte
+        ld      a, 10
+        call    neo_send_data_byte
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+.int_target_trace_done:
 
         ; 8086 interrupt entry pushes FLAGS, then CS, then return IP.
         ld      de, (x86_reg_flags)
@@ -83,6 +149,39 @@ x86_iret_return:
         call    x86_int_pop_word
         ret     c
         ld      (x86_reg_flags), hl
+        ; One-shot report of the address restored by IRET.
+        ld      a, (trace_iret_once)
+        or      a
+        jr      nz, .iret_trace_done
+        inc     a
+        ld      (trace_iret_once), a
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, trace_iret_prefix
+        call    neo_debug_send_string
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, ':'
+        call    neo_send_data_byte
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, 13
+        call    neo_send_data_byte
+        ld      a, 10
+        call    neo_send_data_byte
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+.iret_trace_done:
         or      a
         ret
 
@@ -296,3 +395,13 @@ x86_int_vector:    db 0
 x86_int_word:      dw 0
 x86_int_target_ip: dw 0
 x86_int_target_cs: dw 0
+
+; One-shot interrupt-path diagnostics.
+trace_int_enter_once: db 0
+trace_int_enter: defb "[X86 INT ENTER]",13,10,0
+trace_int_vector_prefix: defb "[NGS X86] INT VECTOR=",0
+trace_int_target_prefix: defb "[NGS X86] INT TARGET=",0
+trace_int_vector_once: db 0
+trace_iret_prefix: defb "[NGS X86] IRET RESTORED=",0
+trace_int_target_once: db 0
+trace_iret_once: db 0

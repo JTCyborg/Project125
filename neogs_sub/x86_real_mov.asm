@@ -197,6 +197,16 @@ x86_real_xchg_modrm8:
         jp      x86_real_next
 
 x86_real_mov_modrm:
+        push    af
+        ld      a, (trace_mov_once)
+        or      a
+        jr      nz, .mov_trace_done
+        ld      a, 1
+        ld      (trace_mov_once), a
+        ld      hl, trace_mov_entry
+        call    neo_trace_ef_string
+.mov_trace_done:
+        pop     af
         ld      (x86_mov_opcode), a
         call    x86_real_fetch8
         ret     c
@@ -1122,3 +1132,6 @@ x86_mov_memory_test_image_end:
 ;         jp      x86_mov_trace_hex8
 ;
 ;
+; One-shot MOV decoder entry diagnostic.
+trace_mov_once: db 0
+trace_mov_entry: defb "[X86 MOV]",13,10,0

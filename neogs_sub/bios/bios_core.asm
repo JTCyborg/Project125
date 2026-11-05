@@ -43,12 +43,20 @@ BIOS_ROM_BACKING_PAGE     EQU 75
 ; 8086 reset starts at FFFF:0000 (physical FFFF0h), not F000:FFF0.
 ; The selected Central Point BIOS V1.11 reset vector jumps to F000:E05B.
 bios_rom_reset_state:
+        ld      hl, trace_bios_mem_init
+        call    neo_trace_ef_string
         call    x86_mem_init
+        ld      hl, trace_bios_fetch_diag
+        call    neo_trace_ef_string
         call    x86_fetch_diag_begin
         ; A cold PC/XT reset must not inherit random bytes from backing RAM.
         ; In particular, BIOS error flags at 0040:0015 must start at zero,
         ; otherwise the ROM reports a spurious System error #FF.
+        ld      hl, trace_bios_clear_bda
+        call    neo_trace_ef_string
         call    bios_clear_ivt_bda
+        ld      hl, trace_bios_state_ready
+        call    neo_trace_ef_string
         or      a
         ld      hl, 0
         ld      (x86_reg_ax), hl
@@ -77,73 +85,29 @@ bios_rom_reset_state:
         ld      (bios_video_stream_errors), a
         ld      (x86_real_bounds_enable), a
         ld      (x86_exit_status), a
-        ret
-
-; Validate the Central Point BIOS V1.11 marker and the five reset-vector bytes.
-; This is a structural check; full-image CRC is a separate transport task.
-bios_rom_validate:
-        call    x86_mem_init
-
-        ; Identify the exact byte that fails validation. The low byte of
-        ; saved_x86_ax becomes B110..B115 on failure:
-        ; B110=BIOS marker, B111..B115=reset-vector bytes FFF0..FFF4.
-        ld      a, 0
-        ld      (bios_rom_check_id), a
-        ld      hl, #E000
-        ld      a, #42
-        call    bios_rom_expect_byte
-        ret     c
-        ld      a, 1
-        ld      (bios_rom_check_id), a
-        ld      hl, #FFF0
-        ld      a, #EA
-        call    bios_rom_expect_byte
-        ret     c
-        ld      a, 2
-        ld      (bios_rom_check_id), a
-        ld      hl, #FFF1
-        ld      a, #5B
-        call    bios_rom_expect_byte
-        ret     c
-        ld      a, 3
-        ld      (bios_rom_check_id), a
-        ld      hl, #FFF2
-        ld      a, #E0
-        call    bios_rom_expect_byte
-        ret     c
-        ld      a, 4
-        ld      (bios_rom_check_id), a
-        ld      hl, #FFF3
+        ; Reset one-shot flags so each BIOS launch gets a complete trace.
         xor     a
-        call    bios_rom_expect_byte
-        ret     c
-        ld      a, 5
-        ld      (bios_rom_check_id), a
-        ld      hl, #FFF4
-        ld      a, #F0
-        jp      bios_rom_expect_byte
-
-bios_rom_check_id: db 0
-
-; IN: HL=low 16 address bits, A=expected byte. BIOS ROM is at high nibble 0F.
-bios_rom_expect_byte:
-        ld      (bios_rom_expected), a
-        ld      (x86_mem_addr), hl
-        ld      a, #0F
-        ld      (x86_mem_addr+2), a
-        call    x86_mem_read8
-        ret     c
-        ld      (bios_rom_actual), a
-        ld      b, a
-        ld      a, (bios_rom_expected)
-        cp      b
-        ret     z
-        scf
+        ld      (trace_mem_read_once), a
+        ld      (trace_mem_write_once), a
+        ld      (trace_int_enter_once), a
+        ld      (trace_int_vector_once), a
+        ld      (trace_int_target_once), a
+        ld      (trace_iret_once), a
+        ld      hl, trace_bios_reset_done
+        call    neo_trace_ef_string
         ret
 
-bios_rom_expected: db 0
-bios_rom_actual:   db 0
+trace_bios_mem_init:   defb "[BIOS MEM INIT]",13,10,0
+trace_bios_fetch_diag: defb "[BIOS FETCH DIAG]",13,10,0
+trace_bios_clear_bda:  defb "[BIOS CLEAR BDA]",13,10,0
+trace_bios_state_ready:defb "[BIOS STATE SET]",13,10,0
+trace_bios_reset_done: defb "[BIOS RESET DONE]",13,10,0
+
+; BIOS ROM content is intentionally unrestricted. Any 8 KiB image is accepted.
+; Only transfer length/acknowledgement is checked; reset-vector bytes are not validated.
 bios_rom_loaded:   db 0
+
+
 
 bios_post:
         call    x86_mem_init

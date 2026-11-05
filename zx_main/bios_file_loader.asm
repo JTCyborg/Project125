@@ -16,7 +16,7 @@
 ;   zx_main/bios_file_loader.asm
 ;
 ; Entry: neogs_bios_load_from_trdos
-; OUT: carry clear only after NeoGS confirms BIOS signature/reset vector.
+; OUT: carry clear after NeoGS acknowledges the complete 8 KiB transfer.
 ;     A=0 on success; A=error code on failure.
 ; The routine leaves interrupts disabled; caller owns final EI/DI policy.
 ; =========================================================================
@@ -26,7 +26,7 @@ BIOS_TRDOS_SECTOR_COUNT    EQU #20
 BIOS_TRDOS_SECTOR_SIZE     EQU #0100
 BIOS_TRDOS_BUFFER          EQU #C000
 
-; Open BIOS.C, stage 32 sectors, send them to NeoGS page 75, then validate.
+; Open BIOS.C, require exactly 8 KiB, stage 32 sectors and send them to NeoGS page 75.
 neogs_bios_load_from_trdos:
         di
         ld      (bios_trdos_saved_sp), sp
@@ -128,12 +128,12 @@ neogs_bios_load_from_trdos:
 
         ld      a, (bios_host_result_status)
         or      a
-        jp      nz, bios_trdos_rom_validation_error
+        jp      nz, bios_trdos_firmware_error
         ld      hl, (bios_host_result_ax)
         ld      de, #B105
         or      a
         sbc     hl, de
-        jp      nz, bios_trdos_rom_validation_error
+        jp      nz, bios_trdos_firmware_error
 
         xor     a
         ld      (bios_trdos_file_error), a
@@ -167,7 +167,7 @@ bios_trdos_finish_error:
 bios_trdos_result_error:
         ld      a, 9
         jr      bios_trdos_fail
-bios_trdos_rom_validation_error:
+bios_trdos_firmware_error:
         ld      a, 10
 
 bios_trdos_fail:

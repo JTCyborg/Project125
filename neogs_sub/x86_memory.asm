@@ -31,6 +31,8 @@ X86_MEM_NGSPAGE_BASE EQU 4
 X86_MEM_PAGE_COUNT   EQU 64
 
 x86_mem_init:
+        ld      hl, trace_mem_init
+        call    neo_trace_ef_string
         in      a, (GSCFG0)
         or      M_NOROM | M_EXPAG
         out     (GSCFG0), a
@@ -99,6 +101,14 @@ x86_mem_map_addr:
 
 ; Read one byte. IN x86_mem_addr[0..2]. OUT A=byte, carry on invalid address.
 x86_mem_read8:
+        ld      a, (trace_mem_read_once)
+        or      a
+        jr      nz, .read_trace_done
+        ld      a, 1
+        ld      (trace_mem_read_once), a
+        ld      hl, trace_mem_read
+        call    neo_trace_ef_string
+.read_trace_done:
         call    x86_mem_map_addr
         ret     c
         ld      a, (hl)
@@ -189,6 +199,14 @@ x86_mem_read_prefix:
 
 ; Write one byte. IN x86_mem_addr[0..2], x86_mem_value.
 x86_mem_write8:
+        ld      a, (trace_mem_write_once)
+        or      a
+        jr      nz, .write_trace_done
+        ld      a, 1
+        ld      (trace_mem_write_once), a
+        ld      hl, trace_mem_write
+        call    neo_trace_ef_string
+.write_trace_done:
         ; FE000h-FFFFFh is the selected BIOS ROM and is never writable.
         ld      a, (x86_mem_addr+2)
         cp      #0F
@@ -897,3 +915,10 @@ x86_mem_offset_work: dw 0
 x86_mem_word_value: dw 0
 x86_mem_carry: db 0
 x86_mem_carry1: db 0
+
+; One-shot entry diagnostics for the guest physical-memory backend.
+trace_mem_read_once:  db 0
+trace_mem_write_once: db 0
+trace_mem_init:  defb "[X86 MEM INIT]",13,10,0
+trace_mem_read:  defb "[X86 MEM READ]",13,10,0
+trace_mem_write: defb "[X86 MEM WRITE]",13,10,0

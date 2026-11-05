@@ -22,6 +22,14 @@ BIOS_VIDEO_ROWS    EQU 12
 BIOS_VIDEO_MODE    EQU #03
 
 bios_int10_dispatch_impl:
+        ld      a, (trace_int10_once)
+        or      a
+        jr      nz, .int10_trace_done
+        ld      a, 1
+        ld      (trace_int10_once), a
+        ld      hl, trace_int10_entry
+        call    neo_trace_ef_string
+.int10_trace_done:
         ld      hl, (x86_reg_ax)
         ld      a, h
         cp      #00
@@ -171,6 +179,14 @@ bios_int10_get_cursor:
 
 ; AH=0Eh — teletype output. Every byte is streamed to the host.
 bios_int10_teletype:
+        ld      a, (trace_teletype_once)
+        or      a
+        jr      nz, .teletype_trace_done
+        ld      a, 1
+        ld      (trace_teletype_once), a
+        ld      hl, trace_teletype_entry
+        call    neo_trace_ef_string
+.teletype_trace_done:
         ld      a, (x86_reg_bx+1)
         or      a
         ret     nz
@@ -442,3 +458,9 @@ x86_bios_video_test_image:
         db #B4,#0F,#B0,#00,#CD,#10
         db #F4
 x86_bios_video_test_image_end:
+
+; One-shot BIOS video service diagnostics.
+trace_int10_once: db 0
+trace_teletype_once: db 0
+trace_int10_entry: defb "[BIOS INT10]",13,10,0
+trace_teletype_entry: defb "[BIOS TTY]",13,10,0

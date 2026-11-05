@@ -81,6 +81,12 @@ start_neoprogram:
         ld      bc, rom_return_trampoline_end - rom_return_trampoline_code
         ldir
 
+        ; Identify this firmware image in the shared #EF log.
+        ; The embedded base commit is the exact parent revision used for this
+        ; source change; a commit cannot embed its own SHA without changing it.
+        ld      hl, neo_firmware_build_id
+        call    neo_trace_ef_string
+
         ; Notify the Spectrum only after the new firmware is executing.
         ld      a, NGS_FIRMWARE_READY_ACK
         call    neo_send_data_byte
@@ -510,25 +516,8 @@ command_load_bios:
 .bios_dma_host_end:
         xor     a
         out     (DMA_CST), a
-        ; Compare the final reset-vector bytes in physical page 75 before
-        ; the ROM overlay validator reads them through x86_mem_read8.
+        ; Diagnostic-only reset-vector dump. BIOS contents are not validated.
         call    bios_rom_debug_dump_tail
-        call    bios_rom_validate
-        jr      nc, .bios_image_valid
-        ; Report the actual byte read at the failing ROM address.
-        ; AX=B2xx, where xx is the byte returned by x86_mem_read8.
-        ; The failed address remains identified by bios_rom_check_id.
-        ld      a, (bios_rom_actual)
-        ld      l, a
-        ld      h, #B2
-        ld      (saved_x86_ax), hl
-        ld      a, 13
-        ld      (x86_exit_status), a
-        xor     a
-        out     (CLRCBIT), a
-        jp      main_loop
-
-.bios_image_valid:
         ld      a, 1
         ld      (bios_rom_loaded), a
         ld      hl, #B105
@@ -538,7 +527,7 @@ command_load_bios:
         out     (CLRCBIT), a
         jp      main_loop
 
-; Start the real 8086 reset sequence at FFFF:0000 after BIOS transfer/validation.
+; Start the real 8086 reset sequence after an acknowledged 8 KiB transfer.
 command_boot_bios:
         ld      a, (bios_rom_loaded)
         or      a
@@ -556,16 +545,30 @@ command_boot_bios:
         ; represented as fresh host transactions.
         xor     a
         out     (CLRCBIT), a
+        ld      hl, trace_bios_cmd
+        call    neo_trace_ef_string
         ld      hl, bios_boot_message
         call    neo_debug_send_string
+        ld      hl, trace_bios_reset_in
+        call    neo_trace_ef_string
         call    bios_rom_reset_state
+        ld      hl, trace_bios_reset_out
+        call    neo_trace_ef_string
+        ld      a, 1
+        ld      (bios_first_instruction_trace), a
         ; BIOS execution is unrestricted real-mode ROM fetch, never the
         ; bounded 0000:5002 DMA-task sandbox.
         xor     a
         ld      (x86_real_bounds_enable), a
         ld      a, 1
         ld      (x86_real_progress_enable), a
-        call    x86_real_execute
+        ; The interpreter lives in overlay bank 68. Always enter through
+        ; the resident gateway so MPAG is explicitly set after BIOS reset.
+        ld      hl, trace_gateway_call
+        call    neo_trace_ef_string
+        call    bank_call_x86_real_execute
+        ld      hl, trace_gateway_return
+        call    neo_trace_ef_string
         xor     a
         ld      (x86_real_progress_enable), a
         ; Compact stop trace: the host drains DBIT and mirrors it to port EF.
@@ -600,6 +603,10 @@ command_boot_bios:
         ld      a, 13
         call    neo_send_data_byte
         ld      a, 10
+        call    neo_send_data_byte
+        ; A zero byte is reserved as the end-of-BIOS-debug-stream token.
+        ; It is sent only after execution and all stop diagnostics are complete.
+        xor     a
         call    neo_send_data_byte
         ld      hl, (x86_reg_ax)
         ld      (saved_x86_ax), hl
@@ -881,6 +888,85 @@ bios_rom_debug_dump_tail:
 
 bios_boot_message:
         defb    "[BIOS] RESET FFFF:0000", 13, 10, 0
+
+; One-shot trace around the first guest instruction fetch/dispatch.
+; 1 = waiting for first opcode fetch, 2 = first opcode fetched, awaiting
+; completion of the reset-vector far JMP (EA ptr16:16).
+bios_first_instruction_trace:
+        db      0
+bios_first_opcode:
+        db      0
+
+bios_trace_first_fetch:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, bios_first_fetch_prefix
+        call    neo_debug_send_string
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, ':'
+        call    neo_send_data_byte
+        ld      hl, (x86_reg_ip)
+        dec     hl
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      hl, bios_first_fetch_opcode_label
+        call    neo_debug_send_string
+        ld      a, (bios_first_opcode)
+        call    neo_debug_hex8
+        ld      a, 13
+        call    neo_send_data_byte
+        ld      a, 10
+        call    neo_send_data_byte
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+bios_trace_first_complete:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, bios_first_complete_prefix
+        call    neo_debug_send_string
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, ':'
+        call    neo_send_data_byte
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, 13
+        call    neo_send_data_byte
+        ld      a, 10
+        call    neo_send_data_byte
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+bios_first_fetch_prefix:
+        defb    "[NGS] FIRST FETCH CS:IP=", 0
+bios_first_fetch_opcode_label:
+        defb    " OP=", 0
+bios_first_complete_prefix:
+        defb    "[NGS] FIRST INSTRUCTION COMPLETE; NEXT CS:IP=", 0
+
 bios_stop_prefix:
         defb    "[BIOS] STOP CS:IP=", 0
 
@@ -961,6 +1047,37 @@ neo_debug_dump_dma_frame:
         pop     de
         pop     hl
         ret
+
+; Direct shared #EF trace path. Resident so callers in either overlay can use it.
+; IN: HL -> zero-terminated marker. Preserves AF/BC/DE/HL.
+neo_trace_ef_string:
+        push    af
+        push    bc
+        push    de
+        push    hl
+.trace_loop:
+        ld      a, (hl)
+        inc     hl
+        or      a
+        jr      z, .trace_done
+        out     (#EF), a
+        jr      .trace_loop
+.trace_done:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+neo_firmware_build_id:
+        defb "[NGS] BUILD 20261105-03",13,10
+        defb "[NGS] BASE COMMIT 809EA35",13,10,0
+
+trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
+trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
+trace_bios_reset_out: defb "[P RESET OUT]",13,10,0
+trace_gateway_call:   defb "[P X86 GATE IN]",13,10,0
+trace_gateway_return: defb "[P X86 GATE OUT]",13,10,0
 
 neo_debug_send_string:
         ld      a, (hl)
@@ -3151,6 +3268,19 @@ neogs_resident_end:
 ; in one physical bank while executing. WIN2 is mapped at logical $8000.
         ORG     $8000
 neogs_overlay68_start:
+; Temporary bank-window probe: this code must execute from physical page 68.
+neogs_overlay68_probe:
+        ; A complete CR/LF record is visible in the shared log. A lone 'P'
+        ; was not a reliable probe because the log reader may discard
+        ; unterminated single-character output.
+        push    hl
+        ld      hl, trace_overlay68_probe
+        call    neo_trace_ef_string
+        pop     hl
+        ret
+
+trace_overlay68_probe:
+        defb "[NGS BANK68 PROBE]",13,10,0
         INCLUDE "x86_modrm.asm"
         INCLUDE "x86_real_mode.asm"
         INCLUDE "x86_real_alu8.asm"

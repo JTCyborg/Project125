@@ -864,3 +864,7 @@ x86_guest_alu_image:
         db #74,#01,#00             ; JE taken
         db #F4
 x86_guest_alu_image_end:
+
+; One-shot word ALU entry diagnostic.
+trace_alu16_once: db 0
+trace_alu16_entry: defb "[X86 ALU16]",13,10,0

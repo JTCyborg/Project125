@@ -231,9 +231,6 @@ Init_Z80_System:
         ld      a, 10
         call    p125_emit_char
 .dma_reverse_done:
-        ld      hl, msg_bios_valid
-        call    p125_print_string
-
         ; Stage 3: execute the BIOS from the architectural 8086 reset vector.
         ld      hl, msg_bios_run
         call    p125_print_string
@@ -452,7 +449,7 @@ trace_91_crc_test_done:       defb "[TRACE 91] VIDEO CRC DONE", 13, 10, 0
 trace_A0_bios_load_begin:     defb "[TRACE A0] BIOS LOAD BEGIN", 13, 10, 0
 trace_A1_bios_load_done:      defb "[TRACE A1] BIOS LOAD DONE", 13, 10, 0
 trace_B0_bios_exec_begin:     defb "[TRACE B0] BIOS EXEC BEGIN", 13, 10, 0
-trace_B1_bios_exec_return:    defb "[TRACE B1] BIOS EXEC RETURN", 13, 10, 0
+trace_B1_bios_exec_return:    defb "[TRACE B1] BIOS EXEC/RESULT WAIT RETURNED", 13, 10, 0
 
 msg_p125_start:       defb "[P125] ATM HOST START", 13, 10, 0
 msg_p125_build_id:    defb "[P125] BUILD 20261104-A50 ATM-KBD-DMA", 13, 10, 0
@@ -474,7 +471,6 @@ msg_bios_load:        defb "[P125] LOAD BIOS.C TO PAGE 75", 13, 10, 0
 msg_bios_load_error:  defb "[P125] ERROR: BIOS FILE/DMA #", 0
 msg_bios_diag_status: defb " BIOS STATUS #", 0
 msg_bios_diag_ax:     defb " AX #", 0
-msg_bios_valid:       defb "[P125] BIOS ROM VALIDATED", 13, 10, 0
 msg_bios_run:         defb "[P125] EXECUTE 8086 BIOS FROM FFFF:0000", 13, 10, 0
 msg_bios_run_error:   defb "[P125] ERROR: BIOS EXECUTION IPC #", 0
 msg_bios_result:      defb "[P125] BIOS RETURN STATUS/AX: ", 0
