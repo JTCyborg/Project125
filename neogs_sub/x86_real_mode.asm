@@ -1907,7 +1907,9 @@ x86_guest_handler_image_end:
 x86_real_shift_byte_one:
         call    x86_real_fetch8
         ret     c
-        cp      #C8
+        cp      #E0                    ; D0 /4: SHL AL,1
+        jp      z, x86_resident_shift_byte_shl_one
+        cp      #C8                    ; D0 /5: SHR AL,1
         jp      nz, x86_real_shift_byte_one_unsupported
 
         ld      a, (x86_reg_ax)
