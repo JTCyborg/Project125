@@ -183,16 +183,16 @@ x86_real_xchg_modrm8:
         jr      .xchg_write_reg
 
 .xchg_reg_rm:
-        ld      a, (x86_mov_reg_operand)
-        ld      b, a
         ld      a, (x86_mov_value)
+        ld      (x86_alu8_result), a
+        ld      a, (x86_mov_reg_operand)
         call    x86_alu8_write_reg
         ; The register-direct r/m operand now contains the old reg-field byte.
 
 .xchg_write_reg:
-        ld      a, (x86_mov_reg)
-        ld      b, a
         ld      a, (x86_mov_disp_low)
+        ld      (x86_alu8_result), a
+        ld      a, (x86_mov_reg)
         call    x86_alu8_write_reg
         jp      x86_real_next
 
