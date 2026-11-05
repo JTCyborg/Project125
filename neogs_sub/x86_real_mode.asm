@@ -1907,11 +1907,10 @@ x86_guest_handler_image_end:
 x86_real_shift_byte_one:
         call    x86_real_fetch8
         ret     c
-        cp      #E0                    ; D0 /4: SHL AL,1
-        jp      z, x86_resident_shift_byte_shl_one
-        cp      #C8                    ; D0 /5: SHR AL,1
-        jp      nz, x86_real_shift_byte_one_unsupported
+        jp      x86_resident_shift_byte_dispatch
 
+; D0 C8: SHR AL,1. Entered from the resident ModR/M selector.
+x86_real_shift_byte_one_shr:
         ld      a, (x86_reg_ax)
         ld      (x86_shift_original), a
         srl     a
