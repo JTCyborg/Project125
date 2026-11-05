@@ -1806,6 +1806,21 @@ x86_host_input_service_poll:
         bit     B_CBIT, a
         jr      z, .kbd_service_done
 
+        ; Do not interpret an unrelated command as a keyboard DMA request.
+        ; ZXCMD is the command latch corresponding to the asserted CBIT.
+        in      a, (ZXCMD)
+        cp      CMD_HOST_INPUT
+        jr      z, .kbd_command_valid
+        ; Unexpected doorbell while BIOS is active: leave it asserted for
+        ; the owner rather than arming the keyboard DMA receiver.
+        jr      .kbd_service_done
+
+.kbd_command_valid:
+        ; One-byte trace marker. The ATM READY loop drains DBIT concurrently,
+        ; so this also proves the resident service observed the doorbell.
+        ld      a, 'K'
+        call    neo_send_data_byte
+
         ld      a, C_DMA_ZX
         out     (DMA_MOD), a
         xor     a
