@@ -391,14 +391,6 @@ x86_real_dispatch_no_progress:
         jp      z, x86_real_into
         cp      #D7
         jp      z, x86_real_xlat
-        ; 8086 ESC D8h..DFh: 8087 coprocessor escape.
-        ; With no 8087 attached, consume ModR/M and addressing bytes as
-        ; the 8086 does, but perform no coprocessor operation.
-        cp      #D8
-        jp      c, .not_escape
-        cp      #E0
-        jp      c, x86_real_escape
-.not_escape:
         cp      #A0
         jp      c, .not_moffs
         cp      #A4
