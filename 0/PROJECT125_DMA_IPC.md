@@ -1,6 +1,6 @@
 # Project125 — DMA-only host transport and device IPC
 
-Status: initial ABI proposal; reverse-direction hardware validation is pending.
+Status: DMA reverse direction validated on ATM hardware; first live keyboard DMA path implemented.
 
 ## 1. Non-negotiable hardware boundary
 
@@ -131,5 +131,15 @@ display, storage and clock operations are host services.
 - Host-to-NeoGS DMA: already used by BIOS ROM upload.
 - NeoGS-to-host DMA: reverse read probe added; hardware result pending.
 - Frame ABI v1: specified here; encoder/decoder not yet implemented.
-- Host service queue: not yet implemented.
+- ATM keyboard scan: reads the eight active-low Spectrum matrix rows on port FEh.
+- Keyboard snapshots: eight bytes, one low-five-bit row per byte; sent only on
+  matrix changes using host-to-NeoGS ZX DMA.
+- Live mailbox command: CMD_HOST_INPUT (10h). NeoGS arms DMA to physical
+  00F000h (page 03, offset 3000h), then compares the matrix snapshot and
+  queues XT make/break scan codes for the virtual 8255/PIC keyboard path.
+- The BIOS runner polls the mailbox at guest instruction boundaries; the host
+  restores CMD_BOOT_BIOS after each short input transaction so CBIT remains
+  the final BIOS-completion signal.
+- Host service queue: bounded 32-byte virtual XT keyboard FIFO; overflow drops
+  newest events.
 - Legacy DBIT debug/result stream: still present and must be migrated.

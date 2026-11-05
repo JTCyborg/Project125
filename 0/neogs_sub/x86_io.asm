@@ -44,6 +44,13 @@ x86_real_io_instruction:
 
 .input_byte:
         call    x86_io_read8
+        ld      (x86_io_trace_value), a
+        ld      a, 'R'
+        ld      (x86_io_trace_kind), a
+        ld      a, '8'
+        ld      (x86_io_trace_width), a
+        call    x86_io_trace_event
+        ld      a, (x86_io_trace_value)
         ld      (x86_alu8_result), a
         xor     a                       ; AL register index
         call    x86_alu8_write_reg
@@ -51,6 +58,13 @@ x86_real_io_instruction:
 
 .input_word:
         call    x86_io_read16
+        ld      (x86_io_trace_value), hl
+        ld      a, 'R'
+        ld      (x86_io_trace_kind), a
+        ld      a, 'W'
+        ld      (x86_io_trace_width), a
+        call    x86_io_trace_event
+        ld      hl, (x86_io_trace_value)
         xor     a                       ; AX register index
         call    x86_alu_write_reg16
         jp      x86_real_next
@@ -65,6 +79,13 @@ x86_real_io_instruction:
         call    x86_alu8_read_reg
         ld      (x86_io_value), a
         call    x86_io_write8
+        ld      a, 'W'
+        ld      (x86_io_trace_kind), a
+        ld      a, '8'
+        ld      (x86_io_trace_width), a
+        ld      a, (x86_io_value)
+        ld      (x86_io_trace_value), a
+        call    x86_io_trace_event
         jp      x86_real_next
 
 .output_word:
@@ -72,6 +93,13 @@ x86_real_io_instruction:
         call    x86_alu_read_reg16
         ld      (x86_io_value), hl
         call    x86_io_write16
+        ld      a, 'W'
+        ld      (x86_io_trace_kind), a
+        ld      a, 'W'
+        ld      (x86_io_trace_width), a
+        ld      hl, (x86_io_value)
+        ld      (x86_io_trace_value), hl
+        call    x86_io_trace_event
         jp      x86_real_next
 
 ; -------------------------------------------------------------------------
@@ -86,6 +114,22 @@ x86_real_io_instruction:
 ; Other PC/XT ports remain open-bus until their devices are implemented.
 
 x86_io_read8:
+        call    x86_resident_lpt_read_dispatch
+        ret     nc
+        call    x86_resident_uart_read_dispatch
+        ret     nc
+        ; IBM PC/XT gameport (joystick adapter) at 0201h.
+        ; With no joystick attached all four axis inputs and button inputs
+        ; are inactive/high. Keep the read visible in the existing unmapped
+        ; I/O diagnostic so we can correlate BIOS probes with the caller.
+        ld      hl, (x86_io_port)
+        ld      de, #0201
+        or      a
+        sbc     hl, de
+        jr      nz, .read8_check_e0
+        ld      a, #FF
+        ret
+.read8_check_e0:
         ld      hl, (x86_io_port)
         ld      de, #00E0
         or      a
@@ -159,9 +203,24 @@ x86_pit_read_channel0:
         ret
 
 x86_io_trace_read8:
+        ; The instruction dispatcher emits a unified DBIT trace after the
+        ; backend returns. Never use a synthetic NeoGS OUT port here.
         ret
 
 x86_io_write8:
+        call    x86_resident_lpt_write_dispatch
+        ret     nc
+        call    x86_resident_uart_write_dispatch
+        ret     nc
+        ; The PC/XT gameport is triggered by reads; writes are ignored by
+        ; the no-adapter model. Do not forward this guest port to NeoGS I/O.
+        ld      hl, (x86_io_port)
+        ld      de, #0201
+        or      a
+        sbc     hl, de
+        jr      nz, .write8_check_e0
+        ret
+.write8_check_e0:
         ld      hl, (x86_io_port)
         ld      de, #00E0
         or      a
@@ -203,56 +262,160 @@ x86_io_write8:
         jp      x86_io_trace_write8
 
 ; Master 8259, single-controller PC/XT subset. IRQ0 is fully serviced.
+; Intel 8259A master PIC (single-controller PC/XT configuration).
+; Supports ICW1-4, OCW1-3, IRR/ISR reads, fixed/cyclic priority,
+; specific/nonspecific EOI, automatic EOI and priority rotation.
+; The external PC/XT wiring exposes IRQ0..IRQ7; this firmware currently
+; generates IRQ0 (PIT) and IRQ1 (keyboard), while all eight inputs are
+; independently latchable by the device models.
+
 x86_pic_write_command:
         ld      a, (x86_io_value)
         bit     4, a
-        jr      nz, .icw1
+        jp      nz, .icw1
         bit     3, a
-        jr      nz, .ocw3
-        ; OCW2: support nonspecific and specific EOI for IRQ0.
-        bit     5, a
-        ret     z
+        jp      nz, .ocw3
+        ; OCW2 command is bits 7..5.
+        ld      a, (x86_io_value)
+        and     #E0
+        cp      #20                     ; 001: nonspecific EOI
+        jr      z, .eoi_nonspecific
+        cp      #60                     ; 011: specific EOI
+        jr      z, .eoi_specific
+        cp      #A0                     ; 101: rotate on nonspecific EOI
+        jr      z, .eoi_rotate
+        cp      #C0                     ; 110: set lowest priority
+        jr      z, .set_priority
+        cp      #E0                     ; 111: rotate on specific EOI
+        jr      z, .eoi_rotate_specific
+        cp      #80                     ; 100: clear priority rotation
+        ret     nz
+        xor     a
+        ld      (x86_pic_priority_base), a
+        ret
+
+.eoi_nonspecific:
+        call    x86_pic_find_highest_isr
+        ret     c
+        call    x86_pic_clear_isr_a
+        ret
+.eoi_rotate:
+        call    x86_pic_find_highest_isr
+        ret     c
+        call    x86_pic_clear_isr_a
+        ld      a, (x86_pic_eoi_irq)
+        inc     a
+        and     7
+        ld      (x86_pic_priority_base), a
+        ret
+.eoi_specific:
         ld      a, (x86_io_value)
         and     7
-        jr      nz, .eoi_done
-        ld      a, (x86_pic_in_service)
-        res     0, a
-        ld      (x86_pic_in_service), a
-.eoi_done:
+        call    x86_pic_clear_isr_a
         ret
+.eoi_rotate_specific:
+        ld      a, (x86_io_value)
+        and     7
+        call    x86_pic_clear_isr_a
+        ld      a, (x86_io_value)
+        and     7
+        inc     a
+        and     7
+        ld      (x86_pic_priority_base), a
+        ret
+.set_priority:
+        ld      a, (x86_io_value)
+        and     7
+        inc     a
+        and     7
+        ld      (x86_pic_priority_base), a
+        ret
+
 .ocw3:
         ld      a, (x86_io_value)
-        bit     1, a
+        bit     2, a                    ; poll command is not used by PC/XT BIOS
+        ret     nz
+        bit     1, a                    ; RR=1 selects the register
         ret     z
         ld      a, (x86_io_value)
-        and     1
+        and     1                       ; RIS: 0=IRR, 1=ISR
         ld      (x86_pic_read_isr), a
         ret
+
 .icw1:
         xor     a
         ld      (x86_pic_pending), a
         ld      (x86_pic_in_service), a
         ld      (x86_pic_mask), a
         ld      (x86_pic_read_isr), a
+        ld      (x86_pic_priority_base), a
+        ld      (x86_pic_auto_eoi), a
+        ld      (x86_pic_icw3), a
         ld      a, (x86_io_value)
         bit     0, a
-        jr      z, .no_icw4
+        jr      z, .icw1_no_icw4
         ld      a, 1
         ld      (x86_pic_need_icw4), a
-        jr      .single_mode
-.no_icw4:
+        jr      .icw1_single
+.icw1_no_icw4:
         xor     a
         ld      (x86_pic_need_icw4), a
-.single_mode:
+.icw1_single:
         ld      a, (x86_io_value)
-        bit     1, a
-        jr      nz, .skip_icw3
+        bit     1, a                    ; SNGL=1 skips ICW3
+        jr      nz, .icw1_skip_icw3
         ld      a, 2
         ld      (x86_pic_icw_step), a
         ret
-.skip_icw3:
+.icw1_skip_icw3:
         ld      a, 1
         ld      (x86_pic_icw_step), a
+        ret
+
+; Find highest-priority in-service IRQ using the current priority base.
+; OUT: A=IRQ, carry clear; carry set if ISR is empty.
+x86_pic_find_highest_isr:
+        ld      a, (x86_pic_priority_base)
+        ld      c, a
+        ld      b, 8
+.find_isr_loop:
+        ld      a, c
+        call    x86_pic_get_bit
+        ld      d, a
+        ld      a, (x86_pic_in_service)
+        and     d
+        jr      nz, .find_isr_found
+        inc     c
+        ld      a, c
+        and     7
+        ld      c, a
+        djnz    .find_isr_loop
+        scf
+        ret
+.find_isr_found:
+        ld      a, c
+        ld      (x86_pic_eoi_irq), a
+        or      a
+        ret
+
+; A=IRQ number -> A=single-bit mask.
+x86_pic_get_bit:
+        and     7
+        ld      e, a
+        ld      d, 0
+        ld      hl, x86_pic_bit_table
+        add     hl, de
+        ld      a, (hl)
+        ret
+
+; A=IRQ number. Clear the corresponding ISR bit.
+x86_pic_clear_isr_a:
+        call    x86_pic_get_bit
+        cpl
+        ld      b, a
+        ld      a, (x86_pic_in_service)
+        and     b
+        ld      (x86_pic_in_service), a
         ret
 
 x86_pic_write_data:
@@ -263,7 +426,7 @@ x86_pic_write_data:
         jr      z, .icw2
         cp      2
         jr      z, .icw3
-        ; ICW4
+        ; ICW4. SFNM and buffered mode are not wired on the XT master PIC.
         ld      a, (x86_io_value)
         bit     1, a
         jr      z, .no_auto_eoi
@@ -283,18 +446,24 @@ x86_pic_write_data:
         ld      (x86_pic_vector), a
         ld      a, (x86_pic_need_icw4)
         or      a
-        jr      z, .icw_done
-        ld      a, 3
+        jr      z, .icw2_done
+        ld      a, 4
+        ld      (x86_pic_icw_step), a
+        ret
+.icw2_done:
+        xor     a
         ld      (x86_pic_icw_step), a
         ret
 .icw3:
+        ld      a, (x86_io_value)
+        ld      (x86_pic_icw3), a
         ld      a, (x86_pic_need_icw4)
         or      a
-        jr      z, .icw_done
+        jr      z, .icw3_done
         ld      a, 3
         ld      (x86_pic_icw_step), a
         ret
-.icw_done:
+.icw3_done:
         xor     a
         ld      (x86_pic_icw_step), a
         ret
@@ -370,117 +539,11 @@ x86_io_trace_write8:
         ret
 
 ; Called once per guest instruction. Delivers the unmasked IRQ0 only when IF=1.
-x86_io_tick:
-        ld      a, (x86_pit_enabled)
-        or      a
-        jr      nz, .tick_timer
-        ret
-.tick_timer:
-        ld      hl, (x86_pit_countdown)
-        dec     hl
-        ld      (x86_pit_countdown), hl
-        ld      a, h
-        or      l
-        jr      nz, .check_irq
-        ; Counter reached terminal count: latch IRQ0 and reload.
-        ld      hl, (x86_pit_reload)
-        ld      (x86_pit_countdown), hl
-        ld      a, (x86_pic_pending)
-        set     0, a
-        ld      (x86_pic_pending), a
-        ld      a, (x86_pit_mode)
-        cp      0
-        jr      nz, .check_irq
-        xor     a
-        ld      (x86_pit_enabled), a
-.check_irq:
-        ld      a, (x86_reg_flags+1)
-        bit     1, a
-        jr      nz, .check_mask
-        or      a                       ; clear carry on no delivery
-        ret
-.check_mask:
-        ld      a, (x86_pic_mask)
-        bit     0, a
-        jr      z, .check_service
-        or      a
-        ret
-.check_service:
-        ld      a, (x86_pic_in_service)
-        bit     0, a
-        jr      z, .check_pending
-        or      a
-        ret
-.check_pending:
-        ld      a, (x86_pic_pending)
-        bit     0, a
-        jr      nz, .deliver
-        or      a
-        ret
-.deliver:
-        res     0, a
-        ld      (x86_pic_pending), a
-        ld      a, (x86_pic_auto_eoi)
-        or      a
-        jr      nz, .auto_eoi
-        ld      a, (x86_pic_in_service)
-        set     0, a
-        ld      (x86_pic_in_service), a
-.auto_eoi:
-        ld      a, 1
-        ld      (x86_io_irq_delivered), a
-        ld      a, (x86_pic_vector)
-        call    x86_int_enter
-        ret
-
 ; IBM PC/XT 8255/PPI model used by the 5150 BIOS.
 ; PA (60h) is the XT keyboard data latch. A PB6 low-to-high transition
 ; resets the keyboard interface and makes the XT BAT byte AAh available.
 ; PB (61h) resets to 40h. PC (62h) reports 640KB as 12h, multiplexed
 ; by PB2 into the high/low memory-size nibble. No cassette is attached.
-x86_ppi_read_port_a:
-        ld      a, (x86_ppi_keyboard_data)
-        ret
-
-x86_ppi_read_port_b:
-        ld      a, (x86_ppi_port_b)
-        ret
-
-x86_ppi_read_port_c:
-        ld      a, (x86_ppi_port_b)
-        bit     2, a
-        ld      a, 1
-        ret     z
-        inc     a
-        ret
-
-x86_ppi_read_control:
-        ld      a, (x86_ppi_control)
-        ret
-
-x86_ppi_write_port_b:
-        ; The keyboard interface's PB latch powers up low on the 5150,
-        ; independently of the externally visible PPI reset value (40h).
-        ld      a, (x86_ppi_keyboard_pb)
-        bit     6, a
-        ld      b, a
-        ld      a, (x86_io_value)
-        ld      (x86_ppi_port_b), a
-        ld      (x86_ppi_keyboard_pb), a
-        bit     6, b
-        ret     nz
-        bit     6, a
-        ret     z
-        ; Keyboard reset edge: XT keyboard performs BAT and returns AAh.
-        ld      a, #AA
-        ld      (x86_ppi_keyboard_data), a
-        ret
-
-x86_ppi_write_control:
-        ld      a, (x86_io_value)
-        ld      (x86_ppi_control), a
-        ret
-
 x86_io_read16:
         ld      hl, (x86_io_port)
         ld      de, #00E0
@@ -492,11 +555,6 @@ x86_io_read16:
 .read16_unmapped:
         ld      hl, #FFFF
         ld      (x86_io_trace_value), hl
-        ld      a, 'R'
-        ld      (x86_io_trace_kind), a
-        ld      a, 'W'
-        ld      (x86_io_trace_width), a
-        call    x86_io_trace_event
         ld      hl, #FFFF
         ret
 
@@ -512,18 +570,81 @@ x86_io_write16:
 .write16_unmapped:
         ld      hl, (x86_io_value)
         ld      (x86_io_trace_value), hl
-        ld      a, 'W'
-        ld      (x86_io_trace_kind), a
-        ld      a, 'W'
-        ld      (x86_io_trace_width), a
-        jp      x86_io_trace_event
+        ret
 
 ; BIOS-only diagnostic for unmapped guest I/O accesses. First 64 events
 ; are forwarded to the existing host console, e.g. [IO] R8 0060=FF.
 x86_io_trace_event:
+        ld      a, (x86_io_trace_enable)
+        or      a
+        ret     z
+        ld      a, (x86_io_trace_count)
+        cp      32
+        ret     nc
+        inc     a
+        ld      (x86_io_trace_count), a
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_io_trace_prefix
+        call    neo_debug_send_string
+        ld      a, (x86_io_trace_kind)
+        call    neo_send_data_byte
+        ld      a, (x86_io_trace_width)
+        call    neo_send_data_byte
+        ld      a, ' '
+        call    neo_send_data_byte
+        ld      hl, (x86_io_port)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, '='
+        call    neo_send_data_byte
+        ld      a, (x86_io_trace_width)
+        cp      '8'
+        jr      nz, .trace_word
+        ld      a, (x86_io_trace_value)
+        call    neo_debug_hex8
+        jr      .trace_ip
+.trace_word:
+        ld      hl, (x86_io_trace_value)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+.trace_ip:
+        ld      a, ' '
+        call    neo_send_data_byte
+        ld      a, '@'
+        call    neo_send_data_byte
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, ':'
+        call    neo_send_data_byte
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, 10
+        call    neo_send_data_byte
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
         ret
 
 x86_io_trace_prefix: db "[IO] ", 0
+x86_io_trace_enable: db 0
+x86_io_trace_count:  db 0
+x86_io_trace_kind:   db 0
+x86_io_trace_width:  db 0
+x86_io_trace_value:  dw 0
 
 ; -------------------------------------------------------------------------
 ; CPU-I/O-02 regression.
@@ -707,10 +828,6 @@ x86_io_opcode:       db 0
 x86_io_port:         dw 0
 x86_io_value:        dw 0
 x86_io_test_latch:   dw 0
-x86_io_trace_value:  dw 0
-x86_io_trace_kind:   db 'R'
-x86_io_trace_width:  db '8'
-x86_io_trace_count:  db 0
 x86_io_test_ip:      dw 0
 x86_io_test_ax:      dw 0
 x86_io_test_dx:      dw 0
@@ -745,12 +862,16 @@ x86_io_guest_dx_unmapped_end:
 ; PC/XT device state (overlay bank 68).
 x86_pic_icw_step:       db 0
 x86_pic_need_icw4:      db 0
+x86_pic_icw3:           db 0
 x86_pic_vector:         db 8
 x86_pic_mask:           db #FF
 x86_pic_pending:        db 0
 x86_pic_in_service:     db 0
 x86_pic_auto_eoi:       db 0
 x86_pic_read_isr:       db 0
+x86_pic_priority_base:  db 0
+x86_pic_eoi_irq:        db 0
+x86_pic_bit_table:      db 1,2,4,8,16,32,64,128
 x86_io_irq_delivered:   db 0
 x86_pit_access:         db 3
 x86_pit_mode:           db 3
@@ -759,3 +880,5 @@ x86_pit_read_phase:     db 0
 x86_pit_enabled:        db 0
 x86_pit_reload:         dw 0
 x86_pit_countdown:      dw 0
+x86_pit_last_tick:     dw 0
+x86_pit_fraction:      dw 0

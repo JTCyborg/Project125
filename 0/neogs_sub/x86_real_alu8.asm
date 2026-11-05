@@ -677,6 +677,7 @@ x86_group1_byte_modrm: db 0
 
 ; XOR AX,imm16 (35). Logical FLAGS: CF/AF/OF cleared, PF/ZF/SF set.
 x86_real_logic16_accumulator_immediate:
+        ld      (x86_real_opcode), a
         call    x86_real_fetch8
         ret     c
         ld      (x86_logic_src), a
@@ -685,10 +686,12 @@ x86_real_logic16_accumulator_immediate:
         ld      (x86_logic_src+1), a
         ld      hl, (x86_reg_ax)
         ld      (x86_logic_dst), hl
+        ld      a, (x86_real_opcode)
+        cp      #25
+        jr      z, .and_immediate
+        ; XOR AX,imm16 (35).
         ld      a, #30
         ld      (x86_logic_mode), a
-        ld      a, 2
-        ld      (x86_logic_width), a
         ld      hl, (x86_logic_dst)
         ld      de, (x86_logic_src)
         ld      a, l
@@ -697,7 +700,23 @@ x86_real_logic16_accumulator_immediate:
         ld      a, h
         xor     d
         ld      h, a
+        jr      .logic_result_ready
+.and_immediate:
+        ; AND AX,imm16 (25).
+        ld      a, #20
+        ld      (x86_logic_mode), a
+        ld      hl, (x86_logic_dst)
+        ld      de, (x86_logic_src)
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      a, h
+        and     d
+        ld      h, a
+.logic_result_ready:
         ld      (x86_logic_result), hl
+        ld      a, 2
+        ld      (x86_logic_width), a
         call    x86_real_logic_update_flags
         ; Re-read the computed result: the flag helper may use HL internally.
         ld      hl, (x86_logic_result)

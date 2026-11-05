@@ -27,10 +27,9 @@ x86_real_mov_immediate_rm:
         ret     c
         call    x86_real_mov_decode_modrm
         ret     c
-        ld      a, (x86_mov_reg)
-        or      a
-        jp      nz, x86_real_mov_immediate_invalid
-
+        ; PCem Project124's 808x.c C7 path consumes ModR/M with fetchea()
+        ; and does not reject the reg field. Preserve that compatibility:
+        ; C7 CE is treated as MOV SI,imm16 (the /1 bits are ignored).
         ld      a, (x86_mov_opcode)
         cp      #C6
         jr      z, .byte_immediate
@@ -84,7 +83,7 @@ x86_real_mov_segment:
         jr      z, .store_ss
         cp      3
         jr      z, .store_ds
-        jp      x86_real_mov_segment_invalid
+        jp      x86_real_mov_immediate_invalid
 .store_es:
         ld      hl, (x86_reg_es)
         jr      .store_rm
@@ -109,36 +108,24 @@ x86_real_mov_segment:
         jr      z, .load_ss
         cp      3
         jr      z, .load_ds
-        jp      x86_real_mov_segment_invalid
+        jp      x86_real_mov_immediate_invalid
 .load_es:
         call    x86_real_mov_read_rm
         ret     c
         ld      (x86_mov_value), hl
-        ld      hl, (x86_mov_value)
+        call    x86_real_trace_es_load
         ld      (x86_reg_es), hl
         jp      x86_real_next
 .load_ss:
         call    x86_real_mov_read_rm
         ret     c
-        ld      (x86_mov_value), hl
-        ld      hl, (x86_mov_value)
         ld      (x86_reg_ss), hl
         jp      x86_real_next
 .load_ds:
         call    x86_real_mov_read_rm
         ret     c
-        ld      (x86_mov_value), hl
-        ld      hl, (x86_mov_value)
         ld      (x86_reg_ds), hl
         jp      x86_real_next
-
-x86_real_mov_segment_invalid:
-        ld      a, (x86_mov_opcode)
-        ld      (x86_real_unsupported_opcode), a
-        ld      a, 2
-        ld      (x86_exit_status), a
-        scf
-        ret
 
 ; 8D LEA r16,m — return the effective offset without reading memory.
 x86_real_lea:
@@ -159,6 +146,54 @@ x86_real_lea:
         ld      hl, (x86_mov_offset)
         ld      a, (x86_mov_reg)
         call    x86_alu_write_reg16
+        jp      x86_real_next
+
+; 86 XCHG r/m8,r8. Flags are not modified by XCHG.
+x86_real_xchg_modrm8:
+        ld      (x86_mov_opcode), a
+        ld      a, 1
+        ld      (x86_mov_width), a
+        call    x86_real_fetch8
+        ret     c
+        call    x86_real_mov_decode_modrm
+        ret     c
+
+        ; Save the original register-field byte before reading r/m.
+        ld      a, (x86_mov_reg)
+        call    x86_alu8_read_reg
+        ld      (x86_mov_value), a
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      a, l
+        ld      (x86_mov_disp_low), a
+
+        ; Write the saved register byte to the r/m destination.
+        ld      a, (x86_mov_is_reg)
+        or      a
+        jr      nz, .xchg_reg_rm
+        ld      hl, (x86_mov_offset)
+        ld      (x86_mem_offset_work), hl
+        ld      hl, (x86_mov_segment)
+        ld      (x86_mem_segment), hl
+        call    x86_mem_calc_phys
+        ld      a, (x86_mov_value)
+        ld      (x86_mem_value), a
+        call    x86_mem_write8
+        ret     c
+        jr      .xchg_write_reg
+
+.xchg_reg_rm:
+        ld      a, (x86_mov_value)
+        ld      (x86_alu8_result), a
+        ld      a, (x86_mov_reg_operand)
+        call    x86_alu8_write_reg
+        ; The register-direct r/m operand now contains the old reg-field byte.
+
+.xchg_write_reg:
+        ld      a, (x86_mov_disp_low)
+        ld      (x86_alu8_result), a
+        ld      a, (x86_mov_reg)
+        call    x86_alu8_write_reg
         jp      x86_real_next
 
 x86_real_mov_modrm:

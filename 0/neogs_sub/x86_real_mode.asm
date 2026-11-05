@@ -270,8 +270,20 @@ x86_real_fetch8:
         ld      hl, (x86_reg_cs)
         ld      (x86_mem_segment), hl
         call    x86_mem_calc_phys
+        call    x86_fetch_diag_address
         call    x86_mem_read8
         ret     c
+        ; Capture this exact instruction byte here, before any diagnostic
+        ; helper or following operand access can change the last-read state.
+        ; This runs for opcode bytes and ModR/M/displacement bytes alike.
+        push    af
+        ld      hl, (x86_mem_addr)
+        ld      (x86_fetch_exact_addr), hl
+        ld      a, (x86_mem_addr+2)
+        ld      (x86_fetch_exact_addr+2), a
+        pop     af
+        ld      (x86_fetch_exact_value), a
+        call    x86_fetch_diag_read_ok
         push    af
         ld      hl, (x86_reg_ip)
         inc     hl
@@ -281,10 +293,7 @@ x86_real_fetch8:
         ret
 
 x86_real_fetch_out_of_range:
-        ld      a, 4
-        ld      (x86_exit_status), a
-        scf
-        ret
+        jp      x86_real_fetch_out_of_range_resident
 
 x86_real_execute:
         xor     a
@@ -318,6 +327,12 @@ x86_real_dispatch:
         or      a
         ; call  nz, bios_progress_emit
 x86_real_dispatch_no_progress:
+        ; Poll the host-input doorbell at every guest instruction boundary.
+        ; A 256-instruction interval can leave a short CBIT request pending
+        ; while the BIOS is executing a long instruction sequence; keyboard
+        ; DMA is an asynchronous host service and must not depend on guest
+        ; register L or on a change in the physical key matrix.
+        call    x86_host_input_service_poll
         call    x86_io_tick
         ret     c
         ; The IRQ-delivery marker is only consumed by the HLT wait loop.
@@ -326,6 +341,9 @@ x86_real_dispatch_no_progress:
         ld      (x86_io_irq_delivered), a
         call    x86_real_fetch8
         ret     c
+        call    x86_resident_escape_dispatch
+        ret     c
+        jr      z, x86_real_next
 
         ; 8086 segment-override prefixes. Multiple prefixes are accepted;
         ; the last segment prefix before the instruction takes effect.
@@ -420,6 +438,8 @@ x86_real_dispatch_no_progress:
         jp      z, x86_real_logic8_accumulator_immediate
         cp      #34
         jp      z, x86_real_logic8_accumulator_immediate
+        cp      #25
+        jp      z, x86_real_logic16_accumulator_immediate
         cp      #35
         jp      z, x86_real_logic16_accumulator_immediate
         cp      #14
@@ -515,6 +535,8 @@ x86_real_dispatch_no_progress:
         jp      z, x86_real_mov_immediate_rm
         cp      #C7
         jp      z, x86_real_mov_immediate_rm
+        cp      #86
+        jp      z, x86_real_xchg_modrm8
         cp      #88
         jp      c, .not_mov_rm_reg
         cp      #8C
@@ -674,9 +696,10 @@ x86_real_prefix_rep_set:
         ld      (x86_real_rep_mode), a
         jp      x86_real_dispatch
 
-x86_real_nop:
-        jp      x86_real_next
-
+x86_real_nop EQU x86_resident_nop
+; D8h..DFh ESC. No 8087 is currently modelled, so the coprocessor
+; operation is ignored. The instruction stream must still consume the
+; ModR/M byte and any 8086 effective-address displacement.
 ; -------------------------------------------------------------------------
 ; 50-57 PUSH r16 and 58-5F POP r16. Stack accesses use SS:SP through the
 ; physical-memory API. PUSH SP stores the pre-decrement SP value, matching
@@ -715,6 +738,15 @@ x86_real_pop_segment:
         ld      hl, x86_reg_es
         add     hl, de
         ld      de, (x86_real_stack_value)
+        ; POP ES is another possible source of the unexpected 03F8 segment.
+        ld      a, (x86_real_opcode)
+        cp      #07
+        jr      nz, .pop_segment_store
+        ld      (x86_mov_value), de
+        call    x86_real_trace_es_load
+        ld      hl, x86_reg_es
+        ld      de, (x86_real_stack_value)
+.pop_segment_store:
         ld      (hl), e
         inc     hl
         ld      (hl), d
@@ -1542,8 +1574,7 @@ x86_real_cwd:
         jp      x86_real_next
 
 ; WAIT has no external 8087 device attached; it is a timing-neutral no-op.
-x86_real_wait:
-        jp      x86_real_next
+x86_real_wait EQU x86_resident_nop
 
 ; 9D POPF uses the same SS:SP word stack path as RET/IRET.
 x86_real_popf:
@@ -1658,6 +1689,7 @@ x86_real_hlt:
         ; HLT suspends guest execution until a maskable interrupt is accepted.
         ; The deterministic PIT clock continues while halted.
 .hlt_wait:
+        call    x86_host_input_service_poll
         call    x86_io_tick
         ret     c
         ld      a, (x86_io_irq_delivered)
@@ -1890,80 +1922,7 @@ x86_guest_handler_image_end:
 x86_real_shift_byte_one:
         call    x86_real_fetch8
         ret     c
-        cp      #C8
-        jp      nz, x86_real_shift_byte_one_unsupported
-
-        ld      a, (x86_reg_ax)
-        ld      (x86_shift_original), a
-        srl     a
-        ld      (x86_shift_result), a
-        ld      a, 0
-        adc     a, 0
-        ld      (x86_shift_carry), a
-
-        xor     a
-        ld      (x86_shift_new_flags), a
-        ld      (x86_shift_new_flags+1), a
-
-        ; CF receives original AL bit 0.
-        ld      a, (x86_shift_carry)
-        or      a
-        jr      z, .shr1_parity
-        ld      hl, x86_shift_new_flags
-        set     0, (hl)
-.shr1_parity:
-        ld      a, (x86_shift_result)
-        and     a
-        jp      pe, .shr1_set_pf
-        jr      .shr1_zero
-.shr1_set_pf:
-        ld      hl, x86_shift_new_flags
-        set     2, (hl)
-.shr1_zero:
-        ld      a, (x86_shift_result)
-        or      a
-        jr      nz, .shr1_sign
-        ld      hl, x86_shift_new_flags
-        set     6, (hl)
-.shr1_sign:
-        ld      a, (x86_shift_result)
-        bit     7, a
-        jr      z, .shr1_overflow
-        ld      hl, x86_shift_new_flags
-        set     7, (hl)
-.shr1_overflow:
-        ; For SHR count=1, OF is the original most significant bit.
-        ld      a, (x86_shift_original)
-        bit     7, a
-        jr      z, .shr1_merge
-        ld      hl, x86_shift_new_flags+1
-        set     3, (hl)
-.shr1_merge:
-        ; Clear CF/PF/ZF/SF/OF; preserve AF and non-status FLAGS.
-        ld      hl, (x86_reg_flags)
-        ld      de, #F73A
-        ld      a, h
-        and     d
-        ld      h, a
-        ld      a, l
-        and     e
-        ld      l, a
-        ld      de, (x86_shift_new_flags)
-        ld      a, h
-        or      d
-        ld      h, a
-        ld      a, l
-        or      e
-        ld      l, a
-        ld      (x86_reg_flags), hl
-
-        ; Replace AL while preserving AH.
-        ld      a, (x86_reg_ax+1)
-        ld      h, a
-        ld      a, (x86_shift_result)
-        ld      l, a
-        ld      (x86_reg_ax), hl
-        jp      x86_real_next
+        jp      x86_resident_shift_byte_dispatch
 
 x86_real_shift_byte_one_unsupported:
         ld      a, #D0
@@ -1979,8 +1938,15 @@ x86_real_shift_word_one:
         call    x86_real_fetch8
         ret     c
         cp      #E0
+        jr      z, .shift_word_shl_ax
+        ld      b, a
+        and     #38
+        cp      #28                    ; /5 SHR r/m16,1 (PCem 808x.c)
         jp      nz, x86_real_shift_unsupported
+        ld      a, b
+        jp      x86_resident_shift_word_shr_one
 
+.shift_word_shl_ax:
         ld      hl, (x86_reg_ax)
         add     hl, hl
         ld      (x86_shift_result), hl
@@ -2072,8 +2038,21 @@ x86_real_shift_word_one:
 ; Count zero leaves AL and FLAGS unchanged. Only register-direct AL is
 ; currently required by the BIOS path; other ModR/M forms stop explicitly.
 x86_real_shift_byte_cl:
+        ; The D2 entry reaches this overlay with IP still pointing at the
+        ; opcode byte on the current BIOS path. Advance to the ModR/M byte
+        ; before fetching it. This mirrors the proven F7 group entry fix:
+        ; the diagnostic trace showed the unadjusted fetch rereading D2's
+        ; preceding byte at E1DA instead of ModR/M 0B at E1DB.
+        ld      hl, (x86_reg_ip)
+        inc     hl
+        ld      (x86_reg_ip), hl
         call    x86_real_fetch8
         ret     c
+        ; Pass the fetched ModR/M directly to resident code.
+        jp      x86_resident_shift_byte_cl_dispatch
+
+; Legacy AL-only D2 handlers remain below for reference.
+x86_real_shift_byte_cl_legacy:
         cp      #C8
         jp      z, x86_real_shift_byte_ror_cl
         cp      #E0
@@ -2389,8 +2368,12 @@ x86_shift_original:   dw 0
 x86_real_shift_word_cl:
         call    x86_real_fetch8
         ret     c
-        cp      #E8
-        jp      nz, x86_real_shift_cl_unsupported
+        call    x86_fetch_capture_modrm
+        jp      x86_resident_shift_word_mem_shl_cl
+
+; D3 E8: SHR AX,CL. Kept in the overlay; the resident dispatcher
+; enters here for /5 and sends /6 to the generic r/m16 SHL path.
+x86_real_shift_word_cl_shr:
         ld      a, (x86_reg_cx)
         or      a
         jp      z, x86_real_next
@@ -2446,7 +2429,6 @@ x86_real_shift_word_cl:
         set     7, (hl)
 .shr_overflow:
         ; OF is defined only for count=1: it receives the original MSB.
-        ld      a, (x86_shift_count)
         ; The loop has reduced count to zero; the original CL is retained
         ; separately so this test is independent of the loop counter.
         ld      a, (x86_shift_original_count)
@@ -2524,6 +2506,7 @@ x86_real_group_f6:
 .f6_segment_ready:
         ld      (x86_mem_segment), hl
         call    x86_mem_calc_phys
+        call    x86_mem_trace_f6_address
         call    x86_mem_read8
         ret     c
         ld      (x86_f6_operand), a
@@ -2699,24 +2682,6 @@ x86_incdec8_old:      db 0
 x86_incdec8_result:   db 0
 x86_incdec8_new_flags: dw 0
 
-; F7 D0: NOT AX. NOT changes no guest FLAGS bits.
-; Other F7 group-3 encodings remain explicit unsupported-opcode stops until
-; their exact operand forms are implemented.
-x86_real_group_f7:
-        call    x86_real_fetch8
-        ret     c
-        cp      #D0
-        jp      nz, x86_real_group_f7_unsupported
-        ld      hl, (x86_reg_ax)
-        ld      a, l
-        cpl
-        ld      l, a
-        ld      a, h
-        cpl
-        ld      h, a
-        ld      (x86_reg_ax), hl
-        jp      x86_real_next
-
 ; A8 ib — TEST AL,imm8. The result is discarded; CF/OF are cleared,
 ; SF/ZF/PF reflect AL AND immediate, while AF is left unchanged (undefined
 ; by the original 8086 instruction).
@@ -2800,13 +2765,6 @@ x86_real_test8_merge_flags:
         ld      (x86_reg_flags), hl
         ret
 
-x86_real_group_f7_unsupported:
-        ld      a, #F7
-        ld      (x86_real_unsupported_opcode), a
-        ld      a, 2
-        ld      (x86_exit_status), a
-        scf
-        ret
 
 
 ; 27 — DAA. Decimal-adjust AL after an ADD.

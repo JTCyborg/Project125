@@ -27,9 +27,20 @@ x86_real_string_instruction:
         ld      (x86_reg_cx), hl
         ld      a, h
         or      l
-        jp      z, x86_real_next
+        jr      nz, .rep_remaining
+        call    x86_string_rep_scas_summary
+        jp      x86_real_next
+.rep_remaining:
 
         ; REP can perform thousands of memory operations inside one opcode.
+        ; The normal instruction-boundary poll is not reached until REP ends.
+        ; Service the host keyboard mailbox every 256 completed elements so
+        ; a long BIOS POST memory sweep cannot starve the ATM DMA handshake.
+        ld      a, l
+        or      a
+        call    z, x86_host_input_service_poll
+        ld      hl, (x86_reg_cx)
+
         ; Report progress independently of the architectural instruction budget.
         ld      a, l
         or      a
@@ -56,12 +67,15 @@ x86_real_string_instruction:
         jr      z, .repe
         ld      a, (x86_reg_flags)
         bit     6, a
-        jp      nz, x86_real_next
-        jr      .repeat
+        jr      z, .repeat
+        call    x86_string_rep_scas_summary
+        jp      x86_real_next
 .repe:
         ld      a, (x86_reg_flags)
         bit     6, a
-        jp      z, x86_real_next
+        jr      nz, .repeat
+        call    x86_string_rep_scas_summary
+        jp      x86_real_next
 .repeat:
         ; REP is one architectural instruction, not one instruction per
         ; element. CX is the iteration bound; do not consume the CPU opcode
@@ -101,6 +115,9 @@ x86_string_cmps:
         ret     c
         ld      (x86_string_other), hl
         call    x86_string_compare
+        ; Guest FLAGS are stored separately. Clear the host Z80 carry from
+        ; SUB/SBC so the caller's RET C reports memory faults only.
+        or      a
         call    x86_string_advance_si
         call    x86_string_advance_di
         ret
@@ -162,6 +179,10 @@ x86_string_scas:
 .compare:
         ld      (x86_string_value), hl
         call    x86_string_compare
+        ; Do not leak the guest comparison borrow into the host carry flag:
+        ; RET C above the string engine is reserved for memory-access faults.
+        or      a
+        call    x86_resident_memtest_scas_trace
         call    x86_string_advance_di
         ret
 

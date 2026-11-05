@@ -102,8 +102,90 @@ x86_mem_read8:
         call    x86_mem_map_addr
         ret     c
         ld      a, (hl)
+        ; Capture the exact backend address and byte returned by this read.
+        ld      (x86_mem_last_read_value), a
+        ld      a, (x86_mem_addr)
+        ld      (x86_mem_last_read_addr), a
+        ld      a, (x86_mem_addr+1)
+        ld      (x86_mem_last_read_addr+1), a
+        ld      a, (x86_mem_addr+2)
+        ld      (x86_mem_last_read_addr+2), a
+        ld      a, (x86_mem_last_read_value)
+        call    x86_mem_watch_low_read
+        ld      a, (x86_mem_last_read_value)
         or      a
         ret
+
+; Trace BIOS reads of the equipment word and conventional-memory/error
+; bytes (00410h-00415h). This distinguishes the ROM's floppy/configuration
+; branch from its RAM-test/error path. It is independent of the write budget.
+; The helper preserves AF/BC/DE/HL and therefore the guest read result.
+x86_mem_watch_low_read:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      a, (x86_mem_addr+2)
+        or      a
+        jr      nz, .done
+        ld      a, (x86_mem_addr+1)
+        cp      #04
+        jr      z, .check_bda
+        cp      #3F
+        jr      nz, .done
+        ld      a, (x86_mem_addr)
+        cp      #95
+        jr      nz, .done
+        jr      .trace
+.check_bda:
+        ld      a, (x86_mem_addr)
+        cp      #10
+        jr      c, .done
+        cp      #16
+        jr      nc, .done
+.trace:
+        ld      hl, x86_mem_read_prefix
+        call    x86_mem_watch_string
+        ld      a, (x86_mem_addr+2)
+        and     #0F
+        call    x86_mem_watch_hex8_low
+        ld      a, (x86_mem_addr+1)
+        call    x86_mem_watch_hex8
+        ld      a, (x86_mem_addr)
+        call    x86_mem_watch_hex8
+        ld      a, '='
+        out     (#EF), a
+        pop     hl
+        push    hl
+        ld      a, (hl)
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.done:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_mem_read_prefix:
+        db      "[MEMR] ", 0
 
 ; Write one byte. IN x86_mem_addr[0..2], x86_mem_value.
 x86_mem_write8:
@@ -117,6 +199,31 @@ x86_mem_write8:
 .write_allowed:
         call    x86_mem_map_addr
         ret     c
+        ; Trace writes to the BIOS error byte candidate at physical 003F95h.
+        ; The first read was 00 and the later BIOS TEST observed 02; identify
+        ; the exact instruction that changes this byte before altering memory
+        ; semantics. This diagnostic is independent of the BDA watch budget.
+        ld      a, (x86_mem_addr+2)
+        or      a
+        jr      nz, .check_bda
+        ld      a, (x86_mem_addr+1)
+        cp      #3F
+        jr      nz, .check_bda
+        ld      a, (x86_mem_addr)
+        cp      #95
+        call    z, x86_mem_watch_3f95_write
+.check_bda:
+        ; Trace only changed writes in the BDA (00400h-004FFh).
+        ; Conventional-memory POST writes must not consume the diagnostic
+        ; budget before BIOS error flags such as 00415h are reached.
+        ld      a, (x86_mem_addr+2)
+        or      a
+        jr      nz, .store
+        ld      a, (x86_mem_addr+1)
+        cp      #04
+        jr      nz, .store
+        call    x86_mem_watch_low_write
+.store:
         ld      a, (x86_mem_value)
         ld      (hl), a
         or      a
@@ -124,6 +231,176 @@ x86_mem_write8:
 .write_protected:
         scf
         ret
+
+; Trace every write to physical 003F95h with old/new byte and guest CS:IP.
+; Preserve the mapped pointer in HL and all guest-visible state.
+x86_mem_watch_3f95_write:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      b, (hl)
+        ld      hl, x86_mem_3f95_prefix
+        call    x86_mem_watch_string
+        ld      a, '0'
+        out     (#EF), a
+        ld      a, '0'
+        out     (#EF), a
+        ld      a, '3'
+        out     (#EF), a
+        ld      a, 'F'
+        out     (#EF), a
+        ld      a, '9'
+        out     (#EF), a
+        ld      a, '5'
+        out     (#EF), a
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, b
+        call    x86_mem_watch_hex8
+        ld      a, '>'
+        out     (#EF), a
+        ld      a, (x86_mem_value)
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_mem_3f95_prefix:
+        db      "[MEMW] ", 0
+
+; Log up to 64 changed writes in physical BDA range 00400h-004FFh.
+; The trace includes physical address, old/new values and guest CS:IP.
+; No guest registers or memory backend address state are modified.
+x86_mem_watch_low_write:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ; Always trace the ER_RAM byte at physical 00415h, even after
+        ; the ordinary 64-entry BDA watch budget has been exhausted. Log
+        ; this address even when the stored value is unchanged: reaching
+        ; BADRAM is itself the evidence we need.
+        ld      a, (x86_mem_addr)
+        cp      #15
+        jr      z, .force_er_ram
+        ld      a, (hl)
+        ld      b, a
+        ld      a, (x86_mem_value)
+        cp      b
+        jr      z, .done
+        ld      a, (x86_mem_watch_count)
+        cp      64
+        jr      nc, .done
+        inc     a
+        ld      (x86_mem_watch_count), a
+        jr      .emit
+
+.force_er_ram:
+        ld      a, (hl)
+        ld      b, a
+
+.emit:
+        ld      hl, x86_mem_watch_prefix
+        call    x86_mem_watch_string
+        ld      a, (x86_mem_addr+2)
+        and     #0F
+        call    x86_mem_watch_hex8_low
+        ld      a, (x86_mem_addr+1)
+        call    x86_mem_watch_hex8
+        ld      a, (x86_mem_addr)
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, b
+        call    x86_mem_watch_hex8
+        ld      a, '>'
+        out     (#EF), a
+        ld      a, (x86_mem_value)
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.done:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+; Print the low nibble of A as one hexadecimal digit.
+x86_mem_watch_hex8_low:
+        and     #0F
+        jp      x86_mem_watch_nibble
+
+x86_mem_watch_string:
+        ld      a, (hl)
+        inc     hl
+        or      a
+        ret     z
+        out     (#EF), a
+        jr      x86_mem_watch_string
+
+x86_mem_watch_hex8:
+        push    af
+        rrca
+        rrca
+        rrca
+        rrca
+        and     #0F
+        call    x86_mem_watch_nibble
+        pop     af
+        and     #0F
+        jp      x86_mem_watch_nibble
+
+x86_mem_watch_nibble:
+        add     a, '0'
+        cp      '9'+1
+        jr      c, .digit
+        add     a, 7
+.digit:
+        out     (#EF), a
+        ret
+
+x86_mem_watch_prefix:
+        db      "[MEMW] ", 0
+x86_mem_watch_count:
+        db      0
 
 ; -------------------------------------------------------------------------
 ; Destructive physical RAM mapping test.
@@ -198,6 +475,130 @@ x86_mem_test:
         xor     a
         ld      (x86_exit_status), a
         ret
+
+; Trace the effective address used by BIOS F6 TEST r/m8,imm8.
+; This distinguishes a missing physical 00415h read from bad ES:offset
+; decoding. Preserve all guest-visible registers and flags.
+x86_mem_trace_f6_address:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_mem_f6_prefix
+        call    x86_mem_watch_string
+        ; Report guest CS:IP and the segment registers used to select EA.
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_reg_ds)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, '/'
+        out     (#EF), a
+        ld      hl, (x86_reg_es)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, (x86_real_seg_override_active)
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_mem_segment)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_mem_offset_work)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, '='
+        out     (#EF), a
+        ld      a, (x86_mem_addr+2)
+        call    x86_mem_watch_hex8
+        ld      a, (x86_mem_addr+1)
+        call    x86_mem_watch_hex8
+        ld      a, (x86_mem_addr)
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_mem_f6_prefix:
+        db      "[F6EA] ", 0
+
+; Resident helper: trace the source of MOV Sreg,r/m16 loading ES.
+; Kept outside overlay 68 to preserve its strict 16 KiB bank limit.
+x86_real_trace_es_load:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_mem_es_prefix
+        call    x86_mem_watch_string
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_reg_es)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, '>'
+        out     (#EF), a
+        ld      hl, (x86_mov_value)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_mem_es_prefix:
+        db      "[ES<-] ", 0
 
 ; -------------------------------------------------------------------------
 ; Segment:offset -> physical address.

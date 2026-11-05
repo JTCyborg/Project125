@@ -17,6 +17,7 @@
         ASSERT neogs_resident_end > 0
         ASSERT neogs_resident_end <= $4000
         ASSERT neogs_overlay68_end > neogs_overlay68_start
+        DISPLAY "OVERLAY68_SIZE=", /D, neogs_overlay68_end - neogs_overlay68_start
         ASSERT neogs_overlay68_end - neogs_overlay68_start <= $4000
         ASSERT neogs_overlay69_end > neogs_overlay69_start
         ASSERT neogs_overlay69_end - neogs_overlay69_start <= $4000

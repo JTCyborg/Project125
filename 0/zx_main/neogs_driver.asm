@@ -1484,4 +1484,4 @@ trace_noload_03_descriptor_call:   defb "[NLOAD 03] DESCRIPTOR CALL", 13, 10, 0
 trace_noload_04_descriptor_return: defb "[NLOAD 04] DESCRIPTOR RETURN", 13, 10, 0
 trace_noload_05_sector_call:       defb "[NLOAD 05] FIRST SECTOR CALL", 13, 10, 0
 trace_noload_06_sector_return:     defb "[NLOAD 06] FIRST SECTOR RETURN", 13, 10, 0
-neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A50 MANIFEST-LENGTH 48K", 13, 10, 0
+neo_fw_driver_build_id: db "[P125] DRIVER 20261104-A51 ATM-KBD-DMA", 13, 10, 0
