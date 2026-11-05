@@ -143,3 +143,57 @@ bank69_call_x86_real_execute:
         out     (MPAG), a
         pop     af
         ret
+
+; Overlay68 -> overlay69: generic D3 /6 SHL r/m16,CL implementation.
+bank_call_x86_shift_shl_cl:
+        push    af
+        ld      a, NGS_FW_BANK69_MPAG
+        out     (MPAG), a
+        pop     af
+        call    x86_shift_shl_cl_impl
+        push    af
+        ld      a, NGS_FW_BANK68_MPAG
+        out     (MPAG), a
+        pop     af
+        ret
+
+; Overlay69 -> overlay68 decoder/read/write gateways. AF (including carry)
+; and HL return values are preserved across the physical bank switch.
+bank69_call_x86_mov_decode_modrm:
+        push    af
+        ld      a, NGS_FW_BANK68_MPAG
+        out     (MPAG), a
+        pop     af
+        call    x86_real_mov_decode_modrm
+        push    af
+        ld      a, NGS_FW_BANK69_MPAG
+        out     (MPAG), a
+        pop     af
+        ret
+
+bank69_call_x86_mov_read_rm:
+        push    af
+        ld      a, NGS_FW_BANK68_MPAG
+        out     (MPAG), a
+        pop     af
+        call    x86_real_mov_read_rm
+        push    af
+        ld      a, NGS_FW_BANK69_MPAG
+        out     (MPAG), a
+        pop     af
+        ret
+
+; IN HL=result. The overlay68 writer continues directly to x86_real_next
+; on success; on a memory fault it returns here with carry set.
+bank69_call_x86_mov_write_rm:
+        push    af
+        ld      a, NGS_FW_BANK68_MPAG
+        out     (MPAG), a
+        pop     af
+        ld      (x86_mov_value), hl
+        call    x86_real_mov_write_rm
+        push    af
+        ld      a, NGS_FW_BANK69_MPAG
+        out     (MPAG), a
+        pop     af
+        ret
