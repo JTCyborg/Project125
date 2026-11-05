@@ -298,6 +298,10 @@ x86_real_fetch_out_of_range:
 x86_real_execute:
         xor     a
         ld      (x86_real_unsupported_opcode), a
+        ld      (x86_real_dispatch_seen), a
+        ld      (x86_real_poll_return_seen), a
+        ld      hl, x86_real_exec_enter_message
+        call    neo_debug_port_string
         ld      hl, X86_REAL_STEP_LIMIT
         ld      (x86_real_steps), hl
 x86_real_next:
@@ -313,6 +317,15 @@ x86_real_dispatch:
         dec     hl
         ld      (x86_real_steps), hl
 
+        ; One-shot trace proves that the guest instruction dispatcher is live.
+        ld      a, (x86_real_dispatch_seen)
+        or      a
+        jr      nz, .dispatch_marker_done
+        inc     a
+        ld      (x86_real_dispatch_seen), a
+        ld      hl, x86_real_dispatch_message
+        call    neo_debug_port_string
+.dispatch_marker_done:
         ; Live BIOS progress: emit CS:IP/CX every 2048 guest instructions.
         ; The host drains DBIT concurrently while CMD_BOOT_BIOS holds CBIT.
         ld      a, l
@@ -333,6 +346,15 @@ x86_real_dispatch_no_progress:
         ; DMA is an asynchronous host service and must not depend on guest
         ; register L or on a change in the physical key matrix.
         call    x86_host_input_service_poll
+        ; One-shot trace proves that the keyboard service returned to the CPU loop.
+        ld      a, (x86_real_poll_return_seen)
+        or      a
+        jr      nz, .poll_return_marker_done
+        inc     a
+        ld      (x86_real_poll_return_seen), a
+        ld      hl, x86_real_poll_return_message
+        call    neo_debug_port_string
+.poll_return_marker_done:
         call    x86_io_tick
         ret     c
         ; The IRQ-delivery marker is only consumed by the HLT wait loop.
@@ -2885,3 +2907,15 @@ x86_daa_old_cf:   db 0
 x86_daa_old_af:   db 0
 x86_daa_new_cf:   db 0
 x86_daa_new_af:   db 0
+
+; One-shot BIOS execution path diagnostics, emitted on the independent #EF port.
+x86_real_exec_enter_message:
+        defb "[NGS] BIOS EXEC ENTER", 13, 10, 0
+x86_real_dispatch_message:
+        defb "[NGS] BIOS DISPATCH ENTER", 13, 10, 0
+x86_real_poll_return_message:
+        defb "[NGS] BIOS INPUT POLL RETURN", 13, 10, 0
+x86_real_dispatch_seen:
+        db 0
+x86_real_poll_return_seen:
+        db 0
