@@ -209,7 +209,17 @@ x86_int_push_word:
         ld      hl, (x86_int_word)
         ld      (x86_mem_word_value), hl
         call    x86_mem_write16
-        ret     nc
+        jr      c, .push_rollback
+        ld      hl, (x86_reg_sp)
+        ld      (x86_stack_trace_new), hl
+        ld      hl, (x86_int_old_sp)
+        ld      (x86_stack_trace_old), hl
+        xor     a
+        ld      (x86_stack_trace_kind), a
+        call    x86_stack_transition_trace
+        or      a
+        ret
+.push_rollback:
         ld      hl, (x86_int_old_sp)
         ld      (x86_reg_sp), hl
         scf
@@ -218,6 +228,7 @@ x86_int_push_word:
 ; OUT: HL=word at SS:SP. SP advances only after a successful read.
 x86_int_pop_word:
         ld      hl, (x86_reg_sp)
+        ld      (x86_int_old_sp), hl
         ld      (x86_mem_offset), hl
         ld      de, (x86_reg_ss)
         ld      (x86_mem_segment), de
@@ -228,6 +239,12 @@ x86_int_pop_word:
         inc     hl
         inc     hl
         ld      (x86_reg_sp), hl
+        ld      (x86_stack_trace_new), hl
+        ld      hl, (x86_int_old_sp)
+        ld      (x86_stack_trace_old), hl
+        xor     a
+        ld      (x86_stack_trace_kind), a
+        call    x86_stack_transition_trace
         pop     hl
         or      a
         ret

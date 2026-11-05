@@ -1852,9 +1852,16 @@ x86_real_ret_near_imm:
         ld      hl, (x86_real_stack_value)
         ld      (x86_reg_ip), hl
         ld      hl, (x86_reg_sp)
+        ld      (x86_real_old_sp), hl
         ld      de, (x86_real_imm_word)
         add     hl, de
         ld      (x86_reg_sp), hl
+        ld      (x86_stack_trace_new), hl
+        ld      hl, (x86_real_old_sp)
+        ld      (x86_stack_trace_old), hl
+        xor     a
+        ld      (x86_stack_trace_kind), a
+        call    x86_stack_transition_trace
         jp      x86_real_next
 
 x86_real_ret_far_imm:
@@ -1872,9 +1879,16 @@ x86_real_ret_far_imm:
         ld      hl, (x86_real_far_ip)
         ld      (x86_reg_ip), hl
         ld      hl, (x86_reg_sp)
+        ld      (x86_real_old_sp), hl
         ld      de, (x86_real_imm_word)
         add     hl, de
         ld      (x86_reg_sp), hl
+        ld      (x86_stack_trace_new), hl
+        ld      hl, (x86_real_old_sp)
+        ld      (x86_stack_trace_old), hl
+        xor     a
+        ld      (x86_stack_trace_kind), a
+        call    x86_stack_transition_trace
         jp      x86_real_next
 
 x86_real_hlt:
