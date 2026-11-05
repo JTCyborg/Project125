@@ -6,15 +6,12 @@
 
 x86_shift_shl_cl_impl:
         ld      (x86_shift_modrm69), a
-        and     #38
-        cp      #30
-        jp      nz, x86_real_shift_cl_unsupported
         ld      a, (x86_shift_modrm69)
         call    bank69_call_x86_mov_decode_modrm
         ret     c
         ld      a, (x86_reg_cx)
         or      a
-        jp      z, x86_real_next
+        jp      z, bank69_jump_x86_real_next
         ld      (x86_shift_count69), a
         ld      (x86_shift_original_count69), a
         call    bank69_call_x86_mov_read_rm
