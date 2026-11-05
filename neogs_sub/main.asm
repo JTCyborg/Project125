@@ -480,8 +480,6 @@ command_load_bios:
         out     (DMA_LAD), a
         ld      a, #80
         out     (DMA_CST), a
-        ld      hl, x86_host_input_dma_armed_message
-        call    neo_debug_send_string
         xor     a
         out     (CLRCBIT), a
 
