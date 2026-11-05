@@ -310,6 +310,14 @@ x86_real_execute:
         xor     a
         ld      (x86_dbg_dispatch_once), a
         ld      (x86_dbg_fetch_once), a
+        ld      (x86_dbg_fetch_ok_once), a
+        ld      (trace_io_instruction_once), a
+        ld      (trace_io_read_once), a
+        ld      (trace_io_write_once), a
+        ld      (trace_mov_once), a
+        ld      (trace_alu16_once), a
+        ld      (trace_alu8_once), a
+        ld      (trace_string_once), a
         ld      (x86_real_unsupported_opcode), a
         ld      hl, X86_REAL_STEP_LIMIT
         ld      (x86_real_steps), hl
