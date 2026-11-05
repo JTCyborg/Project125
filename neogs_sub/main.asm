@@ -2255,8 +2255,10 @@ x86_fetch_diag_address:
         ret
 
 x86_fetch_diag_read_ok:
+        push    af
         ld      a, 2
         ld      (x86_fetch_diag_stage), a
+        pop     af
         ret
 
 x86_shift_diag_stage: db 0
