@@ -538,8 +538,15 @@ command_load_bios:
         out     (CLRCBIT), a
         jp      main_loop
 
+bios_boot_entry_debug:
+        defb "[NGS] BOOT BIOS ENTRY", 13, 10, 0
+bios_boot_reset_done_debug:
+        defb "[NGS] BIOS RESET STATE DONE", 13, 10, 0
+
 ; Start the real 8086 reset sequence at FFFF:0000 after BIOS transfer/validation.
 command_boot_bios:
+        ld      hl, bios_boot_entry_debug
+        call    neo_debug_port_string
         ld      a, (bios_rom_loaded)
         or      a
         jr      nz, .bios_ready
@@ -559,6 +566,8 @@ command_boot_bios:
         ld      hl, bios_boot_message
         call    neo_debug_send_string
         call    bios_rom_reset_state
+        ld      hl, bios_boot_reset_done_debug
+        call    neo_debug_port_string
         ; Enable bounded guest I/O tracing only for the BIOS run. Records
         ; travel through the existing DBIT/GSDAT IPC stream, never OUT ports.
         xor     a
