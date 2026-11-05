@@ -388,6 +388,14 @@ x86_real_dispatch_no_progress:
         jp      z, x86_real_into
         cp      #D7
         jp      z, x86_real_xlat
+        ; 8086 ESC D8h..DFh: 8087 coprocessor escape.
+        ; With no 8087 attached, consume ModR/M and addressing bytes as
+        ; the 8086 does, but perform no coprocessor operation.
+        cp      #D8
+        jp      c, .not_escape
+        cp      #E0
+        jp      c, x86_real_escape
+.not_escape:
         cp      #A0
         jp      c, .not_moffs
         cp      #A4
@@ -681,6 +689,38 @@ x86_real_prefix_rep_set:
 
 x86_real_nop:
         jp      x86_real_next
+
+; D8h..DFh ESC. No 8087 is currently modelled, so the coprocessor
+; operation is ignored. The instruction stream must still consume the
+; ModR/M byte and any 8086 effective-address displacement.
+x86_real_escape:
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_real_escape_modrm), a
+        and     #C0
+        cp      #C0
+        jp      z, x86_real_next       ; mod=11: register operand, no disp
+        cp      #40
+        jp      z, .disp8
+        cp      #80
+        jp      z, .disp16
+        ; mod=00 has a displacement only for r/m=110 (direct [disp16]).
+        ld      a, (x86_real_escape_modrm)
+        and     7
+        cp      6
+        jp      z, .disp16
+        jp      x86_real_next
+.disp8:
+        call    x86_real_fetch8
+        ret     c
+        jp      x86_real_next
+.disp16:
+        call    x86_real_fetch8
+        ret     c
+        call    x86_real_fetch8
+        ret     c
+        jp      x86_real_next
+
 
 ; -------------------------------------------------------------------------
 ; 50-57 PUSH r16 and 58-5F POP r16. Stack accesses use SS:SP through the
@@ -1766,6 +1806,7 @@ x86_real_imm_low:    db 0
 x86_real_imm_high:   db 0
 x86_real_int_vector: db 0
 x86_real_opcode: db 0
+x86_real_escape_modrm: db 0
 x86_real_imm_byte: db 0
 x86_real_incdec_mode: db 0
 x86_real_old_low: db 0
