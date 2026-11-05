@@ -2438,8 +2438,6 @@ x86_resident_shift_byte_ror_cl:
 .ror_cl_cf_ready:
         res     3, h
         ld      a, (x86_shift_result)
-        xor     b
-        ld      a, (x86_shift_result)
         ld      b, a
         rrca
         xor     b
