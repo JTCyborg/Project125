@@ -90,6 +90,9 @@ bios_rom_reset_state:
         ld      (trace_mem_read_once), a
         ld      (trace_mem_write_once), a
         ld      (trace_int_enter_once), a
+        ld      (trace_int_vector_once), a
+        ld      (trace_int_target_once), a
+        ld      (trace_iret_once), a
         ld      hl, trace_bios_reset_done
         call    neo_trace_ef_string
         ret
