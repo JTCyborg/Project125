@@ -1070,8 +1070,8 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261105-17",13,10
-        defb "[NGS] BASE COMMIT 9E05EBD",13,10,0
+        defb "[NGS] BUILD 20261106-18",13,10
+        defb "[NGS] BASE COMMIT 985654D",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
 trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
@@ -3348,16 +3348,18 @@ x86_f7_int00_frame_trace:
         pop     af
         ret
 
-; Trace only transitions into/out of the high stack window. This captures
-; the instruction that first moves SS:SP into BIOS ROM without logging every
-; subsequent CALL/PUSH/POP.
-; x86_stack_trace_kind: 0=SP transition, 1=SS transition.
+; Trace explicit SP register writes unconditionally (kind=2). Ordinary
+; PUSH/POP and interrupt stack traffic (kind=0) remains filtered to crossings
+; of the E000 high-stack boundary; SS changes use kind=1.
+; x86_stack_trace_kind: 0=stack traffic, 1=SS transition, 2=explicit SP write.
 x86_stack_transition_trace:
         push    af
         push    bc
         push    de
         push    hl
         ld      a, (x86_stack_trace_kind)
+        cp      2
+        jp      z, .trace_sp_register
         or      a
         jp      nz, .trace_ss
         ld      hl, (x86_stack_trace_old)
@@ -3377,6 +3379,12 @@ x86_stack_transition_trace:
 .trace_sp:
         ld      hl, x86_stack_trace_sp_prefix
         call    x86_f7_trace_string
+        jp      .trace_sp_fields
+.trace_sp_register:
+        ld      hl, x86_stack_trace_sp_reg_prefix
+        call    x86_f7_trace_string
+.trace_sp_fields:
+        call    x86_stack_trace_print_cs_ip
         call    x86_stack_trace_print_cs_ip
         ld      hl, x86_stack_trace_ss_label
         call    x86_f7_trace_string
@@ -3439,6 +3447,7 @@ x86_stack_trace_kind: db 0
 x86_stack_trace_old:  dw 0
 x86_stack_trace_new:  dw 0
 x86_stack_trace_sp_prefix:    defb "[NGS X86] STACK SP CS:IP=",0
+x86_stack_trace_sp_reg_prefix: defb "[NGS X86] STACK SP-REG CS:IP=",0
 x86_stack_trace_ss_prefix:    defb "[NGS X86] STACK SS CS:IP=",0
 x86_stack_trace_ss_label:     defb " SS=",0
 x86_stack_trace_sp_old_label: defb " SP=",0

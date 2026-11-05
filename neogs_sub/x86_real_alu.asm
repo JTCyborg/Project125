@@ -379,7 +379,7 @@ x86_alu_write_reg16:
         ld      (x86_stack_trace_old), hl
         ld      hl, (x86_alu_result)
         ld      (x86_stack_trace_new), hl
-        xor     a
+        ld      a, 2
         ld      (x86_stack_trace_kind), a
         ld      a, 1
         ld      (x86_alu_stack_trace_active), a
