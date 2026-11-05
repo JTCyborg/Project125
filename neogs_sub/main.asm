@@ -2225,16 +2225,35 @@ x86_resident_shift_word_mem_shl_cl:
         jp      x86_real_shift_cl_unsupported
 
 .shl_rm16_cl:
-        ; The ModR/M decoder consumes the original byte and displacement.
-        call    x86_real_mov_decode_modrm
-        ret     c
+        ; BIOS POST instruction at F000:E106 is D3 B0 disp16:
+        ; SHL word ptr [BX+SI+disp16],CL. Decode this exact ModR/M
+        ; locally so the resident handler does not depend on overlay
+        ; decoder state or banked helper side effects.
+        ld      a, #B0
+        ld      (x86_mov_modrm), a
+        ld      a, 2
+        ld      (x86_mov_mod), a
+        ld      a, 6
+        ld      (x86_mov_reg), a
         xor     a
+        ld      (x86_mov_rm), a
+        ld      (x86_mov_is_reg), a
         ld      (x86_mov_width), a
-        ld      a, (x86_mov_reg)
-        cp      6
-        jp      nz, x86_real_shift_cl_unsupported
-        ; The generic r/m accessors support both register-direct and
-        ; all eight 8086 memory effective-address forms.
+        call    x86_real_mov_fetch16
+        ret     c
+        ld      de, (x86_reg_bx)
+        add     hl, de
+        ld      de, (x86_reg_si)
+        add     hl, de
+        ld      (x86_mov_offset), hl
+        ld      hl, (x86_reg_ds)
+        ld      (x86_mov_segment), hl
+        ld      a, (x86_real_seg_override_active)
+        or      a
+        jr      z, .shl_segment_ready
+        ld      hl, (x86_real_seg_override)
+        ld      (x86_mov_segment), hl
+.shl_segment_ready:
         ld      a, (x86_reg_cx)
         or      a
         jp      z, x86_real_next
