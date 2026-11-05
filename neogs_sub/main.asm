@@ -804,8 +804,9 @@ bios_stop_shift_label:
 bios_stop_shift_modrm_label:
         defb    " MODRM=", 0
 bios_stop_shift_mask_label:
-bios_stop_shift_dispatch_label: db " DIN/IP/FA/V=",0
         defb    " MASK=", 0
+bios_stop_shift_dispatch_label:
+        defb    " DIN/IP/FA/V=", 0
 bios_stop_shift_fetch_label:
         defb    " MIP=", 0
 bios_stop_fetch_label:
@@ -2372,15 +2373,15 @@ x86_resident_shift_byte_dispatch:
         ld      (x86_shift_dispatch_byte), a
         ld      hl, (x86_reg_ip)
         ld      (x86_shift_dispatch_ip), hl
-        ld      hl, (x86_fetch_exact_addr)
+        ; Snapshot the memory backend's immediately preceding successful
+        ; read. At this entry the ModR/M fetch is the last guest-memory read;
+        ; later STOP diagnostics may perform unrelated reads.
+        ld      hl, (x86_mem_last_read_addr)
         ld      (x86_shift_dispatch_addr), hl
-        ld      a, (x86_fetch_exact_addr+2)
+        ld      a, (x86_mem_last_read_addr+2)
         ld      (x86_shift_dispatch_addr+2), a
-        ld      a, (x86_fetch_exact_value)
+        ld      a, (x86_mem_last_read_value)
         ld      (x86_shift_dispatch_value), a
-        ; Capture the exact second instruction byte in resident code so the
-        ; diagnostic helper does not consume overlay68 space.
-        call    x86_fetch_capture_modrm
         ld      (x86_shift_diag_modrm), a
         ld      a, #D0
         ld      (x86_shift_diag_stage), a
