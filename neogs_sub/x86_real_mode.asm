@@ -376,24 +376,11 @@ x86_real_fetch_out_of_range:
         jp      x86_real_fetch_out_of_range_resident
 
 x86_real_execute:
-        ; First-opcode probe: distinguish a failed overlay CALL from a fault
-        ; inside the interpreter prologue. This is deliberately before all
-        ; existing register saves and diagnostic helper calls.
-        push    af
-        ld      a, '!'
-        out     (#EF), a
-        pop     af
-        ; Kernel-entry marker: proves control reached the actual 8086 interpreter.
-        push    af
-        push    bc
-        push    de
-        push    hl
+        ; Emit the entry marker through the resident #EF trace routine.
+        ; x86_debug_port_string uses the DBIT transport path and can wait for
+        ; the ATM host; this marker must remain independent of DMA/DBIT.
         ld      hl, x86_dbg_core_enter
-        call    x86_debug_port_string
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
+        call    neo_trace_ef_string
         xor     a
         ld      (x86_trace_fetch_count), a
         ld      (x86_trace_decode_once), a
