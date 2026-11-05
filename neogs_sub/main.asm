@@ -549,14 +549,32 @@ command_boot_bios:
         ld      (x86_exit_status), a
         jp      main_loop
 .bios_ready:
+        ; Accept the long-running BIOS command, then release CBIT immediately.
+        ; The ATM host uses subsequent CBIT edges to post CMD_HOST_INPUT
+        ; doorbells while x86_real_execute is running. Keeping the original
+        ; CMD_BOOT_BIOS CBIT asserted prevents those later requests from being
+        ; represented as fresh host transactions.
+        xor     a
+        out     (CLRCBIT), a
         ld      hl, bios_boot_message
         call    neo_debug_send_string
         call    bios_rom_reset_state
+        ; Enable bounded guest I/O tracing only for the BIOS run. Records
+        ; travel through the existing DBIT/GSDAT IPC stream, never OUT ports.
+        xor     a
+        ld      (x86_io_trace_count), a
+        ld      a, 1
+        ld      (x86_io_trace_enable), a
+        ; BIOS execution is unrestricted real-mode ROM fetch, never the
+        ; bounded 0000:5002 DMA-task sandbox.
+        xor     a
+        ld      (x86_real_bounds_enable), a
         ld      a, 1
         ld      (x86_real_progress_enable), a
         call    x86_real_execute
         xor     a
         ld      (x86_real_progress_enable), a
+        ld      (x86_io_trace_enable), a
         ; Compact stop trace: the host drains DBIT and mirrors it to port EF.
         ld      hl, bios_stop_prefix
         call    neo_debug_send_string
@@ -589,6 +607,10 @@ command_boot_bios:
         ld      a, 13
         call    neo_send_data_byte
         ld      a, 10
+        call    neo_send_data_byte
+        ; Out-of-band terminal byte: host must not confuse transient CBIT
+        ; clears from keyboard DMA with completion of the BIOS executor.
+        ld      a, NGS_BIOS_DONE_MARKER
         call    neo_send_data_byte
         ld      hl, (x86_reg_ax)
         ld      (saved_x86_ax), hl
@@ -683,6 +705,120 @@ bios_stop_dump_state:
         call    neo_debug_send_string
         ld      a, (bios_video_stream_errors)
         call    neo_debug_hex8
+        ld      hl, bios_stop_bounds_label
+        call    neo_debug_send_string
+        ld      a, (x86_real_bounds_enable)
+        call    neo_debug_hex8
+        ld      hl, bios_stop_fail_label
+        call    neo_debug_send_string
+        ld      a, (x86_fetch_fail_bounds)
+        call    neo_debug_hex8
+        ld      hl, (x86_fetch_fail_cs)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, ':'
+        call    neo_send_data_byte
+        ld      hl, (x86_fetch_fail_ip)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      hl, bios_stop_shift_label
+        call    neo_debug_send_string
+        ld      a, (x86_shift_diag_stage)
+        call    neo_debug_hex8
+        ld      hl, bios_stop_shift_modrm_label
+        call    neo_debug_send_string
+        ld      a, (x86_shift_diag_modrm)
+        call    neo_debug_hex8
+        ld      hl, bios_stop_shift_mask_label
+        call    neo_debug_send_string
+        ld      a, (x86_shift_diag_mask)
+        call    neo_debug_hex8
+        ld      hl, bios_stop_shift_dispatch_label
+        call    neo_debug_send_string
+        ld      a, (x86_shift_dispatch_byte)
+        call    neo_debug_hex8
+        ld      hl, (x86_shift_dispatch_ip)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+        ld      a, (x86_shift_dispatch_addr+2)
+        call    neo_debug_hex8
+        ld      a, (x86_shift_dispatch_addr+1)
+        call    neo_debug_hex8
+        ld      a, (x86_shift_dispatch_addr)
+        call    neo_debug_hex8
+        ld      a, (x86_shift_dispatch_value)
+        call    neo_debug_hex8
+        ld      hl, bios_stop_shift_fetch_label
+        call    neo_debug_send_string
+        ld      hl, (x86_shift_fetch_ip)
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
+         ld      hl, bios_stop_fetch_label
+         call    neo_debug_send_string
+         ld      a, (x86_fetch_diag_stage)
+         call    neo_debug_hex8
+         ld      a, (x86_fetch_diag_phys+2)
+         call    neo_debug_hex8
+         ld      a, (x86_fetch_diag_phys+1)
+         call    neo_debug_hex8
+         ld      a, (x86_fetch_diag_phys)
+         call    neo_debug_hex8
+         ld      hl, bios_stop_fetch_value_label
+         call    neo_debug_send_string
+         ld      a, (x86_fetch_diag_value)
+         call    neo_debug_hex8
+         ld      hl, bios_stop_exact_fetch_addr_label
+         call    neo_debug_send_string
+         ld      a, (x86_fetch_exact_addr+2)
+         call    neo_debug_hex8
+         ld      a, (x86_fetch_exact_addr+1)
+         call    neo_debug_hex8
+         ld      a, (x86_fetch_exact_addr)
+         call    neo_debug_hex8
+         ld      hl, bios_stop_exact_fetch_value_label
+         call    neo_debug_send_string
+         ld      a, (x86_fetch_exact_value)
+         call    neo_debug_hex8
+         ld      hl, bios_stop_mem_read_addr_label
+         call    neo_debug_send_string
+         ld      a, (x86_mem_last_read_addr+2)
+         call    neo_debug_hex8
+         ld      a, (x86_mem_last_read_addr+1)
+         call    neo_debug_hex8
+         ld      a, (x86_mem_last_read_addr)
+         call    neo_debug_hex8
+         ld      hl, bios_stop_mem_read_value_label
+         call    neo_debug_send_string
+         ld      a, (x86_mem_last_read_value)
+         call    neo_debug_hex8
+         ; F7-specific fetch trace, independent of the generic last-read fields.
+         ld      hl, bios_stop_f7_ip_label
+         call    neo_debug_send_string
+         ld      hl, (x86_f7_diag_ip)
+         ld      a, h
+         call    neo_debug_hex8
+         ld      a, l
+         call    neo_debug_hex8
+         ld      hl, bios_stop_f7_addr_label
+         call    neo_debug_send_string
+         ld      a, (x86_f7_diag_addr+2)
+         call    neo_debug_hex8
+         ld      a, (x86_f7_diag_addr+1)
+         call    neo_debug_hex8
+         ld      a, (x86_f7_diag_addr)
+         call    neo_debug_hex8
+         ld      hl, bios_stop_f7_value_label
+         call    neo_debug_send_string
+         ld      a, (x86_f7_diag_value)
+         call    neo_debug_hex8
         pop     hl
         pop     de
         pop     bc
@@ -697,6 +833,38 @@ bios_stop_flags_label:
         defb    " FLAGS=", 0
 bios_stop_video_errors_label:
         defb    " VERR=", 0
+bios_stop_bounds_label:
+        defb    " BND=", 0
+bios_stop_fail_label:
+        defb    " FERR=", 0
+bios_stop_shift_label:
+        defb    " SH=", 0
+bios_stop_shift_modrm_label:
+        defb    " MODRM=", 0
+bios_stop_shift_mask_label:
+        defb    " MASK=", 0
+bios_stop_shift_dispatch_label:
+        defb    " DIN/IP/FA/V=", 0
+bios_stop_shift_fetch_label:
+        defb    " MIP=", 0
+bios_stop_fetch_label:
+        defb    " FCH=", 0
+bios_stop_fetch_value_label:
+        defb    " FVAL=", 0
+bios_stop_exact_fetch_addr_label:
+        defb    " XFA=", 0
+bios_stop_exact_fetch_value_label:
+        defb    " XFV=", 0
+bios_stop_mem_read_addr_label:
+        defb    " MRA=", 0
+bios_stop_mem_read_value_label:
+        defb    " MRV=", 0
+bios_stop_f7_ip_label:
+        defb    " F7IP=", 0
+bios_stop_f7_addr_label:
+        defb    " F7ADR=", 0
+bios_stop_f7_value_label:
+        defb    " F7BYTE=", 0
 
 ; Dump physical page-75 bytes at image offset 1FF0 (guest FFFF0..FFFF4).
 ; This is deliberately performed after DMA is disabled and before validation.
@@ -964,6 +1132,13 @@ rom_return_trampoline_end:
         INCLUDE "../shared/video_crc16.asm"
         INCLUDE "bank_gateways.asm"
 
+; The 16-bit ALU and interrupt core are resident, not in the tight bank-68
+; interpreter overlay. They execute while bank 68 is mapped and may call
+; its fetch/next/stack helpers directly. This frees several KiB in overlay68
+; for opcode handlers without introducing extra bank-switch gateways.
+        INCLUDE "x86_interrupt.asm"
+        INCLUDE "x86_real_alu.asm"
+
 ; 8086 register file is resident so BIOS and banked CPU code share one state.
 x86_reg_ax:    dw 0
 x86_reg_cx:    dw 0
@@ -1138,47 +1313,6 @@ x86_uart_com1_regs:
         db 0,0,0,0,0,0,0,0
 x86_uart_com2_regs:
         db 0,0,0,0,0,0,0,0
-
-x86_resident_io_trace_read8:
-        ; Keep the first 16 unmapped reads, not just the first one.
-        ; This reveals the complete BIOS probe sequence before System error.
-        ld      a, (x86_io_trace_count)
-        cp      16
-        ret     nc
-        inc     a
-        ld      (x86_io_trace_count), a
-        push    af
-        push    hl
-        ld      a, '!'
-        out     (#EF), a
-        ld      hl, (x86_io_port)
-        ld      a, h
-        call    x86_mem_watch_hex8
-        ld      a, l
-        call    x86_mem_watch_hex8
-        ld      a, ':'
-        out     (#EF), a
-        ld      hl, (x86_reg_cs)
-        ld      a, h
-        call    x86_mem_watch_hex8
-        ld      a, l
-        call    x86_mem_watch_hex8
-        ld      a, ':'
-        out     (#EF), a
-        ld      hl, (x86_reg_ip)
-        ld      a, h
-        call    x86_mem_watch_hex8
-        ld      a, l
-        call    x86_mem_watch_hex8
-        ld      a, 13
-        out     (#EF), a
-        ld      a, 10
-        out     (#EF), a
-        pop     hl
-        pop     af
-        ret
-
-x86_io_trace_count: db 0
 
 ; Trace the first four SCAS comparisons during BIOS startup.
 ; The previous failure-only trace produced no output, so the current
@@ -1473,7 +1607,13 @@ x86_io_tick:
 .check_irq:
         ld      a, (x86_reg_flags+1)
         bit     1, a
-        ret     z
+        jr      nz, .scan_irq
+        ; No maskable interrupt can be accepted while IF=0. x86_io_tick
+        ; is called before every guest instruction, so it must not leak
+        ; Carry from keyboard/PIT bookkeeping into the CPU dispatcher.
+        or      a
+        ret
+.scan_irq:
         ; Scan IRQs in programmed priority order. A higher-priority ISR
         ; blocks itself and all lower-priority requests, but permits a
         ; higher-priority request to nest.
@@ -1524,9 +1664,20 @@ x86_io_tick:
         ld      c, a
         djnz    .irq_scan
 .irq_none:
+        ; Normal no-pending-IRQ path: return with Carry clear. Carry is
+        ; reserved for a genuine failure from x86_int_enter above.
+        or      a
         ret
 
 x86_ppi_read_port_a:
+        ; PCem keyboard_xt.c: while PB7 is asserted the XT data port
+        ; exposes the system configuration byte, not the keyboard latch.
+        ld      a, (x86_ppi_keyboard_pb)
+        bit     7, a
+        jr      z, .keyboard_data
+        ld      a, #6D                    ; IBM 5150 CGA, no 8087 installed
+        ret
+.keyboard_data:
         ld      a, (x86_ppi_keyboard_data)
         ret
 
@@ -1535,6 +1686,9 @@ x86_ppi_read_port_b:
         ret
 
 x86_ppi_read_port_c:
+        ; IBM 5150 with 640 KiB: (640-64)/32 = 12h.
+        ; PB2 selects the low/high memory-size nibble. Cassette input and
+        ; PIT channel-2 speaker sense remain low until those devices exist.
         ld      a, (x86_ppi_port_b)
         bit     2, a
         ld      a, 1
@@ -1547,40 +1701,79 @@ x86_ppi_read_control:
         ret
 
 x86_ppi_write_port_b:
-        ; IBM XT keyboard acknowledge is level-qualified by PB7: every write
-        ; with PB7 high clears the current PA byte (not only a rising edge).
+        ; PCem keyboard_xt_write(): store PB, process PB6 reset edge,
+        ; then apply PB7 keyboard acknowledge.
         ld      a, (x86_ppi_keyboard_pb)
         ld      b, a
         ld      a, (x86_io_value)
         ld      (x86_ppi_port_b), a
         ld      (x86_ppi_keyboard_pb), a
-        bit     7, a
-        call    nz, x86_kbd_acknowledge
 
-        ; PB6 low-to-high is the XT keyboard reset pulse. PCem's reference
-        ; model flushes pending keys and queues BAT AA; reproduce that order.
-        ld      a, (x86_ppi_keyboard_pb)
+        ; PB6 low-to-high resets the XT interface and queues BAT AA.
         bit     6, b
-        ret     nz
+        jr      nz, .acknowledge
         bit     6, a
-        ret     z
+        jr      z, .acknowledge
         xor     a
         ld      (x86_kbd_queue_read), a
         ld      (x86_kbd_queue_write), a
         ld      (x86_kbd_queue_count), a
+        ld      (x86_kbd_wantirq), a
         ld      (x86_ppi_keyboard_ready), a
         ld      (x86_ppi_keyboard_data), a
         ld      (x86_kbd_latch_from_queue), a
         ld      a, (x86_pic_pending)
-        res     1, a
+        and     #FD
         ld      (x86_pic_pending), a
         ld      a, #AA
         ld      (x86_kbd_key_code), a
-        jp      x86_kbd_enqueue
+        call    x86_kbd_enqueue
+
+.acknowledge:
+        ld      a, (x86_ppi_keyboard_pb)
+        bit     7, a
+        call    nz, x86_kbd_acknowledge
+        ret
 
 x86_ppi_write_control:
         ld      a, (x86_io_value)
+        bit     7, a
+        jr      z, .bit_set_reset
+        ; Mode-set control word.
         ld      (x86_ppi_control), a
+        ret
+.bit_set_reset:
+        ; 8255 BSR: D3..D1 select PC bit, D0 sets (1) or resets (0).
+        ld      b, a
+        and     #0E
+        srl     a
+        ld      c, a
+        ld      a, 1
+.bsr_mask:
+        ld      e, a
+        ld      a, c
+        or      a
+        jr      z, .bsr_apply
+        ld      a, e
+        add     a, a
+        dec     c
+        jr      .bsr_mask
+.bsr_apply:
+        ld      b, a
+        ld      a, (x86_io_value)
+        bit     0, a
+        ld      a, (x86_ppi_port_c)
+        jr      z, .bsr_clear
+        or      b
+        jr      .bsr_store
+.bsr_clear:
+        ld      a, b
+        cpl
+        ld      b, a
+        ld      a, (x86_ppi_port_c)
+        and     b
+.bsr_store:
+        ld      (x86_ppi_port_c), a
         ret
 
 
@@ -1597,12 +1790,21 @@ x86_ppi_write_control:
 X86_KBD_DMA_WAIT EQU #FFFF
 
 x86_host_input_service_poll:
+        ; Preserve the interpreter's scratch registers: this service is called
+        ; from the instruction-boundary dispatcher and the HLT wait loop.
+        push    af
+        push    bc
+        push    de
+        push    hl
+
+        ; While the BIOS executor is active, CBIT is the host-input doorbell.
+        ; The original CMD_BOOT_BIOS token has already been consumed by the
+        ; outer command loop; depending on GS command-latch timing, ZXCMD may
+        ; still expose that old byte even though a new CBIT edge is pending.
+        ; No other host command is valid during this service window.
         in      a, (ZXSTAT)
         bit     B_CBIT, a
-        ret     z
-        in      a, (ZXCMD)
-        cp      CMD_HOST_INPUT
-        ret     nz
+        jr      z, .kbd_service_done
 
         ld      a, C_DMA_ZX
         out     (DMA_MOD), a
@@ -1633,12 +1835,17 @@ x86_host_input_service_poll:
         xor     a
         out     (DMA_CST), a
         out     (CLRCBIT), a
-        ret
+        jr      .kbd_service_done
 .kbd_dma_done:
         xor     a
         out     (DMA_CST), a
         out     (CLRCBIT), a
         call    x86_kbd_process_matrix
+.kbd_service_done:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
         ret
 
 ; Compare the eight 5-bit rows and enqueue XT make/break scan codes.
@@ -1686,7 +1893,7 @@ x86_kbd_process_matrix:
         or      #80
         ld      (x86_kbd_key_code), a
 .key_make:
-        call    x86_kbd_debug_emit
+        call    x86_kbd_bios_capture
         call    x86_kbd_enqueue
 
 .bit_advance:
@@ -1739,11 +1946,46 @@ x86_kbd_enqueue:
         ret
 
 x86_kbd_load_latch:
-        ; XT keyboard scanning is inhibited while PB6 holds the interface in
-        ; reset. A queued event is presented only after the BIOS releases it.
+        ; PCem keyboard_xt_poll() cadence is 1 ms. The NeoGS monotonic
+        ; timer runs at 37.5 kHz, so poll at 37 ticks rather than once
+        ; per emulated 8086 instruction.
+        ld      hl, (neo_timer_ticks)
+        ld      de, (x86_kbd_poll_last_tick)
+        or      a
+        sbc     hl, de
+        ld      de, 37
+        or      a
+        sbc     hl, de
+        ret     c
+        ld      hl, (neo_timer_ticks)
+        ld      (x86_kbd_poll_last_tick), hl
+
+        ; XT keyboard scanning is inhibited while PB6 is low.
         ld      a, (x86_ppi_port_b)
         bit     6, a
-        ret     z
+        jr      nz, .interface_enabled
+        xor     a
+        ld      (x86_kbd_wantirq), a
+        ret
+
+.interface_enabled:
+        ; Match PCem's two-stage poll: first arm a queued byte, then on the
+        ; next 1 ms poll place it on PA and raise IRQ1.
+        ld      a, (x86_kbd_wantirq)
+        or      a
+        jr      z, .queue_next
+        xor     a
+        ld      (x86_kbd_wantirq), a
+        ld      a, (x86_kbd_key_waiting)
+        ld      (x86_ppi_keyboard_data), a
+        ld      a, 1
+        ld      (x86_ppi_keyboard_ready), a
+        ld      a, (x86_pic_pending)
+        set     1, a
+        ld      (x86_pic_pending), a
+        ret
+
+.queue_next:
         ld      a, (x86_ppi_keyboard_ready)
         or      a
         ret     nz
@@ -1756,8 +1998,7 @@ x86_kbd_load_latch:
         ld      hl, x86_kbd_queue
         add     hl, de
         ld      a, (hl)
-        ld      (x86_ppi_keyboard_data), a
-        ; Remove the byte from the FIFO when it enters the XT data latch.
+        ld      (x86_kbd_key_waiting), a
         ld      a, (x86_kbd_queue_read)
         inc     a
         and     #1F
@@ -1766,17 +2007,12 @@ x86_kbd_load_latch:
         dec     a
         ld      (x86_kbd_queue_count), a
         ld      a, 1
-        ld      (x86_ppi_keyboard_ready), a
-        ld      (x86_kbd_latch_from_queue), a
-        ld      a, (x86_pic_pending)
-        set     1, a
-        ld      (x86_pic_pending), a
+        ld      (x86_kbd_wantirq), a
         ret
 
 x86_kbd_acknowledge:
-        ld      a, (x86_ppi_keyboard_ready)
-        or      a
-        ret     z
+        ; PCem clears PA, shift_full and IRQ1 on every PB7-high write,
+        ; even if no byte is currently latched.
         xor     a
         ld      (x86_ppi_keyboard_ready), a
         ld      (x86_ppi_keyboard_data), a
@@ -1784,87 +2020,110 @@ x86_kbd_acknowledge:
         ld      a, (x86_pic_pending)
         res     1, a
         ld      (x86_pic_pending), a
-        ; Do not load the next byte here. The next instruction-boundary
-        ; keyboard poll presents it, matching the XT controller's delay. 
+        ; PCem clears PA/shift_full here. The next queued byte is staged by
+        ; the following 1 ms keyboard poll, never inside the acknowledge.
         ret
 
-; NeoGS scan-code trace written directly to local debug port EFh.
-; Format matches ATM: [NGS] K=xx SC=xx M/B.
-x86_kbd_debug_emit:
+; Capture make codes for the BIOS INT 16h compatibility hook. The physical
+; XT FIFO and IRQ1 path remain independent and receive both make and break.
+x86_kbd_bios_capture:
         push    af
         push    bc
         push    de
         push    hl
-        ld      a, '['
-        out     (#EF), a
-        ld      a, 'N'
-        out     (#EF), a
-        ld      a, 'G'
-        out     (#EF), a
-        ld      a, 'S'
-        out     (#EF), a
-        ld      a, ']'
-        out     (#EF), a
-        ld      a, ' '
-        out     (#EF), a
-        ld      a, 'K'
-        out     (#EF), a
-        ld      a, '='
-        out     (#EF), a
-        ld      a, (x86_kbd_matrix_index)
-        call    x86_kbd_debug_hex8
-        ld      a, ' '
-        out     (#EF), a
-        ld      a, 'S'
-        out     (#EF), a
-        ld      a, 'C'
-        out     (#EF), a
-        ld      a, '='
-        out     (#EF), a
         ld      a, (x86_kbd_key_code)
-        call    x86_kbd_debug_hex8
-        ld      a, ' '
-        out     (#EF), a
+        and     #7F                       ; normalize make/break scan code
+        cp      #2A                       ; left Shift
+        jp      z, .shift_key
+        cp      #1D                       ; Ctrl
+        jp      z, .control_key
         ld      a, (x86_kbd_new_bit)
         or      a
-        jr      nz, .break
-        ld      a, 'M'
-        out     (#EF), a
-        jr      .newline
-.break:
-        ld      a, 'B'
-        out     (#EF), a
-.newline:
-        ld      a, 13
-        out     (#EF), a
-        ld      a, 10
-        out     (#EF), a
+        jp      nz, .done                 ; INT 16h queues make codes only
+        ld      a, (bios_keyboard_pending)
+        cp      16
+        jp      nc, .done                 ; bounded 16-key BIOS queue
+        ld      a, (x86_kbd_key_code)
+        cp      #40
+        jp      nc, .done
+        ld      e, a
+        ld      d, 0
+        ld      hl, x86_kbd_ascii_table
+        add     hl, de
+        ld      a, (hl)
+        or      a
+        jp      z, .done
+        ld      b, a
+        ld      a, (bios_keyboard_shift_flags)
+        bit     1, a
+        jr      z, .ascii_ready
+        ld      a, b
+        cp      #61
+        jr      c, .ascii_ready
+        cp      #7B
+        jr      nc, .ascii_ready
+        sub     #20
+        ld      b, a
+.ascii_ready:
+        ; Append AX-format key word (AH=scan, AL=ASCII) to BIOS queue.
+        ld      a, (bios_keyboard_queue_write)
+        add     a, a
+        ld      e, a
+        ld      d, 0
+        ld      hl, bios_keyboard_queue
+        add     hl, de
+        ld      a, (x86_kbd_key_code)
+        ld      (hl), a
+        inc     hl
+        ld      (hl), b
+        ld      a, (bios_keyboard_queue_write)
+        inc     a
+        and     #0F
+        ld      (bios_keyboard_queue_write), a
+        ld      a, (bios_keyboard_pending)
+        inc     a
+        ld      (bios_keyboard_pending), a
+        jp      .done
+.shift_key:
+        ld      a, (bios_keyboard_shift_flags)
+        ld      b, a
+        ld      a, (x86_kbd_new_bit)
+        or      a
+        ld      a, b
+        jr      nz, .shift_release
+        or      #02
+        jr      .shift_store
+.shift_release:
+        and     #FD
+.shift_store:
+        ld      (bios_keyboard_shift_flags), a
+        jr      .done
+.control_key:
+        ld      a, (bios_keyboard_shift_flags)
+        ld      b, a
+        ld      a, (x86_kbd_new_bit)
+        or      a
+        ld      a, b
+        jr      nz, .control_release
+        or      #04
+        jr      .control_store
+.control_release:
+        and     #FB
+.control_store:
+        ld      (bios_keyboard_shift_flags), a
+.done:
         pop     hl
         pop     de
         pop     bc
         pop     af
         ret
 
-x86_kbd_debug_hex8:
-        push    af
-        rrca
-        rrca
-        rrca
-        rrca
-        and     #0F
-        call    x86_kbd_debug_nibble
-        pop     af
-        and     #0F
-        jp      x86_kbd_debug_nibble
-
-x86_kbd_debug_nibble:
-        add     a, '0'
-        cp      '9'+1
-        jr      c, .digit
-        add     a, 7
-.digit:
-        out     (#EF), a
-        ret
+; XT set-1 scan-code to unshifted ASCII. Entries 00h..3Fh.
+x86_kbd_ascii_table:
+        db #00,#1B,#31,#32,#33,#34,#35,#36,#37,#38,#39,#30,#2D,#3D,#08,#09
+        db #71,#77,#65,#72,#74,#79,#75,#69,#6F,#70,#5B,#5D,#0D,#00,#61,#73
+        db #64,#66,#67,#68,#6A,#6B,#6C,#3B,#27,#60,#00,#5C,#7A,#78,#63,#76
+        db #62,#6E,#6D,#2C,#2E,#2F,#00,#2A,#00,#20,#00,#00,#00,#00,#00,#00
 
 x86_kbd_scancode_table:
         db #2A,#2C,#2D,#2E,#2F
@@ -1887,7 +2146,9 @@ x86_kbd_queue: defs 32, 0
 x86_kbd_queue_read: db 0
 x86_kbd_queue_write: db 0
 x86_kbd_queue_count: db 0
-
+x86_kbd_key_waiting: db 0
+x86_kbd_wantirq: db 0
+x86_kbd_poll_last_tick: dw 0
 
 x86_ppi_keyboard_ready: db 0
 x86_kbd_latch_from_queue: db 0
@@ -2001,6 +2262,976 @@ x86_string_rep_scas_summary:
         ret
 
 
+; Detect 8086 ESC D8h..DFh before the ordinary opcode decoder.
+; Z=1 means the ESC instruction was consumed; carry reports fetch failure.
+x86_resident_escape_dispatch:
+        cp      #D8
+        jr      nc, .check_escape_end
+        ; A normal opcode below D8h is not an error. Clear Carry while
+        ; preserving the comparison's Z flag for the caller's dispatch.
+        ccf
+        ret
+.check_escape_end:
+        cp      #E0
+        jr      c, .is_escape
+        cp      #FF
+        jp      z, x86_resident_group_ff
+        or      a
+        ret
+.is_escape:
+        call    x86_resident_escape_skip
+        ret     c
+        xor     a
+        ret
+
+; NOP and WAIT are identical no-ops; keep the trampoline resident so the
+; fixed 16 KiB interpreter overlay remains within its hard bank limit.
+x86_resident_nop:
+        jp      x86_real_next
+
+; Skip ModR/M and displacement bytes for ESC. No 8087 is installed.
+x86_resident_escape_skip:
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_resident_escape_modrm), a
+        and     #C0
+        cp      #C0
+        ret     z
+        cp      #40
+        jr      z, .disp8
+        cp      #80
+        jr      z, .disp16
+        ld      a, (x86_resident_escape_modrm)
+        and     7
+        cp      6
+        jr      nz, .done
+.disp16:
+        call    x86_real_fetch8
+        ret     c
+        call    x86_real_fetch8
+        ret     c
+.done:
+        or      a
+        ret
+.disp8:
+        call    x86_real_fetch8
+        ret     c
+        or      a
+        ret
+
+x86_resident_escape_modrm: db 0
+
+; 8086 FF /r — Group 5. This handler is resident because overlay 68 has
+; only a few free bytes. It executes while overlay 68 remains mapped and
+; reuses the common MOV ModR/M decoder and checked r/m16 accessors.
+; Supported: INC, DEC, near/far CALL, near/far JMP, PUSH. /7 is invalid.
+x86_resident_group_ff:
+        xor     a
+        ld      (x86_mov_width), a       ; word operand
+        call    x86_real_fetch8
+        ret     c
+        call    x86_real_mov_decode_modrm
+        ret     c
+        ld      a, (x86_mov_reg)
+        cp      7
+        jp      z, x86_resident_group_ff_invalid
+        cp      0
+        jp      z, x86_resident_group_ff_inc
+        cp      1
+        jp      z, x86_resident_group_ff_dec
+        cp      2
+        jp      z, x86_resident_group_ff_call_near
+        cp      3
+        jp      z, x86_resident_group_ff_call_far
+        cp      4
+        jp      z, x86_resident_group_ff_jmp_near
+        cp      5
+        jp      z, x86_resident_group_ff_jmp_far
+        jp      x86_resident_group_ff_push
+
+x86_resident_group_ff_inc:
+        xor     a
+        ld      (x86_real_incdec_mode), a
+        jp      x86_resident_group_ff_incdec
+x86_resident_group_ff_dec:
+        ld      a, 1
+        ld      (x86_real_incdec_mode), a
+x86_resident_group_ff_incdec:
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      a, l
+        ld      (x86_real_old_low), a
+        ld      a, h
+        ld      (x86_real_old_high), a
+        ld      a, (x86_real_incdec_mode)
+        or      a
+        jr      nz, .decrement
+        inc     hl
+        jr      .store
+.decrement:
+        dec     hl
+.store:
+        ld      (x86_real_result), hl
+        ld      (x86_mov_value), hl
+        call    x86_real_update_incdec_flags
+        jp      x86_real_mov_write_rm
+
+x86_resident_group_ff_call_near:
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_real_far_ip), hl
+        ld      de, (x86_reg_ip)
+        call    x86_real_stack_push
+        ret     c
+        ld      hl, (x86_real_far_ip)
+        ld      (x86_reg_ip), hl
+        jp      x86_real_next
+
+x86_resident_group_ff_jmp_near:
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_reg_ip), hl
+        jp      x86_real_next
+
+x86_resident_group_ff_push:
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      d, h
+        ld      e, l
+        call    x86_real_stack_push
+        ret     c
+        jp      x86_real_next
+
+; /3 and /5 take a 16:16 pointer from memory; register forms are invalid.
+x86_resident_group_ff_read_far:
+        ld      a, (x86_mov_is_reg)
+        or      a
+        jp      nz, x86_resident_group_ff_invalid
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_real_far_ip), hl
+        ld      hl, (x86_mov_offset)
+        inc     hl
+        inc     hl
+        ld      (x86_mem_offset), hl
+        ld      hl, (x86_mov_segment)
+        ld      (x86_mem_segment), hl
+        call    x86_mem_read16
+        ret     c
+        ld      (x86_real_far_cs), hl
+        or      a
+        ret
+
+x86_resident_group_ff_call_far:
+        call    x86_resident_group_ff_read_far
+        ret     c
+        ld      hl, (x86_reg_sp)
+        ld      (x86_real_old_sp), hl
+        ld      de, (x86_reg_cs)
+        call    x86_real_stack_push
+        ret     c
+        ld      de, (x86_reg_ip)
+        call    x86_real_stack_push
+        jr      c, x86_resident_group_ff_rollback
+        ld      hl, (x86_real_far_cs)
+        ld      (x86_reg_cs), hl
+        ld      hl, (x86_real_far_ip)
+        ld      (x86_reg_ip), hl
+        jp      x86_real_next
+
+x86_resident_group_ff_rollback:
+        ld      hl, (x86_real_old_sp)
+        ld      (x86_reg_sp), hl
+        scf
+        ret
+
+x86_resident_group_ff_jmp_far:
+        call    x86_resident_group_ff_read_far
+        ret     c
+        ld      hl, (x86_real_far_cs)
+        ld      (x86_reg_cs), hl
+        ld      hl, (x86_real_far_ip)
+        ld      (x86_reg_ip), hl
+        jp      x86_real_next
+
+x86_resident_group_ff_invalid:
+        ld      a, #FF
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
+; D1 /5: SHR r/m16,1. Match PCem 808x.c case 0xD1.
+; Decode the complete r/m operand so register and memory forms share the
+; same path. PCem sets AF, updates CF/PF/ZF/SF/OF, and preserves other flags.
+x86_resident_shift_word_shr_one:
+        ld      a, 0                       ; word operand
+        ld      (x86_mov_width), a
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_shift_original), hl
+        ld      a, l
+        and     #01
+        ld      (x86_shift_carry), a
+        srl     h
+        rr      l
+        ld      (x86_shift_result), hl
+
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ; CF = original bit 0.
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shr_word_of
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.shr_word_of:
+        ; PCem sets OF to the original sign bit for SHR by one.
+        ld      hl, (x86_shift_original)
+        bit     7, h
+        jr      z, .shr_word_parity
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+.shr_word_parity:
+        ; PF is even parity of the low result byte.
+        ld      hl, (x86_shift_result)
+        ld      a, l
+        and     a
+        jp      pe, .shr_word_set_pf
+        jr      .shr_word_zero
+.shr_word_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.shr_word_zero:
+        ; ZF reflects the complete 16-bit result; SF is zero after SHR.
+        ld      hl, (x86_shift_result)
+        ld      a, h
+        or      l
+        jr      nz, .shr_word_af
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.shr_word_af:
+        ; PCem's 8086 implementation sets AF for this operation.
+        ld      hl, x86_shift_new_flags
+        set     4, (hl)
+
+        ; Preserve all flags except CF/PF/AF/ZF/SF/OF.
+        ld      hl, (x86_reg_flags)
+        ld      de, #F72A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+
+        ld      hl, (x86_shift_result)
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+; D3 group-2 dispatch. Full r/m16 SHL implementation lives in overlay69.
+x86_resident_shift_word_mem_shl_cl:
+        ld      b, a                       ; preserve the complete ModR/M byte
+        ld      (x86_shift_diag_modrm), a
+        and     #38
+        ld      (x86_shift_diag_mask), a
+        ld      a, #10
+        ld      (x86_shift_diag_stage), a
+        ld      hl, (x86_reg_ip)
+        ld      (x86_shift_fetch_ip), hl
+
+        ; PCem 808x.c: D3 /4 and D3 /6 are both SHL r/m16,CL.
+        ; Do not accept only /6: the BIOS emits register-direct /4 as well.
+        ld      a, b
+        and     #38
+        cp      #20                    ; /4 SHL
+        jr      z, .shift_shl
+        cp      #30                    ; /6 SHL (SAL)
+        jr      z, .shift_shl
+
+.shift_not_shl:
+        ld      a, b
+        cp      #E8                    ; /5 SHR AX,CL compatibility path
+        jp      z, x86_real_shift_word_cl_shr
+        jp      x86_real_shift_cl_unsupported
+
+.shift_shl:
+        ld      a, #11
+        ld      (x86_shift_diag_stage), a
+        ld      a, b
+        jp      bank_call_x86_shift_shl_cl
+
+; D2 group-2 byte dispatch. The BIOS uses D2 /1 ROR r/m8,CL.
+; Keep the ModR/M decoder and memory operation in resident code.
+x86_resident_shift_byte_cl_dispatch:
+        ; Snapshot the byte returned by x86_real_fetch8 immediately on entry.
+        ; Match the D0 resident dispatcher: A is the authoritative ModR/M.
+        ld      (x86_shift_dispatch_byte), a
+        ld      (x86_shift_diag_modrm), a
+        ld      hl, (x86_reg_ip)
+        ld      (x86_shift_dispatch_ip), hl
+        ; Preserve the exact physical address/value of this fetch for STOP
+        ; diagnostics before any operand read can replace backend state.
+        ld      hl, (x86_mem_last_read_addr)
+        ld      (x86_shift_dispatch_addr), hl
+        ld      a, (x86_mem_last_read_addr+2)
+        ld      (x86_shift_dispatch_addr+2), a
+        ld      a, (x86_mem_last_read_value)
+        ld      (x86_shift_dispatch_value), a
+        ld      a, #D2
+        ld      (x86_shift_diag_stage), a
+        ld      a, (x86_shift_dispatch_byte)
+        and     #38
+        ld      (x86_shift_diag_mask), a
+        cp      #08                    ; /1 ROR r/m8,CL
+        jp      z, x86_resident_shift_byte_ror_cl
+        jp      x86_real_shift_byte_cl_unsupported
+
+x86_resident_shift_byte_ror_cl:
+        ld      a, 1
+        ld      (x86_mov_width), a
+        ld      a, (x86_shift_diag_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        ld      a, (x86_reg_cx)        ; full 8086 CL count
+        or      a
+        jp      z, x86_real_next
+        ld      (x86_shift_count), a
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      a, l
+        ld      (x86_shift_result), a
+.ror_cl_loop:
+        ld      a, (x86_shift_result)
+        rrca
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+        ld      a, (x86_shift_count)
+        dec     a
+        ld      (x86_shift_count), a
+        jr      nz, .ror_cl_loop
+
+        ; PCem D2 /1: CF is the last bit rotated out. OF follows
+        ; its implementation: bit 6 XOR bit 7 of the final result.
+        ld      hl, (x86_reg_flags)
+        res     0, l
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .ror_cl_cf_ready
+        set     0, l
+.ror_cl_cf_ready:
+        res     3, h
+        ld      a, (x86_shift_result)
+        ld      b, a
+        rrca
+        xor     b
+        and     #40
+        jr      z, .ror_cl_flags_ready
+        set     3, h
+.ror_cl_flags_ready:
+        ld      (x86_reg_flags), hl
+
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      h, 0
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+; D0 group-2 byte dispatch. ModR/M is passed in A from overlay68.
+; Keep this selector resident so overlay68 does not grow beyond 16 KiB.
+x86_resident_shift_byte_dispatch:
+        ; Snapshot the byte delivered by x86_real_fetch8 before any helper.
+        ld      (x86_shift_dispatch_byte), a
+        ld      hl, (x86_reg_ip)
+        ld      (x86_shift_dispatch_ip), hl
+        ; Snapshot the memory backend's immediately preceding successful
+        ; read. At this entry the ModR/M fetch is the last guest-memory read;
+        ; later STOP diagnostics may perform unrelated reads.
+        ld      hl, (x86_mem_last_read_addr)
+        ld      (x86_shift_dispatch_addr), hl
+        ld      a, (x86_mem_last_read_addr+2)
+        ld      (x86_shift_dispatch_addr+2), a
+        ld      a, (x86_mem_last_read_value)
+        ld      (x86_shift_dispatch_value), a
+        ld      (x86_shift_diag_modrm), a
+        ld      a, #D0
+        ld      (x86_shift_diag_stage), a
+        ; Decode the byte returned by x86_real_fetch8. Do not substitute
+        ; backend last-read state: the fetch result in A is authoritative.
+        ld      a, (x86_shift_dispatch_byte)
+        ld      (x86_shift_diag_modrm), a
+        and     #38
+        ld      (x86_shift_diag_mask), a
+        cp      #00                    ; /0 ROL r/m8,1 (PCem 808x.c)
+        jp      z, x86_resident_shift_byte_rol_one
+        cp      #08                    ; /1 ROR r/m8,1 (PCem 808x.c)
+        jp      z, x86_resident_shift_byte_ror_one
+        cp      #20                    ; /4 SHL (D0 /4 and /6)
+        jp      z, x86_resident_shift_byte_shl_one
+        cp      #30
+        jp      z, x86_resident_shift_byte_shl_one
+        cp      #28                    ; /5 SHR
+        jp      z, x86_real_shift_byte_one_shr
+        jp      x86_real_shift_byte_one_unsupported
+
+; D0 /0: ROL r/m8,1. PCem 808x.c case 0xD0, case 0x00.
+; Rotate through the operand's own high bit; only CF and OF are modified.
+x86_resident_shift_byte_rol_one:
+        ld      a, 1
+        ld      (x86_mov_width), a
+        ld      a, (x86_shift_diag_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_mov_read_rm
+        ret     c
+
+        ld      a, l
+        ld      (x86_shift_original), a
+        rlca
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+
+        ; ROL leaves PF/AF/ZF/SF unchanged. CF=old bit 7.
+        ; For count=1, OF = new bit 7 XOR CF.
+        ld      hl, (x86_reg_flags)
+        ld      a, l
+        and     #FE
+        ld      l, a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .rol_cf_ready
+        set     0, l
+.rol_cf_ready:
+        ld      a, h
+        and     #F7
+        ld      h, a
+        ld      a, (x86_shift_result)
+        and     #80
+        ld      b, a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .rol_cf_zero
+        ld      a, #80
+        jr      .rol_of_test
+.rol_cf_zero:
+        xor     a
+.rol_of_test:
+        xor     b
+        or      a
+        jr      z, .rol_flags_ready
+        set     3, h
+.rol_flags_ready:
+        ld      (x86_reg_flags), hl
+
+        ld      hl, 0
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+; D0 /5: SHR AL,1. Kept resident with the D0 selector to reduce overlay68.
+; FLAGS behavior follows the existing 8086 byte-shift implementation.
+x86_real_shift_byte_one_shr:
+        ld      a, (x86_reg_ax)
+        ld      (x86_shift_original), a
+        srl     a
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+
+        ; CF receives original AL bit 0.
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shr1_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.shr1_parity:
+        ld      a, (x86_shift_result)
+        and     a
+        jp      pe, .shr1_set_pf
+        jr      .shr1_zero
+.shr1_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.shr1_zero:
+        ld      a, (x86_shift_result)
+        or      a
+        jr      nz, .shr1_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.shr1_sign:
+        ld      a, (x86_shift_result)
+        bit     7, a
+        jr      z, .shr1_overflow
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.shr1_overflow:
+        ; For SHR count=1, OF is the original most significant bit.
+        ld      a, (x86_shift_original)
+        bit     7, a
+        jr      z, .shr1_merge
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+.shr1_merge:
+        ; Clear CF/PF/ZF/SF/OF; preserve AF and non-status FLAGS.
+        ld      hl, (x86_reg_flags)
+        ld      de, #F73A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+
+        ; Replace AL while preserving AH.
+        ld      a, (x86_reg_ax+1)
+        ld      h, a
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
+; D0 /1: ROR r/m8,1. Mirrors PCem 808x.c:
+; fetch EA, read byte, rotate right, write byte; only CF and OF change.
+; EA decode/read/write are shared with the ordinary MOV ModR/M engine.
+x86_resident_shift_byte_ror_one:
+        ld      a, 1
+        ld      (x86_mov_width), a
+        ld      a, (x86_shift_diag_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_mov_read_rm
+        ret     c
+
+        ld      a, l
+        ld      (x86_shift_original), a
+        rrca
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+
+        ; ROR leaves PF/AF/ZF/SF untouched. CF=old bit 0.
+        ; For count=1, OF = result bit 7 XOR result bit 6.
+        ld      hl, (x86_reg_flags)
+        ld      a, l
+        and     #FE
+        ld      l, a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .ror_cf_ready
+        set     0, l
+.ror_cf_ready:
+        ld      a, h
+        and     #F7
+        ld      h, a
+        ld      a, (x86_shift_result)
+        bit     7, a
+        jr      z, .ror_check_of_zero
+        bit     6, a
+        jr      nz, .ror_flags_ready
+        jr      .ror_set_of
+.ror_check_of_zero:
+        bit     6, a
+        jr      z, .ror_flags_ready
+.ror_set_of:
+        set     3, h
+.ror_flags_ready:
+        ld      (x86_reg_flags), hl
+
+        ld      hl, 0
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+; D0 E0: SHL AL,1. Matches PCem 808x.c D0 /4 and /6 handling.
+; Called after ModR/M fetch; this BIOS instruction is register-direct AL.
+x86_resident_shift_byte_shl_one:
+        ld      a, (x86_reg_ax)
+        ld      (x86_shift_original), a
+        sla     a
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+
+        xor     a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, #10                ; AF is bit 4 of FLAGS low byte
+        ld      (x86_shift_new_flags), a
+
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shl8_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.shl8_parity:
+        ld      a, (x86_shift_result)
+        and     a
+        jp      pe, .shl8_set_pf
+        jr      .shl8_zero
+.shl8_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.shl8_zero:
+        ld      a, (x86_shift_result)
+        or      a
+        jr      nz, .shl8_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.shl8_sign:
+        ld      a, (x86_shift_result)
+        bit     7, a
+        jr      z, .shl8_overflow
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.shl8_overflow:
+        ld      a, (x86_shift_result)
+        and     #80
+        ld      b, a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shl8_cf_ready
+        ld      a, #80
+.shl8_cf_ready:
+        xor     b
+        or      a
+        jr      z, .shl8_merge
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+.shl8_merge:
+        ; Clear CF/PF/AF/ZF/SF/OF, then install the new status flags.
+        ld      hl, (x86_reg_flags)
+        ld      de, #F62A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+
+        ; Update AL and preserve AH.
+        ld      a, (x86_reg_ax+1)
+        ld      h, a
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
+; Resident helpers keep the overlay68 fetch path within its 16 KiB bank.
+x86_fetch_diag_begin:
+        xor     a
+        ld      (x86_fetch_diag_stage), a
+        ret
+
+x86_fetch_diag_address:
+        ld      a, 1
+        ld      (x86_fetch_diag_stage), a
+        ; IP at the instant the instruction byte is about to be fetched.
+        ld      hl, (x86_reg_ip)
+        ld      (x86_shift_fetch_ip), hl
+        ld      hl, (x86_mem_addr)
+        ld      (x86_fetch_diag_phys), hl
+        ld      a, (x86_mem_addr+2)
+        ld      (x86_fetch_diag_phys+2), a
+        ret
+
+x86_fetch_diag_read_ok:
+        push    af
+        ld      (x86_fetch_diag_value), a
+        ld      a, 2
+        ld      (x86_fetch_diag_stage), a
+        pop     af
+        ret
+
+; Called immediately after D3's ModR/M fetch, while A still
+; contains the exact byte returned by x86_real_fetch8.
+x86_fetch_capture_modrm:
+        ; x86_real_fetch8 captures the address and byte at the actual fetch
+        ; boundary. Keep A untouched for the resident ModR/M selector.
+        ret
+
+; Last-resort fetch entry. The normal overlay path checks the optional
+; bounded-task window before reaching x86_mem_read8. A BIOS run is explicitly
+; unbounded; if a stale/corrupted conditional branch nevertheless lands here,
+; retry the fetch through the resident memory backend instead of terminating
+; the BIOS at its reset-vector far jump. Bounded guest tasks still fail closed.
+x86_real_fetch_out_of_range_resident:
+        ld      a, (x86_real_bounds_enable)
+        or      a
+        jr      nz, .bounded_failure
+
+        ; Retry the exact CS:IP byte without re-entering the overlay fetch path.
+        ld      hl, (x86_reg_ip)
+        ld      (x86_mem_offset_work), hl
+        ld      hl, (x86_reg_cs)
+        ld      (x86_mem_segment), hl
+        call    x86_mem_calc_phys
+        call    x86_fetch_diag_address
+        call    x86_mem_read8
+        ret     c
+        push    af
+        ld      hl, (x86_reg_ip)
+        inc     hl
+        ld      (x86_reg_ip), hl
+        pop     af
+        or      a
+        ret
+
+.bounded_failure:
+        push    af
+        push    hl
+        ld      a, (x86_real_bounds_enable)
+        ld      (x86_fetch_fail_bounds), a
+        ld      hl, (x86_reg_cs)
+        ld      (x86_fetch_fail_cs), hl
+        ld      hl, (x86_reg_ip)
+        ld      (x86_fetch_fail_ip), hl
+        ld      a, 4
+        ld      (x86_exit_status), a
+        ld      a, 4
+        ld      (x86_fetch_diag_stage), a
+        pop     hl
+        pop     af
+        scf
+        ret
+
+x86_fetch_fail_bounds: db 0
+x86_fetch_fail_cs:     dw 0
+x86_fetch_fail_ip:     dw 0
+
+x86_shift_diag_stage: db 0
+x86_shift_diag_modrm: db 0
+x86_shift_diag_mask:  db 0
+x86_shift_dispatch_byte: db 0
+x86_shift_dispatch_ip: dw 0
+x86_shift_dispatch_addr: ds 3, 0
+x86_shift_dispatch_value: db 0
+x86_shift_fetch_ip: dw 0
+; Last guest instruction-fetch diagnostics (shared resident state).
+x86_fetch_diag_stage: db 0
+x86_fetch_diag_phys:  ds 3, 0
+x86_fetch_diag_value: db 0
+x86_fetch_exact_addr: ds 3, 0
+x86_fetch_exact_value: db 0
+x86_mem_last_read_addr: ds 3, 0
+x86_mem_last_read_value: db 0
+; Dedicated F7 ModR/M fetch trace: IP before fetch, physical address, byte.
+x86_f7_diag_ip:    dw 0
+x86_f7_diag_addr:  ds 3, 0
+x86_f7_diag_value: db 0
+
+; F7 group-3 handler is resident to keep overlay68 below its hard 16 KiB limit.
+; It executes with overlay68 mapped and may call its decoder/interrupt helpers.
+; F7 group-3 word operations currently implemented:
+;   /2 NOT r/m16 (the existing D0 register form is retained),
+;   /6 DIV r/m16 (DX:AX unsigned dividend).
+; DIV leaves FLAGS unchanged (undefined on the 8086). Divide-by-zero and
+; quotient overflow enter interrupt vector 0 through the shared INT engine.
+x86_real_group_f7:
+        ; Reuse the existing BIOS STOP diagnostic fields to expose the exact
+        ; F7 dispatch path. This distinguishes a failed dispatch from a bad
+        ; ModR/M decode without changing the guest architectural state.
+        ld      a, #F0
+        ld      (x86_shift_diag_stage), a
+        ; Project124 PCem's F7 path calls fetchea(), whose FETCH() reads
+        ; the byte following the opcode. In this resident bridge the observed
+        ; dispatcher entry IP is one byte behind the post-opcode IP, so align
+        ; it with the PCem contract before consuming ModR/M.
+        ld      hl, (x86_reg_ip)
+        inc     hl
+        ld      (x86_reg_ip), hl
+        ld      (x86_f7_diag_ip), hl
+        call    x86_real_fetch8
+        ret     c
+        ; Capture the returned byte and physical backend address immediately,
+        ; before any selector or diagnostic helper can perform another read.
+        ld      (x86_f7_diag_value), a
+        ld      (x86_f7_modrm), a
+        ld      (x86_shift_diag_modrm), a
+        ld      hl, (x86_mem_addr)
+        ld      (x86_f7_diag_addr), hl
+        ld      a, (x86_mem_addr+2)
+        ld      (x86_f7_diag_addr+2), a
+        and     #38
+        ld      (x86_shift_diag_mask), a
+        ld      a, #F1
+        ld      (x86_shift_diag_stage), a
+        ld      a, (x86_f7_modrm)
+        cp      #D0
+        jp      z, x86_real_f7_not_ax
+
+        and     #38
+        cp      #30
+        jp      nz, x86_real_group_f7_unsupported
+        ld      a, #F6
+        ld      (x86_shift_diag_stage), a
+        jp      x86_real_f7_div_word
+
+x86_real_f7_not_ax:
+        ld      hl, (x86_reg_ax)
+        ld      a, l
+        cpl
+        ld      l, a
+        ld      a, h
+        cpl
+        ld      h, a
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
+; F7 /6: DIV r/m16.
+; The ModR/M decoder supplies the complete 8086 effective address and
+; default/override segment selection for memory operands.
+x86_real_f7_div_word:
+        ld      a, (x86_f7_modrm)
+        and     #C0
+        cp      #C0
+        jr      z, .div_register
+
+        ld      a, (x86_f7_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_alu_read_memory_word
+        ret     c
+        jr      .div_operand_ready
+
+.div_register:
+        ld      a, (x86_f7_modrm)
+        and     7
+        call    x86_alu_read_reg16
+
+.div_operand_ready:
+        ld      (x86_f7_divisor), hl
+        ld      a, h
+        or      l
+        jp      z, x86_real_f7_divide_exception
+
+        ; A 16-bit quotient is possible only when DX < divisor.
+        ld      hl, (x86_reg_dx)
+        ld      de, (x86_f7_divisor)
+        or      a
+        sbc     hl, de
+        jp      nc, x86_real_f7_divide_exception
+
+        ; Restoring 32-by-16 division. Keep the shifting low dividend/
+        ; quotient in x86_f7_quotient and the partial remainder in
+        ; x86_f7_remainder. The carry out of the 17-bit remainder shift is
+        ; retained separately so values above FFFFh compare correctly.
+        ld      hl, (x86_reg_ax)
+        ld      (x86_f7_quotient), hl
+        ld      hl, (x86_reg_dx)
+        ld      (x86_f7_remainder), hl
+        ld      a, 16
+        ld      (x86_f7_count), a
+
+x86_real_f7_div_loop:
+        ; Shift next dividend bit into the partial remainder.
+        ld      hl, (x86_f7_quotient)
+        sla     l
+        rl      h
+        ld      (x86_f7_quotient), hl
+        ld      de, (x86_f7_remainder)
+        rl      e
+        rl      d
+        ld      (x86_f7_remainder), de
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_f7_remainder_carry), a
+
+        ; Subtract divisor whenever the 17-bit remainder is >= divisor.
+        ld      a, (x86_f7_remainder_carry)
+        or      a
+        jr      nz, .div_subtract
+        ld      hl, (x86_f7_remainder)
+        ld      de, (x86_f7_divisor)
+        or      a
+        sbc     hl, de
+        jr      c, .div_no_subtract
+        jr      .div_store_remainder
+.div_subtract:
+        ld      hl, (x86_f7_remainder)
+        ld      de, (x86_f7_divisor)
+        or      a
+        sbc     hl, de
+.div_store_remainder:
+        ld      (x86_f7_remainder), hl
+        ; A successful subtraction sets the new quotient bit.
+        ld      hl, (x86_f7_quotient)
+        set     0, l
+        ld      (x86_f7_quotient), hl
+.div_no_subtract:
+        ld      a, (x86_f7_count)
+        dec     a
+        ld      (x86_f7_count), a
+        jp      nz, x86_real_f7_div_loop
+
+        ; 8086 DIV writes quotient to AX and remainder to DX.
+        ld      hl, (x86_f7_quotient)
+        ld      (x86_reg_ax), hl
+        ld      hl, (x86_f7_remainder)
+        ld      (x86_reg_dx), hl
+        jp      x86_real_next
+
+x86_real_f7_divide_exception:
+        ; INT 0 return IP is already after the complete F7 ModR/M/EA.
+        xor     a
+        call    x86_int_enter
+        ret     c
+        jp      x86_real_next
+
+x86_real_group_f7_unsupported:
+        ld      a, #F7
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
+x86_f7_modrm:              db 0
+x86_f7_divisor:            dw 0
+x86_f7_quotient:           dw 0
+x86_f7_remainder:          dw 0
+x86_f7_remainder_carry:    db 0
+x86_f7_count:              db 0
+
 neogs_resident_end:
 
 ; Overlay bank 68: complete 8086 interpreter and instruction implementation.
@@ -2009,9 +3240,7 @@ neogs_resident_end:
         ORG     $8000
 neogs_overlay68_start:
         INCLUDE "x86_modrm.asm"
-        INCLUDE "x86_interrupt.asm"
         INCLUDE "x86_real_mode.asm"
-        INCLUDE "x86_real_alu.asm"
         INCLUDE "x86_real_alu8.asm"
         INCLUDE "x86_real_mov.asm"
         INCLUDE "x86_io.asm"
@@ -2023,6 +3252,7 @@ neogs_overlay68_end:
         ORG     $8000
 neogs_overlay69_start:
         INCLUDE "bios/bios_video.asm"
+        INCLUDE "x86_shift.asm"
 neogs_overlay69_end:
 
 ; WIN1 layout: trampoline $4000-$400F, guard $4800-$487F, stack grows

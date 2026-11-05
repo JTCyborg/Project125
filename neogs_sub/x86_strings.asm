@@ -33,6 +33,14 @@ x86_real_string_instruction:
 .rep_remaining:
 
         ; REP can perform thousands of memory operations inside one opcode.
+        ; The normal instruction-boundary poll is not reached until REP ends.
+        ; Service the host keyboard mailbox every 256 completed elements so
+        ; a long BIOS POST memory sweep cannot starve the ATM DMA handshake.
+        ld      a, l
+        or      a
+        call    z, x86_host_input_service_poll
+        ld      hl, (x86_reg_cx)
+
         ; Report progress independently of the architectural instruction budget.
         ld      a, l
         or      a
