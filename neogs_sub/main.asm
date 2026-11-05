@@ -2358,11 +2358,69 @@ x86_resident_shift_byte_dispatch:
         ld      a, (x86_shift_diag_modrm)
         and     #38
         ld      (x86_shift_diag_mask), a
-        cp      #20                    ; /4 SHL (D0 E0 for AL)
+        cp      #08                    ; /1 ROR r/m8,1 (PCem 808x.c)
+        jp      z, x86_resident_shift_byte_ror_one
+        cp      #20                    ; /4 SHL (D0 /4 and /6)
         jp      z, x86_resident_shift_byte_shl_one
-        cp      #28                    ; /5 SHR (D0 C8 for AL)
+        cp      #30
+        jp      z, x86_resident_shift_byte_shl_one
+        cp      #28                    ; /5 SHR
         jp      z, x86_real_shift_byte_one_shr
         jp      x86_real_shift_byte_one_unsupported
+
+; D0 /1: ROR r/m8,1. Mirrors PCem 808x.c:
+; fetch EA, read byte, rotate right, write byte; only CF and OF change.
+; EA decode/read/write are shared with the ordinary MOV ModR/M engine.
+x86_resident_shift_byte_ror_one:
+        ld      a, 1
+        ld      (x86_mov_width), a
+        ld      a, (x86_shift_diag_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_mov_read_rm
+        ret     c
+
+        ld      a, l
+        ld      (x86_shift_original), a
+        rrca
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+
+        ; ROR leaves PF/AF/ZF/SF untouched. CF=old bit 0.
+        ; For count=1, OF = result bit 7 XOR result bit 6.
+        ld      hl, (x86_reg_flags)
+        ld      a, l
+        and     #FE
+        ld      l, a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .ror_cf_ready
+        set     0, l
+.ror_cf_ready:
+        ld      a, h
+        and     #F7
+        ld      h, a
+        ld      a, (x86_shift_result)
+        bit     7, a
+        jr      z, .ror_check_of_zero
+        bit     6, a
+        jr      nz, .ror_flags_ready
+        jr      .ror_set_of
+.ror_check_of_zero:
+        bit     6, a
+        jr      z, .ror_flags_ready
+.ror_set_of:
+        set     3, h
+.ror_flags_ready:
+        ld      (x86_reg_flags), hl
+
+        ld      hl, 0
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
 
 ; D0 E0: SHL AL,1. Matches PCem 808x.c D0 /4 and /6 handling.
 ; Called after ModR/M fetch; this BIOS instruction is register-direct AL.
