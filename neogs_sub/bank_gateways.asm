@@ -34,10 +34,20 @@ bank_call_x86_real_execute:
         ld      hl, bank_dbg_page68_selected
         call    bank_gateway_debug_emit
 
-        ; Verify that the selected WIN2 page exposes the expected first
-        ; opcode at the assembled overlay entry before attempting CALL.
+        ; Read and report the actual first byte visible at the overlay entry.
+        ; This distinguishes a wrong MPAG/page image from a stale firmware build.
         ld      a, (x86_real_execute)
-        cp      #21                     ; first instruction is LD HL,nn
+        ld      (bank_dbg_entry_byte), a
+        ld      hl, bank_dbg_entry_opcode_value
+        call    bank_gateway_debug_emit
+        ld      a, (bank_dbg_entry_byte)
+        call    neo_debug_port_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        ld      a, (bank_dbg_entry_byte)
+        cp      #21                     ; x86_real_execute begins with LD HL,nn
         jr      nz, .bank_gw_bad_entry
         ld      hl, bank_dbg_entry_opcode_ok
         call    bank_gateway_debug_emit
@@ -90,6 +100,10 @@ bank_dbg_before_executor:
         defb "[NGS] BANK GW CALL EXEC", 13, 10, 0
 bank_dbg_executor_return:
         defb "[NGS] BANK GW EXEC RETURN", 13, 10, 0
+bank_dbg_entry_byte:
+        db 0
+bank_dbg_entry_opcode_value:
+        defb "[NGS] BANK GW ENTRY BYTE=", 0
 bank_dbg_entry_opcode_ok:
         defb "[NGS] BANK GW ENTRY BYTE 21", 13, 10, 0
 bank_dbg_entry_opcode_bad:
