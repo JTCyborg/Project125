@@ -15,16 +15,6 @@
 ; =========================================================================
 
 x86_real_io_instruction:
-        push    af
-        ld      a, (trace_io_instruction_once)
-        or      a
-        jr      nz, .io_instruction_trace_done
-        ld      a, 1
-        ld      (trace_io_instruction_once), a
-        ld      hl, trace_io_instruction
-        call    neo_trace_ef_string
-.io_instruction_trace_done:
-        pop     af
         ld      (x86_io_opcode), a
 
         ; Immediate-port forms carry an unsigned 8-bit port number.
@@ -96,14 +86,6 @@ x86_real_io_instruction:
 ; Other PC/XT ports remain open-bus until their devices are implemented.
 
 x86_io_read8:
-        ld      a, (trace_io_read_once)
-        or      a
-        jr      nz, .io_read_trace_done
-        ld      a, 1
-        ld      (trace_io_read_once), a
-        ld      hl, trace_io_read
-        call    neo_trace_ef_string
-.io_read_trace_done:
         call    x86_resident_lpt_read_dispatch
         ret     nc
         call    x86_resident_uart_read_dispatch
@@ -196,14 +178,6 @@ x86_io_trace_read8:
         jp      x86_resident_io_trace_read8
 
 x86_io_write8:
-        ld      a, (trace_io_write_once)
-        or      a
-        jr      nz, .io_write_trace_done
-        ld      a, 1
-        ld      (trace_io_write_once), a
-        ld      hl, trace_io_write
-        call    neo_trace_ef_string
-.io_write_trace_done:
         call    x86_resident_lpt_write_dispatch
         ret     nc
         call    x86_resident_uart_write_dispatch
@@ -825,9 +799,4 @@ x86_pit_last_tick:     dw 0
 x86_pit_fraction:      dw 0
 
 ; One-shot guest I/O pipeline diagnostics.
-trace_io_instruction_once: db 0
-trace_io_read_once: db 0
-trace_io_write_once: db 0
-trace_io_instruction: defb "[X86 IO INSN]",13,10,0
-trace_io_read: defb "[X86 IO READ]",13,10,0
-trace_io_write: defb "[X86 IO WRITE]",13,10,0
+

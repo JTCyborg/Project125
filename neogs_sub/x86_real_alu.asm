@@ -367,7 +367,24 @@ x86_alu_read_reg16:
 
 ; A=register number, HL=value.
 x86_alu_write_reg16:
+        ld      (x86_alu_reg_index), a
         ld      (x86_alu_result), hl
+        xor     a
+        ld      (x86_alu_stack_trace_active), a
+        ld      a, (x86_alu_reg_index)
+        and     7
+        cp      4
+        jr      nz, .write_reg16
+        ld      hl, (x86_reg_sp)
+        ld      (x86_stack_trace_old), hl
+        ld      hl, (x86_alu_result)
+        ld      (x86_stack_trace_new), hl
+        ld      a, 2
+        ld      (x86_stack_trace_kind), a
+        ld      a, 1
+        ld      (x86_alu_stack_trace_active), a
+.write_reg16:
+        ld      a, (x86_alu_reg_index)
         and     7
         add     a, a
         ld      e, a
@@ -378,6 +395,14 @@ x86_alu_write_reg16:
         ld      (hl), e
         inc     hl
         ld      (hl), d
+        ld      a, (x86_alu_stack_trace_active)
+        or      a
+        call    nz, x86_stack_transition_trace
+        ; Preserve the original writer contract: A and Z80 flags on return
+        ; are those produced by the register-index AND/ADD sequence.
+        ld      a, (x86_alu_reg_index)
+        and     7
+        add     a, a
         ret
 
 ; Rebuild CF/PF/AF/ZF/SF/OF. All other guest FLAGS bits are preserved.
@@ -868,3 +893,7 @@ x86_guest_alu_image_end:
 ; One-shot word ALU entry diagnostic.
 trace_alu16_once: db 0
 trace_alu16_entry: defb "[X86 ALU16]",13,10,0
+
+; Saved selector and trace gate for the resident 16-bit register writer.
+x86_alu_reg_index: db 0
+x86_alu_stack_trace_active: db 0

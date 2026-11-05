@@ -31,8 +31,6 @@ X86_MEM_NGSPAGE_BASE EQU 4
 X86_MEM_PAGE_COUNT   EQU 64
 
 x86_mem_init:
-        ld      hl, trace_mem_init
-        call    neo_trace_ef_string
         in      a, (GSCFG0)
         or      M_NOROM | M_EXPAG
         out     (GSCFG0), a
@@ -101,14 +99,6 @@ x86_mem_map_addr:
 
 ; Read one byte. IN x86_mem_addr[0..2]. OUT A=byte, carry on invalid address.
 x86_mem_read8:
-        ld      a, (trace_mem_read_once)
-        or      a
-        jr      nz, .read_trace_done
-        ld      a, 1
-        ld      (trace_mem_read_once), a
-        ld      hl, trace_mem_read
-        call    neo_trace_ef_string
-.read_trace_done:
         call    x86_mem_map_addr
         ret     c
         ld      a, (hl)
@@ -121,7 +111,6 @@ x86_mem_read8:
         ld      a, (x86_mem_addr+2)
         ld      (x86_mem_last_read_addr+2), a
         ld      a, (x86_mem_last_read_value)
-        call    x86_mem_watch_low_read
         ld      a, (x86_mem_last_read_value)
         or      a
         ret
@@ -199,21 +188,18 @@ x86_mem_read_prefix:
 
 ; Write one byte. IN x86_mem_addr[0..2], x86_mem_value.
 x86_mem_write8:
-        ld      a, (trace_mem_write_once)
-        or      a
-        jr      nz, .write_trace_done
-        ld      a, 1
-        ld      (trace_mem_write_once), a
-        ld      hl, trace_mem_write
-        call    neo_trace_ef_string
-.write_trace_done:
-        ; FE000h-FFFFFh is the selected BIOS ROM and is never writable.
+        ; Match PCem's writemembl/writememwl behavior: writes to a ROM
+        ; mapping with no write handler are silently ignored, not bus errors.
+        ; This matters for legacy BIOS code that performs stack writes while
+        ; SS:SP temporarily points into the ROM address range.
         ld      a, (x86_mem_addr+2)
         cp      #0F
         jr      nz, .write_allowed
         ld      a, (x86_mem_addr+1)
         cp      #E0
-        jr      nc, .write_protected
+        jr      c, .write_allowed
+        or      a
+        ret
 .write_allowed:
         call    x86_mem_map_addr
         ret     c
@@ -229,7 +215,6 @@ x86_mem_write8:
         jr      nz, .check_bda
         ld      a, (x86_mem_addr)
         cp      #95
-        call    z, x86_mem_watch_3f95_write
 .check_bda:
         ; Trace only changed writes in the BDA (00400h-004FFh).
         ; Conventional-memory POST writes must not consume the diagnostic
@@ -240,14 +225,10 @@ x86_mem_write8:
         ld      a, (x86_mem_addr+1)
         cp      #04
         jr      nz, .store
-        call    x86_mem_watch_low_write
 .store:
         ld      a, (x86_mem_value)
         ld      (hl), a
         or      a
-        ret
-.write_protected:
-        scf
         ret
 
 ; Trace every write to physical 003F95h with old/new byte and guest CS:IP.
@@ -833,8 +814,9 @@ x86_mem_test_fail:
         ld      (x86_exit_status), a
         ret
 
-; Verify that guest writes to the BIOS ROM overlay are rejected.
-; This test does not require the BIOS image to have been loaded yet.
+; Verify PCem-compatible ROM write semantics: writes are ignored, not
+; reported as memory faults, and the ROM byte remains unchanged.
+; This test does not require a BIOS image to have been loaded.
 x86_mem_rom_protect_test:
         ld      hl, 0
         ld      (x86_mem_addr), hl
@@ -842,13 +824,22 @@ x86_mem_rom_protect_test:
         ld      (x86_mem_addr+1), a
         ld      a, #0F
         ld      (x86_mem_addr+2), a
-        ld      a, #5A
+        call    x86_mem_read8
+        ret     c
+        ld      (x86_mem_rom_test_before), a
+        cpl
         ld      (x86_mem_value), a
         call    x86_mem_write8
-        jr      nc, .rom_write_was_allowed
+        ret     c
+        call    x86_mem_read8
+        ret     c
+        ld      b, a
+        ld      a, (x86_mem_rom_test_before)
+        cp      b
+        jr      nz, .rom_write_changed
         or      a
         ret
-.rom_write_was_allowed:
+.rom_write_changed:
         scf
         ret
 
@@ -907,6 +898,7 @@ x86_mem_build_page_end:
 
 x86_mem_addr:  db 0, 0, 0
 x86_mem_value: db 0
+x86_mem_rom_test_before: db 0
 x86_mem_page:  db 0
 x86_mem_phase: db 0
 x86_mem_segment: dw 0
@@ -917,8 +909,3 @@ x86_mem_carry: db 0
 x86_mem_carry1: db 0
 
 ; One-shot entry diagnostics for the guest physical-memory backend.
-trace_mem_read_once:  db 0
-trace_mem_write_once: db 0
-trace_mem_init:  defb "[X86 MEM INIT]",13,10,0
-trace_mem_read:  defb "[X86 MEM READ]",13,10,0
-trace_mem_write: defb "[X86 MEM WRITE]",13,10,0

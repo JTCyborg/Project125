@@ -1070,8 +1070,8 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261105-09",13,10
-        defb "[NGS] BASE COMMIT D2F9E58",13,10,0
+        defb "[NGS] BUILD 20261106-22",13,10
+        defb "[NGS] BASE COMMIT ADD69F6",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
 trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
@@ -3171,14 +3171,14 @@ x86_real_f7_div_word:
         ld      (x86_f7_divisor), hl
         ld      a, h
         or      l
-        jp      z, x86_real_f7_divide_exception
+        jp      z, x86_real_f7_divide_zero
 
         ; A 16-bit quotient is possible only when DX < divisor.
         ld      hl, (x86_reg_dx)
         ld      de, (x86_f7_divisor)
         or      a
         sbc     hl, de
-        jp      nc, x86_real_f7_divide_exception
+        jp      nc, x86_real_f7_divide_overflow
 
         ; Restoring 32-by-16 division. Keep the shifting low dividend/
         ; quotient in x86_f7_quotient and the partial remainder in
@@ -3239,12 +3239,362 @@ x86_real_f7_div_loop:
         ld      (x86_reg_dx), hl
         jp      x86_real_next
 
+x86_real_f7_divide_zero:
+        xor     a
+        ld      (x86_f7_exception_kind), a
+        jr      x86_real_f7_divide_exception
+
+x86_real_f7_divide_overflow:
+        ld      a, 1
+        ld      (x86_f7_exception_kind), a
+
 x86_real_f7_divide_exception:
+        ; Emit diagnostics only on the exceptional DIV path. Direct #EF output
+        ; avoids the host DMA/DBIT handshake and leaves normal execution quiet.
+        call    x86_f7_exception_trace
         ; INT 0 return IP is already after the complete F7 ModR/M/EA.
         xor     a
         call    x86_int_enter
-        ret     c
+        jr      c, .int00_entry_failed
+        ld      hl, x86_f7_int00_entered
+        call    x86_f7_trace_string
+        call    x86_f7_int00_frame_trace
         jp      x86_real_next
+
+.int00_entry_failed:
+        ld      hl, x86_f7_int00_failed
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_ss)
+        call    x86_f7_trace_hex16
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_sp)
+        call    x86_f7_trace_hex16
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        scf
+        ret
+
+; Read back the actual INT 00 stack frame and the first handler bytes.
+; PCem maps BIOS ROM with null write handlers: writes are ignored, not faults.
+; This trace verifies memory contents instead of trusting Carry.
+x86_f7_int00_frame_trace:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_f7_frame_prefix
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_ss)
+        ld      (x86_mem_segment), hl
+        ld      hl, (x86_reg_sp)
+        ld      (x86_mem_offset), hl
+        call    x86_mem_read16
+        jr      c, .frame_read_error
+        ld      (x86_f7_frame_word), hl
+        ld      hl, (x86_f7_frame_word)
+        call    x86_f7_trace_hex16
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_mem_offset)
+        inc     hl
+        inc     hl
+        ld      (x86_mem_offset), hl
+        call    x86_mem_read16
+        jr      c, .frame_read_error
+        call    x86_f7_trace_hex16
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, (x86_mem_offset)
+        inc     hl
+        inc     hl
+        ld      (x86_mem_offset), hl
+        call    x86_mem_read16
+        jr      c, .frame_read_error
+        call    x86_f7_trace_hex16
+        ld      hl, x86_f7_handler_prefix
+        call    x86_f7_trace_string
+        ld      hl, 0
+        ld      (x86_mem_segment), hl
+        ld      (x86_mem_offset), hl
+        call    x86_mem_read16
+        jr      c, .handler_read_error
+        call    x86_f7_trace_hex16
+        ld      a, ' '
+        out     (#EF), a
+        ld      hl, 2
+        ld      (x86_mem_offset), hl
+        call    x86_mem_read16
+        jr      c, .handler_read_error
+        call    x86_f7_trace_hex16
+        jr      .done
+.frame_read_error:
+        ld      hl, x86_f7_frame_read_error
+        call    x86_f7_trace_string
+        jr      .done
+.handler_read_error:
+        ld      hl, x86_f7_handler_read_error
+        call    x86_f7_trace_string
+.done:
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+; Trace explicit SP register writes unconditionally (kind=2). Ordinary
+; PUSH/POP and interrupt stack traffic (kind=0) are traced unconditionally;
+; SS changes use kind=1.
+; x86_stack_trace_kind: 0=stack traffic, 1=SS transition, 2=explicit SP write.
+x86_stack_transition_trace:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      a, (x86_stack_trace_kind)
+        cp      2
+        jp      z, .trace_sp_register
+        or      a
+        jp      nz, .trace_ss
+        jp      .trace_sp
+.trace_sp:
+        ld      hl, x86_stack_trace_sp_prefix
+        call    x86_f7_trace_string
+        jp      .trace_sp_fields
+.trace_sp_register:
+        ld      hl, x86_stack_trace_sp_reg_prefix
+        call    x86_f7_trace_string
+.trace_sp_fields:
+        call    x86_stack_trace_print_cs_ip
+        ld      hl, x86_stack_trace_ss_label
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_ss)
+        call    x86_f7_trace_hex16
+        ld      hl, x86_stack_trace_sp_old_label
+        call    x86_f7_trace_string
+        ld      hl, (x86_stack_trace_old)
+        call    x86_f7_trace_hex16
+        ld      a, '>'
+        out     (#EF), a
+        ld      hl, (x86_stack_trace_new)
+        call    x86_f7_trace_hex16
+        jp      .line_end
+.trace_ss:
+        ld      hl, (x86_stack_trace_old)
+        ld      a, h
+        cp      #E0
+        jp      nc, .trace_ss_print
+        ld      hl, (x86_stack_trace_new)
+        ld      a, h
+        cp      #E0
+        jp      c, .done
+.trace_ss_print:
+        ld      hl, x86_stack_trace_ss_prefix
+        call    x86_f7_trace_string
+        call    x86_stack_trace_print_cs_ip
+        ld      hl, x86_stack_trace_ss_old_label
+        call    x86_f7_trace_string
+        ld      hl, (x86_stack_trace_old)
+        call    x86_f7_trace_hex16
+        ld      a, '>'
+        out     (#EF), a
+        ld      hl, (x86_stack_trace_new)
+        call    x86_f7_trace_hex16
+        ld      hl, x86_stack_trace_sp_label
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_sp)
+        call    x86_f7_trace_hex16
+.line_end:
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.done:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+; POP SP uses a direct register-file write and therefore does not pass
+; through x86_alu_write_reg16. Show all three values before that write.
+; The caller has already performed the architectural stack read/increment.
+x86_trace_pop_sp:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_trace_pop_sp_prefix
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_cs)
+        call    x86_f7_trace_hex16
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        dec     hl
+        call    x86_f7_trace_hex16
+        ld      hl, x86_trace_pop_sp_ss
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_ss)
+        call    x86_f7_trace_hex16
+        ld      hl, x86_trace_pop_sp_values
+        call    x86_f7_trace_string
+        ld      hl, (x86_real_old_sp)
+        call    x86_f7_trace_hex16
+        ld      a, '>'
+        out     (#EF), a
+        ld      hl, (x86_reg_sp)
+        call    x86_f7_trace_hex16
+        ld      a, '>'
+        out     (#EF), a
+        ld      hl, (x86_real_stack_value)
+        call    x86_f7_trace_hex16
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_trace_pop_sp_prefix: defb "[NGS X86] POP SP CS:IP=",0
+x86_trace_pop_sp_ss:     defb " SS=",0
+x86_trace_pop_sp_values: defb " SP(before>after-pop>loaded)=",0
+
+x86_stack_trace_print_cs_ip:
+        ld      hl, (x86_reg_cs)
+        call    x86_f7_trace_hex16
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        call    x86_f7_trace_hex16
+        ret
+x86_stack_trace_kind: db 0
+x86_stack_trace_old:  dw 0
+x86_stack_trace_new:  dw 0
+x86_stack_trace_sp_prefix:    defb "[NGS X86] STACK SP CS:IP=",0
+x86_stack_trace_sp_reg_prefix: defb "[NGS X86] STACK SP-REG CS:IP=",0
+x86_stack_trace_ss_prefix:    defb "[NGS X86] STACK SS CS:IP=",0
+x86_stack_trace_ss_label:     defb " SS=",0
+x86_stack_trace_sp_old_label: defb " SP=",0
+x86_stack_trace_ss_old_label: defb " SS=",0
+x86_stack_trace_sp_label:     defb " SP=",0
+
+; All routines below write directly to #EF. The caller's guest register
+; image is read-only; Z80 registers are preserved by the top-level tracer.
+x86_f7_exception_trace:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      a, (x86_f7_exception_kind)
+        or      a
+        ld      hl, x86_f7_trace_div_zero
+        jr      z, .reason_ready
+        ld      hl, x86_f7_trace_div_overflow
+.reason_ready:
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_cs)
+        call    x86_f7_trace_hex16
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        call    x86_f7_trace_hex16
+        ld      hl, x86_f7_trace_ax
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_ax)
+        call    x86_f7_trace_hex16
+        ld      hl, x86_f7_trace_dx
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_dx)
+        call    x86_f7_trace_hex16
+        ld      hl, x86_f7_trace_divisor
+        call    x86_f7_trace_string
+        ld      hl, (x86_f7_divisor)
+        call    x86_f7_trace_hex16
+        ld      hl, x86_f7_trace_sssp
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_ss)
+        call    x86_f7_trace_hex16
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_sp)
+        call    x86_f7_trace_hex16
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+; HL -> zero-terminated string.
+x86_f7_trace_string:
+        ld      a, (hl)
+        inc     hl
+        or      a
+        ret     z
+        out     (#EF), a
+        jr      x86_f7_trace_string
+
+; HL=word, printed most-significant byte first.
+x86_f7_trace_hex16:
+        ld      a, h
+        call    x86_f7_trace_hex8
+        ld      a, l
+        jp      x86_f7_trace_hex8
+
+; A=byte, printed as two hexadecimal digits.
+x86_f7_trace_hex8:
+        push    af
+        push    bc
+        ld      b, a
+        rrca
+        rrca
+        rrca
+        rrca
+        call    x86_f7_trace_hex_nibble
+        ld      a, b
+        and     #0F
+        call    x86_f7_trace_hex_nibble
+        pop     bc
+        pop     af
+        ret
+
+; A=low nibble.
+x86_f7_trace_hex_nibble:
+        and     #0F
+        add     a, '0'
+        cp      '9'+1
+        jr      c, .emit
+        add     a, 7
+.emit:
+        out     (#EF), a
+        ret
+
+x86_f7_trace_div_zero:     defb "[NGS X86] DIV0 CS:IP=",0
+x86_f7_trace_div_overflow: defb "[NGS X86] DIV OVERFLOW CS:IP=",0
+x86_f7_trace_ax:           defb " AX=",0
+x86_f7_trace_dx:           defb " DX=",0
+x86_f7_trace_divisor:      defb " DIVISOR=",0
+x86_f7_trace_sssp:         defb " SS:SP=",0
+x86_f7_int00_entered:      defb "[NGS X86] INT00 ENTRY OK",13,10,0
+x86_f7_frame_prefix:       defb "[NGS X86] INT00 FRAME IP/CS/FLAGS=",0
+x86_f7_handler_prefix:     defb " HANDLER[0000:0000]=",0
+x86_f7_frame_read_error:   defb " FRAME READ ERROR",0
+x86_f7_handler_read_error: defb " HANDLER READ ERROR",0
+x86_f7_frame_word:         dw 0
+x86_f7_int00_failed:       defb "[NGS X86] INT00 ENTRY FAILED SS:SP=",0
+x86_f7_exception_kind:     db 0
 
 x86_real_group_f7_unsupported:
         ld      a, #F7

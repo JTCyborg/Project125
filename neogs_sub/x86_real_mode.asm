@@ -273,9 +273,7 @@ x86_real_fetch8:
         call    x86_fetch_diag_address
         call    x86_mem_read8
         ret     c
-        ; Capture this exact instruction byte here, before any diagnostic
-        ; helper or following operand access can change the last-read state.
-        ; This runs for opcode bytes and ModR/M/displacement bytes alike.
+        ; Retain the exact byte for the first BIOS reset-vector diagnostic.
         push    af
         ld      hl, (x86_mem_addr)
         ld      (x86_fetch_exact_addr), hl
@@ -284,59 +282,12 @@ x86_real_fetch8:
         pop     af
         ld      (x86_fetch_exact_value), a
         call    x86_fetch_diag_read_ok
-        ; Capture the first 16 instruction-stream bytes at the actual fetch
-        ; boundary. This is deliberately independent of the memory-watch
-        ; diagnostics and writes directly to the shared #EF debug channel.
-        call    x86_trace_instruction_fetch
         push    af
         ld      hl, (x86_reg_ip)
         inc     hl
         ld      (x86_reg_ip), hl
         pop     af
         or      a
-        ret
-
-; Direct #EF instruction-stream trace. Only the first 16 bytes are
-; printed so a BIOS loop cannot flood the shared ATM/NeoGS log.
-x86_trace_instruction_fetch:
-        push    af
-        push    bc
-        push    de
-        push    hl
-        ld      a, (x86_trace_fetch_count)
-        cp      16
-        jr      nc, .trace_fetch_done
-        inc     a
-        ld      (x86_trace_fetch_count), a
-        ld      hl, x86_trace_fetch_text
-        call    x86_trace_puts
-        ld      hl, (x86_reg_cs)
-        ld      a, h
-        call    x86_trace_hex8
-        ld      a, l
-        call    x86_trace_hex8
-        ld      a, ':'
-        out     (#EF), a
-        ; x86_real_fetch8 calls this trace before incrementing IP, so
-        ; the current IP is already the exact address of the byte just read.
-        ld      hl, (x86_reg_ip)
-        ld      a, h
-        call    x86_trace_hex8
-        ld      a, l
-        call    x86_trace_hex8
-        ld      a, ' '
-        out     (#EF), a
-        ld      a, (x86_fetch_exact_value)
-        call    x86_trace_hex8
-        ld      a, 13
-        out     (#EF), a
-        ld      a, 10
-        out     (#EF), a
-.trace_fetch_done:
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
         ret
 
 x86_trace_puts:
@@ -368,106 +319,101 @@ x86_trace_nibble:
         out     (#EF), a
         ret
 
-x86_trace_fetch_count: db 0
-x86_trace_decode_once: db 0
-x86_trace_fetch_text:  db "[NGS X86] FETCH ",0
-x86_trace_decode_text: db "[NGS X86] MAIN DECODER ENTER",13,10,0
-x86_trace_decode_opcode_text: db "[NGS X86] DECODE OPCODE=",0
-x86_trace_decode_opcode: db 0
+; Print only the first occurrence of AD, 02 and E2. This identifies the
+; BIOS loop's instruction addresses and initial CX without per-step logging.
+; IN A=decoded opcode. All guest-visible registers and flags are preserved.
+x86_trace_loop_opcode:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        cp      #AD
+        jr      z, .trace_ad
+        cp      #02
+        jr      z, .trace_02
+        cp      #E2
+        jr      nz, .trace_done
+        ld      a, (x86_trace_loop_e2_once)
+        or      a
+        jr      nz, .trace_done
+        inc     a
+        ld      (x86_trace_loop_e2_once), a
+        ld      a, #E2
+        jr      .trace_emit
+.trace_ad:
+        ld      a, (x86_trace_loop_ad_once)
+        or      a
+        jr      nz, .trace_done
+        inc     a
+        ld      (x86_trace_loop_ad_once), a
+        ld      a, #AD
+        jr      .trace_emit
+.trace_02:
+        ld      a, (x86_trace_loop_02_once)
+        or      a
+        jr      nz, .trace_done
+        inc     a
+        ld      (x86_trace_loop_02_once), a
+        ld      a, #02
+.trace_emit:
+        ld      (x86_trace_decode_opcode), a
+        ld      hl, x86_trace_loop_prefix
+        call    x86_trace_puts
+        ld      a, (x86_trace_decode_opcode)
+        call    x86_trace_hex8
+        ld      hl, x86_trace_loop_at
+        call    x86_trace_puts
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        dec     hl
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      hl, x86_trace_loop_cx
+        call    x86_trace_puts
+        ld      hl, (x86_reg_cx)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+.trace_done:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
 x86_fetch_opcode_saved: db 0
-x86_trace_jmp_far_once: db 0
-x86_trace_jmp_far_text: db "[NGS X86] JMP FAR HANDLER ENTER",13,10,0
+x86_trace_decode_opcode: db 0
+x86_trace_loop_ad_once: db 0
+x86_trace_loop_02_once: db 0
+x86_trace_loop_e2_once: db 0
+x86_trace_loop_prefix: db "[NGS X86] OP=",0
+x86_trace_loop_at: db " AT ",0
+x86_trace_loop_cx: db " CX=",0
 
 x86_real_fetch_out_of_range:
         jp      x86_real_fetch_out_of_range_resident
 
 x86_real_execute:
-        ; First-instruction signature: direct #EF writes, no helper, DMA or
-        ; bank gateway. This distinguishes reaching this address from merely
-        ; reaching the CALL site in the resident gateway.
-        ld      a, '['
-        out     (#EF), a
-        ld      a, 'X'
-        out     (#EF), a
-        ld      a, '8'
-        out     (#EF), a
-        ld      a, '6'
-        out     (#EF), a
-        ld      a, ' '
-        out     (#EF), a
-        ld      a, 'E'
-        out     (#EF), a
-        ld      a, 'N'
-        out     (#EF), a
-        ld      a, 'T'
-        out     (#EF), a
-        ld      a, 'R'
-        out     (#EF), a
-        ld      a, 'Y'
-        out     (#EF), a
-        ld      a, ']'
-        out     (#EF), a
-        ld      a, 13
-        out     (#EF), a
-        ld      a, 10
-        out     (#EF), a
-
-        ; Keep the existing resident trace call, then mark its return directly.
+        ; One concise marker proves control reached the actual x86 interpreter.
         ld      hl, x86_dbg_core_enter
         call    neo_trace_ef_string
-        ld      a, '['
-        out     (#EF), a
-        ld      a, 'X'
-        out     (#EF), a
-        ld      a, '8'
-        out     (#EF), a
-        ld      a, '6'
-        out     (#EF), a
-        ld      a, ' '
-        out     (#EF), a
-        ld      a, 'T'
-        out     (#EF), a
-        ld      a, 'R'
-        out     (#EF), a
-        ld      a, 'A'
-        out     (#EF), a
-        ld      a, 'C'
-        out     (#EF), a
-        ld      a, 'E'
-        out     (#EF), a
-        ld      a, ' '
-        out     (#EF), a
-        ld      a, 'R'
-        out     (#EF), a
-        ld      a, 'E'
-        out     (#EF), a
-        ld      a, 'T'
-        out     (#EF), a
-        ld      a, 'U'
-        out     (#EF), a
-        ld      a, 'R'
-        out     (#EF), a
-        ld      a, 'N'
-        out     (#EF), a
-        ld      a, ']'
-        out     (#EF), a
-        ld      a, 13
-        out     (#EF), a
-        ld      a, 10
-        out     (#EF), a
         xor     a
-        ld      (x86_trace_fetch_count), a
-        ld      (x86_trace_decode_once), a
-        ld      (x86_dbg_dispatch_once), a
-        ld      (x86_dbg_fetch_once), a
-        ld      (x86_dbg_fetch_ok_once), a
-        ld      (trace_io_instruction_once), a
-        ld      (trace_io_read_once), a
-        ld      (trace_io_write_once), a
-        ld      (trace_mov_once), a
-        ld      (trace_alu16_once), a
-        ld      (trace_alu8_once), a
-        ld      (trace_string_once), a
+        ld      (x86_trace_loop_ad_once), a
+        ld      (x86_trace_loop_02_once), a
+        ld      (x86_trace_loop_e2_once), a
         ld      (x86_real_unsupported_opcode), a
         ld      hl, X86_REAL_STEP_LIMIT
         ld      (x86_real_steps), hl
@@ -477,23 +423,6 @@ x86_real_next:
         ld      (x86_real_seg_override_active), a
         ld      (x86_real_rep_mode), a
 x86_real_dispatch:
-        ; One-shot dispatch marker, before any guest opcode fetch.
-        ld      a, (x86_dbg_dispatch_once)
-        or      a
-        jr      nz, .dispatch_marked
-        ld      a, 1
-        ld      (x86_dbg_dispatch_once), a
-        push    af
-        push    bc
-        push    de
-        push    hl
-        ld      hl, x86_dbg_dispatch
-        call    x86_debug_port_string
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
-.dispatch_marked:
         ld      hl, (x86_real_steps)
         ld      a, h
         or      l
@@ -538,23 +467,6 @@ x86_real_dispatch_no_progress:
         ; Clear it here after ordinary instruction-boundary polling.
         xor     a
         ld      (x86_io_irq_delivered), a
-        ; Mark the fetch boundary independently of BIOS-specific one-shot traces.
-        ld      a, (x86_dbg_fetch_once)
-        or      a
-        jr      nz, .fetch_marked
-        ld      a, 1
-        ld      (x86_dbg_fetch_once), a
-        push    af
-        push    bc
-        push    de
-        push    hl
-        ld      hl, x86_dbg_fetch_begin
-        call    x86_debug_port_string
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
-.fetch_marked:
         call    x86_real_fetch8
         jr      nc, .fetch_succeeded
         ; A carry return here means the memory fetch itself failed.
@@ -574,24 +486,6 @@ x86_real_dispatch_no_progress:
         ; state checks. Reading bios_first_instruction_trace below uses A and
         ; must not replace the opcode that the decoder will receive.
         ld      (x86_fetch_opcode_saved), a
-        ; Preserve the fetched opcode and flags across the one-shot diagnostic.
-        ; The marker uses A as its state variable; it must not replace the
-        ; instruction byte returned by x86_real_fetch8.
-        push    af
-        ; This marker proves x86_mem_read8 returned an instruction byte.
-        ld      a, (x86_dbg_fetch_ok_once)
-        or      a
-        jr      nz, .fetch_ok_marked
-        ld      a, 1
-        ld      (x86_dbg_fetch_ok_once), a
-        push    af
-        push    hl
-        ld      hl, x86_dbg_fetch_ok
-        call    x86_debug_port_string
-        pop     hl
-        pop     af
-.fetch_ok_marked:
-        pop     af
         ; Emit the exact first successfully fetched BIOS opcode before decode.
         ld      a, (bios_first_instruction_trace)
         cp      1
@@ -613,48 +507,9 @@ x86_real_dispatch_no_progress:
         call    x86_resident_escape_dispatch
         ret     c
         jp      z, x86_real_next
-        ; The opcode survived resident escape dispatch and is now entering
-        ; the main interpreter decoder. Emit this milestone once per run.
-        ; Preserve AF: the trace counter uses A, but the decoder still needs
-        ; the original opcode returned by x86_real_fetch8.
-        push    af
-        ld      a, (x86_trace_decode_once)
-        or      a
-        jr      nz, .decode_trace_done
-        inc     a
-        ld      (x86_trace_decode_once), a
-        push    af
-        push    bc
-        push    de
-        push    hl
-        ld      hl, x86_trace_decode_text
-        call    x86_trace_puts
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
-.decode_trace_done:
-        pop     af
-        ; Record the opcode that actually reaches the main dispatch table.
-        ; The fetch trace alone is insufficient: helpers may preserve a
-        ; diagnostic copy while accidentally changing the live opcode in A.
-        ld      (x86_trace_decode_opcode), a
-        push    af
-        push    bc
-        push    de
-        push    hl
-        ld      hl, x86_trace_decode_opcode_text
-        call    x86_trace_puts
-        ld      a, (x86_trace_decode_opcode)
-        call    x86_trace_hex8
-        ld      a, 13
-        out     (#EF), a
-        ld      a, 10
-        out     (#EF), a
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
+        ; Only the three opcodes implicated by the current BIOS trace are
+        ; sampled, once each. The helper preserves the live opcode and flags.
+        call    x86_trace_loop_opcode
 
         ; 8086 segment-override prefixes. Multiple prefixes are accepted;
         ; the last segment prefix before the instruction takes effect.
@@ -1054,7 +909,7 @@ x86_real_pop_segment:
         cp      #07
         jr      nz, .pop_segment_store
         ld      (x86_mov_value), de
-        call    x86_real_trace_es_load
+        ; Detailed ES-load trace disabled; preserve interpreter semantics.
         ld      hl, x86_reg_es
         ld      de, (x86_real_stack_value)
 .pop_segment_store:
@@ -1082,6 +937,12 @@ x86_real_pop_r16:
         ld      (x86_real_opcode), a
         call    x86_real_stack_pop
         ret     c
+        ; POP SP bypasses the common register writer because this decoder
+        ; writes the popped word directly into the register-file array.
+        ; Trace the pre-pop SP, the post-increment SP and the loaded value.
+        ld      a, (x86_real_opcode)
+        cp      #5C
+        call    z, x86_trace_pop_sp
         ld      a, (x86_real_opcode)
         sub     #58
         add     a, a
@@ -1110,7 +971,17 @@ x86_real_stack_push:
         ld      hl, (x86_real_stack_value)
         ld      (x86_mem_word_value), hl
         call    x86_mem_write16
-        ret     nc
+        jr      c, .push_rollback
+        ld      hl, (x86_reg_sp)
+        ld      (x86_stack_trace_new), hl
+        ld      hl, (x86_real_old_sp)
+        ld      (x86_stack_trace_old), hl
+        xor     a
+        ld      (x86_stack_trace_kind), a
+        call    x86_stack_transition_trace
+        or      a
+        ret
+.push_rollback:
         ld      hl, (x86_real_old_sp)
         ld      (x86_reg_sp), hl
         scf
@@ -1120,6 +991,7 @@ x86_real_stack_push:
 ; POP SP's destination write then replaces the incremented SP as required.
 x86_real_stack_pop:
         ld      hl, (x86_reg_sp)
+        ld      (x86_real_old_sp), hl
         ld      (x86_mem_offset), hl
         ld      de, (x86_reg_ss)
         ld      (x86_mem_segment), de
@@ -1130,6 +1002,12 @@ x86_real_stack_pop:
         inc     hl
         inc     hl
         ld      (x86_reg_sp), hl
+        ld      (x86_stack_trace_new), hl
+        ld      hl, (x86_real_old_sp)
+        ld      (x86_stack_trace_old), hl
+        xor     a
+        ld      (x86_stack_trace_kind), a
+        call    x86_stack_transition_trace
         or      a
         ret
 
@@ -1182,19 +1060,6 @@ x86_real_jmp_near:
 
 ; EA ptr16:16 — far JMP. Fetch the complete pointer before changing CS:IP.
 x86_real_jmp_far:
-        ; One-shot proof that the EA dispatch branch reached this handler.
-        ld      a, (x86_trace_jmp_far_once)
-        or      a
-        jr      nz, .jmp_far_trace_done
-        inc     a
-        ld      (x86_trace_jmp_far_once), a
-        push    af
-        push    hl
-        ld      hl, x86_trace_jmp_far_text
-        call    x86_trace_puts
-        pop     hl
-        pop     af
-.jmp_far_trace_done:
         call    x86_real_fetch8
         ret     c
         ld      (x86_real_far_ip), a
@@ -1711,6 +1576,15 @@ x86_real_mov_r16_imm16:
         ret     c
         ld      (x86_real_imm_high), a
 
+        ; MOV SP,imm16 writes the register file directly, bypassing the
+        ; shared ModR/M writer. Capture the old value before the write.
+        ld      a, (x86_real_opcode)
+        cp      #BC
+        jr      nz, .store_register
+        ld      hl, (x86_reg_sp)
+        ld      (x86_stack_trace_old), hl
+
+.store_register:
         ld      a, (x86_real_opcode)
         sub     #B8
         add     a, a
@@ -1723,6 +1597,16 @@ x86_real_mov_r16_imm16:
         inc     hl
         ld      a, (x86_real_imm_high)
         ld      (hl), a
+
+        ld      a, (x86_real_opcode)
+        cp      #BC
+        jr      nz, .done
+        ld      hl, (x86_reg_sp)
+        ld      (x86_stack_trace_new), hl
+        ld      a, 2
+        ld      (x86_stack_trace_kind), a
+        call    x86_stack_transition_trace
+.done:
         jp      x86_real_next
 
 ; B0-B7 — MOV r8,imm8 (AL,CL,DL,BL,AH,CH,DH,BH).
@@ -1993,9 +1877,16 @@ x86_real_ret_near_imm:
         ld      hl, (x86_real_stack_value)
         ld      (x86_reg_ip), hl
         ld      hl, (x86_reg_sp)
+        ld      (x86_real_old_sp), hl
         ld      de, (x86_real_imm_word)
         add     hl, de
         ld      (x86_reg_sp), hl
+        ld      (x86_stack_trace_new), hl
+        ld      hl, (x86_real_old_sp)
+        ld      (x86_stack_trace_old), hl
+        xor     a
+        ld      (x86_stack_trace_kind), a
+        call    x86_stack_transition_trace
         jp      x86_real_next
 
 x86_real_ret_far_imm:
@@ -2013,9 +1904,16 @@ x86_real_ret_far_imm:
         ld      hl, (x86_real_far_ip)
         ld      (x86_reg_ip), hl
         ld      hl, (x86_reg_sp)
+        ld      (x86_real_old_sp), hl
         ld      de, (x86_real_imm_word)
         add     hl, de
         ld      (x86_reg_sp), hl
+        ld      (x86_stack_trace_new), hl
+        ld      hl, (x86_real_old_sp)
+        ld      (x86_stack_trace_old), hl
+        xor     a
+        ld      (x86_stack_trace_kind), a
+        call    x86_stack_transition_trace
         jp      x86_real_next
 
 x86_real_hlt:
@@ -2839,7 +2737,7 @@ x86_real_group_f6:
 .f6_segment_ready:
         ld      (x86_mem_segment), hl
         call    x86_mem_calc_phys
-        call    x86_mem_trace_f6_address
+        ; Detailed F6 effective-address trace disabled.
         call    x86_mem_read8
         ret     c
         ld      (x86_f6_operand), a
@@ -3233,14 +3131,6 @@ x86_debug_port_string:
         out     (#EF), a
         jr      x86_debug_port_string
 
-; Core diagnostics are deliberately one-shot: they identify the exact stage
-; reached without flooding the shared ATM/NeoGS debug stream.
-x86_dbg_dispatch_once: db 0
-x86_dbg_fetch_once:    db 0
-x86_dbg_fetch_ok_once: db 0
 x86_dbg_core_enter:    defb "[NGS X86] CORE ENTER",13,10,0
-x86_dbg_dispatch:      defb "[NGS X86] DISPATCH ENTER",13,10,0
-x86_dbg_fetch_begin:   defb "[NGS X86] FETCH BEGIN",13,10,0
-x86_dbg_fetch_ok:      defb "[NGS X86] FETCH OK",13,10,0
 x86_dbg_fetch_error:   defb "[NGS X86] FETCH ERROR",13,10,0
 x86_dbg_io_error:      defb "[NGS X86] IO TICK ERROR",13,10,0
