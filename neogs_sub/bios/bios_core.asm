@@ -103,8 +103,8 @@ bios_rom_reset_state:
         ; physical keyboard matrix; no synthetic Enter is injected.
         xor     a
         ld      (bios_keyboard_pending), a
-        ld      (bios_keyboard_word), a
-        ld      (bios_keyboard_word+1), a
+        ld      (bios_keyboard_queue_read), a
+        ld      (bios_keyboard_queue_write), a
         ld      (bios_keyboard_shift_flags), a
         ld      (bios_video_stream_errors), a
         ld      (x86_real_bounds_enable), a
@@ -504,10 +504,26 @@ bios_int16_read_key:
         ld      a, (bios_keyboard_pending)
         or      a
         jr      z, bios_int16_no_key
-        xor     a
-        ld      (bios_keyboard_pending), a
-        ld      hl, (bios_keyboard_word)
+        ; Pop the oldest AX-format key word from the 16-entry ring.
+        ld      a, (bios_keyboard_queue_read)
+        add     a, a
+        ld      e, a
+        ld      d, 0
+        ld      hl, bios_keyboard_queue
+        add     hl, de
+        ld      a, (hl)
+        ld      h, a
+        inc     hl
+        ld      a, (hl)
+        ld      l, a
         ld      (x86_reg_ax), hl
+        ld      a, (bios_keyboard_queue_read)
+        inc     a
+        and     #0F
+        ld      (bios_keyboard_queue_read), a
+        ld      a, (bios_keyboard_pending)
+        dec     a
+        ld      (bios_keyboard_pending), a
         or      a
         ret
 bios_int16_no_key:
@@ -521,7 +537,18 @@ bios_int16_check_key:
         ld      a, (bios_keyboard_pending)
         or      a
         jr      z, bios_int16_no_pending
-        ld      hl, (bios_keyboard_word)
+        ; AH=01/11 peeks at the oldest entry without consuming it.
+        ld      a, (bios_keyboard_queue_read)
+        add     a, a
+        ld      e, a
+        ld      d, 0
+        ld      hl, bios_keyboard_queue
+        add     hl, de
+        ld      a, (hl)
+        ld      h, a
+        inc     hl
+        ld      a, (hl)
+        ld      l, a
         ld      (x86_reg_ax), hl
         ld      hl, x86_reg_flags
         res     6, (hl)              ; ZF=0: key available
@@ -541,7 +568,11 @@ bios_int16_shift_flags:
 
 bios_keyboard_pending:
         db      0
-bios_keyboard_word:
-        dw      0
+bios_keyboard_queue_read:
+        db      0
+bios_keyboard_queue_write:
+        db      0
+bios_keyboard_queue:
+        defs    32, 0
 bios_keyboard_shift_flags:
         db      0
