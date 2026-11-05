@@ -1070,8 +1070,8 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261105-10",13,10
-        defb "[NGS] BASE COMMIT 3105FE6",13,10,0
+        defb "[NGS] BUILD 20261105-11",13,10
+        defb "[NGS] BASE COMMIT 1DC6B8E",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
 trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
@@ -3171,14 +3171,14 @@ x86_real_f7_div_word:
         ld      (x86_f7_divisor), hl
         ld      a, h
         or      l
-        jp      z, x86_real_f7_divide_exception
+        jp      z, x86_real_f7_divide_zero
 
         ; A 16-bit quotient is possible only when DX < divisor.
         ld      hl, (x86_reg_dx)
         ld      de, (x86_f7_divisor)
         or      a
         sbc     hl, de
-        jp      nc, x86_real_f7_divide_exception
+        jp      nc, x86_real_f7_divide_overflow
 
         ; Restoring 32-by-16 division. Keep the shifting low dividend/
         ; quotient in x86_f7_quotient and the partial remainder in
@@ -3239,12 +3239,146 @@ x86_real_f7_div_loop:
         ld      (x86_reg_dx), hl
         jp      x86_real_next
 
+x86_real_f7_divide_zero:
+        xor     a
+        ld      (x86_f7_exception_kind), a
+        jr      x86_real_f7_divide_exception
+
+x86_real_f7_divide_overflow:
+        ld      a, 1
+        ld      (x86_f7_exception_kind), a
+
 x86_real_f7_divide_exception:
+        ; Emit diagnostics only on the exceptional DIV path. Direct #EF output
+        ; avoids the host DMA/DBIT handshake and leaves normal execution quiet.
+        call    x86_f7_exception_trace
         ; INT 0 return IP is already after the complete F7 ModR/M/EA.
         xor     a
         call    x86_int_enter
-        ret     c
+        jr      c, .int00_entry_failed
+        ld      hl, x86_f7_int00_entered
+        call    x86_f7_trace_string
         jp      x86_real_next
+
+.int00_entry_failed:
+        ld      hl, x86_f7_int00_failed
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_ss)
+        call    x86_f7_trace_hex16
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_sp)
+        call    x86_f7_trace_hex16
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        scf
+        ret
+
+; All routines below write directly to #EF. The caller's guest register
+; image is read-only; Z80 registers are preserved by the top-level tracer.
+x86_f7_exception_trace:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      a, (x86_f7_exception_kind)
+        or      a
+        ld      hl, x86_f7_trace_div_zero
+        jr      z, .reason_ready
+        ld      hl, x86_f7_trace_div_overflow
+.reason_ready:
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_cs)
+        call    x86_f7_trace_hex16
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        call    x86_f7_trace_hex16
+        ld      hl, x86_f7_trace_ax
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_ax)
+        call    x86_f7_trace_hex16
+        ld      hl, x86_f7_trace_dx
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_dx)
+        call    x86_f7_trace_hex16
+        ld      hl, x86_f7_trace_divisor
+        call    x86_f7_trace_string
+        ld      hl, (x86_f7_divisor)
+        call    x86_f7_trace_hex16
+        ld      hl, x86_f7_trace_sssp
+        call    x86_f7_trace_string
+        ld      hl, (x86_reg_ss)
+        call    x86_f7_trace_hex16
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_sp)
+        call    x86_f7_trace_hex16
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+; HL -> zero-terminated string.
+x86_f7_trace_string:
+        ld      a, (hl)
+        inc     hl
+        or      a
+        ret     z
+        out     (#EF), a
+        jr      x86_f7_trace_string
+
+; HL=word, printed most-significant byte first.
+x86_f7_trace_hex16:
+        ld      a, h
+        call    x86_f7_trace_hex8
+        ld      a, l
+        jp      x86_f7_trace_hex8
+
+; A=byte, printed as two hexadecimal digits.
+x86_f7_trace_hex8:
+        push    af
+        push    bc
+        ld      b, a
+        rrca
+        rrca
+        rrca
+        rrca
+        call    x86_f7_trace_hex_nibble
+        ld      a, b
+        and     #0F
+        call    x86_f7_trace_hex_nibble
+        pop     bc
+        pop     af
+        ret
+
+; A=low nibble.
+x86_f7_trace_hex_nibble:
+        and     #0F
+        add     a, '0'
+        cp      '9'+1
+        jr      c, .emit
+        add     a, 7
+.emit:
+        out     (#EF), a
+        ret
+
+x86_f7_trace_div_zero:     defb "[NGS X86] DIV0 CS:IP=",0
+x86_f7_trace_div_overflow: defb "[NGS X86] DIV OVERFLOW CS:IP=",0
+x86_f7_trace_ax:           defb " AX=",0
+x86_f7_trace_dx:           defb " DX=",0
+x86_f7_trace_divisor:      defb " DIVISOR=",0
+x86_f7_trace_sssp:         defb " SS:SP=",0
+x86_f7_int00_entered:      defb "[NGS X86] INT00 ENTRY OK",13,10,0
+x86_f7_int00_failed:       defb "[NGS X86] INT00 ENTRY FAILED SS:SP=",0
+x86_f7_exception_kind:     db 0
 
 x86_real_group_f7_unsupported:
         ld      a, #F7
