@@ -143,7 +143,7 @@ neogs_bios_transfer_finish:
 ; Turbo XT BIOS can take several minutes on the current Z80 interpreter.
 ; Use a 16-bit outer timeout (2048 x 65535 polls), while continuing to drain
 ; DBIT whenever the NeoGS firmware emits progress. This is a watchdog, not
-; an instruction budget; normal completion is still signalled by CBIT=0.
+; an instruction budget; normal completion is signalled by the reserved NUL token.
 ; OUT: carry clear after the terminal token; call get_result next.
 neogs_bios_boot_and_wait:
         ld      a, CMD_BOOT_BIOS
