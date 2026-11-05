@@ -85,10 +85,8 @@ bios_rom_reset_state:
         ld      (bios_video_stream_errors), a
         ld      (x86_real_bounds_enable), a
         ld      (x86_exit_status), a
-        ; Reset one-shot flags so each BIOS launch gets a complete trace.
+        ; Reset remaining BIOS interrupt trace flags for each launch.
         xor     a
-        ld      (trace_mem_read_once), a
-        ld      (trace_mem_write_once), a
         ld      (trace_int_enter_once), a
         ld      (trace_int_vector_once), a
         ld      (trace_int_target_once), a
