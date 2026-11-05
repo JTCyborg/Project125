@@ -1687,20 +1687,13 @@ x86_ppi_read_port_b:
 
 x86_ppi_read_port_c:
         ; IBM 5150 with 640 KiB: (640-64)/32 = 12h.
-        ; PB2 selects the low/high memory-size nibble. No cassette input.
+        ; PB2 selects the low/high memory-size nibble. Cassette input and
+        ; PIT channel-2 speaker sense remain low until those devices exist.
         ld      a, (x86_ppi_port_b)
-        ld      b, a
-        and     4
+        bit     2, a
         ld      a, 1
-        jr      z, .memory_nibble_ready
-        inc     a
-.memory_nibble_ready:
-        ld      c, a
-        ld      a, b
-        and     2                      ; speaker data line -> PC5 sense
-        ld      a, c
         ret     z
-        or      #20
+        inc     a
         ret
 
 x86_ppi_read_control:
