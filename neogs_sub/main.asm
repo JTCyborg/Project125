@@ -539,9 +539,15 @@ command_boot_bios:
         ; represented as fresh host transactions.
         xor     a
         out     (CLRCBIT), a
+        ld      hl, trace_bios_cmd
+        call    neo_trace_ef_string
         ld      hl, bios_boot_message
         call    neo_debug_send_string
+        ld      hl, trace_bios_reset_in
+        call    neo_trace_ef_string
         call    bios_rom_reset_state
+        ld      hl, trace_bios_reset_out
+        call    neo_trace_ef_string
         ld      a, 1
         ld      (bios_first_instruction_trace), a
         ; BIOS execution is unrestricted real-mode ROM fetch, never the
@@ -552,7 +558,11 @@ command_boot_bios:
         ld      (x86_real_progress_enable), a
         ; The interpreter lives in overlay bank 68. Always enter through
         ; the resident gateway so MPAG is explicitly set after BIOS reset.
+        ld      hl, trace_gateway_call
+        call    neo_trace_ef_string
         call    bank_call_x86_real_execute
+        ld      hl, trace_gateway_return
+        call    neo_trace_ef_string
         xor     a
         ld      (x86_real_progress_enable), a
         ; Compact stop trace: the host drains DBIT and mirrors it to port EF.
@@ -1031,6 +1041,33 @@ neo_debug_dump_dma_frame:
         pop     de
         pop     hl
         ret
+
+; Direct shared #EF trace path. Resident so callers in either overlay can use it.
+; IN: HL -> zero-terminated marker. Preserves AF/BC/DE/HL.
+neo_trace_ef_string:
+        push    af
+        push    bc
+        push    de
+        push    hl
+.trace_loop:
+        ld      a, (hl)
+        inc     hl
+        or      a
+        jr      z, .trace_done
+        out     (#EF), a
+        jr      .trace_loop
+.trace_done:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
+trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
+trace_bios_reset_out: defb "[P RESET OUT]",13,10,0
+trace_gateway_call:   defb "[P X86 GATE IN]",13,10,0
+trace_gateway_return: defb "[P X86 GATE OUT]",13,10,0
 
 neo_debug_send_string:
         ld      a, (hl)
