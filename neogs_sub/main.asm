@@ -1314,47 +1314,6 @@ x86_uart_com1_regs:
 x86_uart_com2_regs:
         db 0,0,0,0,0,0,0,0
 
-x86_resident_io_trace_read8:
-        ; Keep the first 16 unmapped reads, not just the first one.
-        ; This reveals the complete BIOS probe sequence before System error.
-        ld      a, (x86_io_trace_count)
-        cp      16
-        ret     nc
-        inc     a
-        ld      (x86_io_trace_count), a
-        push    af
-        push    hl
-        ld      a, '!'
-        out     (#EF), a
-        ld      hl, (x86_io_port)
-        ld      a, h
-        call    x86_mem_watch_hex8
-        ld      a, l
-        call    x86_mem_watch_hex8
-        ld      a, ':'
-        out     (#EF), a
-        ld      hl, (x86_reg_cs)
-        ld      a, h
-        call    x86_mem_watch_hex8
-        ld      a, l
-        call    x86_mem_watch_hex8
-        ld      a, ':'
-        out     (#EF), a
-        ld      hl, (x86_reg_ip)
-        ld      a, h
-        call    x86_mem_watch_hex8
-        ld      a, l
-        call    x86_mem_watch_hex8
-        ld      a, 13
-        out     (#EF), a
-        ld      a, 10
-        out     (#EF), a
-        pop     hl
-        pop     af
-        ret
-
-x86_io_trace_count: db 0
-
 ; Trace the first four SCAS comparisons during BIOS startup.
 ; The previous failure-only trace produced no output, so the current
 ; diagnostic captures successful comparisons too, including ES:DI and the
