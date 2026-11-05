@@ -301,7 +301,7 @@ x86_real_execute:
         ld      (x86_real_dispatch_seen), a
         ld      (x86_real_poll_return_seen), a
         ld      hl, x86_real_exec_enter_message
-        call    neo_debug_send_string
+        call    neo_debug_port_string
         ld      hl, X86_REAL_STEP_LIMIT
         ld      (x86_real_steps), hl
 x86_real_next:
@@ -317,7 +317,7 @@ x86_real_dispatch:
         dec     hl
         ld      (x86_real_steps), hl
 
-        ; One-shot trace proves that the guest instruction dispatcher is live.
+        ; One-shot #EF trace proves that the guest instruction dispatcher is live.
         ld      a, (x86_real_dispatch_seen)
         or      a
         jr      nz, .dispatch_marker_done
@@ -2908,7 +2908,7 @@ x86_daa_old_af:   db 0
 x86_daa_new_cf:   db 0
 x86_daa_new_af:   db 0
 
-; One-shot BIOS execution path diagnostics, emitted on the independent #EF port.
+; One-shot BIOS execution path diagnostics, emitted on shared debug port #EF.
 x86_real_exec_enter_message:
         defb "[NGS] BIOS EXEC ENTER", 13, 10, 0
 x86_real_dispatch_message:
