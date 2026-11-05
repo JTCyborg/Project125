@@ -412,6 +412,19 @@ x86_real_dispatch_no_progress:
         pop     af
         ret
 .fetch_succeeded:
+        ; This marker proves x86_mem_read8 returned an instruction byte.
+        ld      a, (x86_dbg_fetch_ok_once)
+        or      a
+        jr      nz, .fetch_ok_marked
+        ld      a, 1
+        ld      (x86_dbg_fetch_ok_once), a
+        push    af
+        push    hl
+        ld      hl, x86_dbg_fetch_ok
+        call    x86_debug_port_string
+        pop     hl
+        pop     af
+.fetch_ok_marked:
         ; Emit the exact first successfully fetched BIOS opcode before decode.
         ld      a, (bios_first_instruction_trace)
         cp      1
@@ -2995,8 +3008,10 @@ x86_debug_port_string:
 ; reached without flooding the shared ATM/NeoGS debug stream.
 x86_dbg_dispatch_once: db 0
 x86_dbg_fetch_once:    db 0
+x86_dbg_fetch_ok_once: db 0
 x86_dbg_core_enter:    defb "[NGS X86] CORE ENTER",13,10,0
 x86_dbg_dispatch:      defb "[NGS X86] DISPATCH ENTER",13,10,0
 x86_dbg_fetch_begin:   defb "[NGS X86] FETCH BEGIN",13,10,0
+x86_dbg_fetch_ok:      defb "[NGS X86] FETCH OK",13,10,0
 x86_dbg_fetch_error:   defb "[NGS X86] FETCH ERROR",13,10,0
 x86_dbg_io_error:      defb "[NGS X86] IO TICK ERROR",13,10,0
