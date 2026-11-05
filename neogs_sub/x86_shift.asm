@@ -37,8 +37,9 @@ x86_shift_shl_cl_impl:
         ld      (x86_shift_count69), a
         jr      nz, .shift_loop
 .flags:
-        xor     a
+        ld      a, #10                ; PCem sets AF for SHL
         ld      (x86_shift_new_flags69), a
+        xor     a
         ld      (x86_shift_new_flags69+1), a
         ld      a, (x86_shift_carry69)
         or      a
