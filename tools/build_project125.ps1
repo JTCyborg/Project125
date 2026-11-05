@@ -10,7 +10,7 @@ try {
     New-Item -ItemType Directory -Force (Join-Path $root "build") | Out-Null
 
     & $biosVerifier
-    if (-not $?) { throw "Selected BIOS image validation failed." }
+    if (-not $?) { throw "BIOS image size check failed." }
 
     & $assembler "neogs_sub/build_firmware.asm"
     if ($LASTEXITCODE -ne 0) { throw "NeoGS firmware assembly failed with exit code $LASTEXITCODE." }
