@@ -340,6 +340,18 @@ x86_real_dispatch_no_progress:
         ld      (x86_io_irq_delivered), a
         call    x86_real_fetch8
         ret     c
+        ; Emit the exact first successfully fetched BIOS opcode before decode.
+        ld      a, (bios_first_instruction_trace)
+        cp      1
+        jr      nz, .first_fetch_trace_done
+        ld      (bios_first_opcode), a
+        ; Replace the temporary flag value with the actual opcode byte.
+        ld      a, (x86_fetch_exact_value)
+        ld      (bios_first_opcode), a
+        ld      a, 2
+        ld      (bios_first_instruction_trace), a
+        call    bios_trace_first_fetch
+.first_fetch_trace_done:
         call    x86_resident_escape_dispatch
         ret     c
         jr      z, x86_real_next
@@ -886,6 +898,15 @@ x86_real_jmp_far:
         ld      (x86_reg_cs), hl
         ld      hl, (x86_real_far_ip)
         ld      (x86_reg_ip), hl
+        ; The reset-vector BIOS starts with EA ptr16:16. Reaching here proves
+        ; the first opcode was decoded and its four-byte far pointer consumed.
+        ld      a, (bios_first_instruction_trace)
+        cp      2
+        jr      nz, .first_instruction_trace_done
+        xor     a
+        ld      (bios_first_instruction_trace), a
+        call    bios_trace_first_complete
+.first_instruction_trace_done:
         jp      x86_real_next
 
 ; 9A ptr16:16 — far CALL. Push old CS, then return IP, so RETF sees IP first.
