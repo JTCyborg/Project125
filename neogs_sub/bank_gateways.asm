@@ -31,7 +31,11 @@ bank_call_x86_real_execute:
         pop     af
         ld      hl, trace_gate_mapped
         call    neo_trace_ef_string
+        ld      hl, trace_gate_call
+        call    neo_trace_ef_string
         call    x86_real_execute
+        ld      hl, trace_gate_after_call
+        call    neo_trace_ef_string
         push    af
         ld      a, NGS_FW_BANK68_MPAG
         out     (MPAG), a
@@ -40,9 +44,11 @@ bank_call_x86_real_execute:
         call    neo_trace_ef_string
         ret
 
-trace_gate_enter:  defb "[GATE ENTER]",13,10,0
-trace_gate_mapped: defb "[GATE BANK68]",13,10,0
-trace_gate_exit:   defb "[GATE RETURN]",13,10,0
+trace_gate_enter:     defb "[GATE ENTER]",13,10,0
+trace_gate_mapped:    defb "[GATE BANK68]",13,10,0
+trace_gate_call:      defb "[GATE X86 CALL]",13,10,0
+trace_gate_after_call: defb "[GATE X86 RET]",13,10,0
+trace_gate_exit:      defb "[GATE RETURN]",13,10,0
 
 bank_call_x86_int_self_test:
         push    af
