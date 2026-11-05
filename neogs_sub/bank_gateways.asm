@@ -146,9 +146,9 @@ bank69_call_x86_real_execute:
 
 ; Overlay68 -> overlay69: generic D3 /6 SHL r/m16,CL implementation.
 bank_call_x86_shift_shl_cl:
+        push    af                      ; preserve the incoming ModR/M byte
         ld      a, #12
         ld      (x86_shift_diag_stage), a ; gateway reached before page-69 switch
-        push    af
         ld      a, NGS_FW_BANK69_MPAG
         out     (MPAG), a
         pop     af
