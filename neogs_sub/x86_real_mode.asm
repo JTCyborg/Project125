@@ -344,8 +344,7 @@ x86_real_dispatch_no_progress:
         ld      a, (bios_first_instruction_trace)
         cp      1
         jr      nz, .first_fetch_trace_done
-        ld      (bios_first_opcode), a
-        ; Replace the temporary flag value with the actual opcode byte.
+        ; Capture the exact opcode byte saved by the successful fetch.
         ld      a, (x86_fetch_exact_value)
         ld      (bios_first_opcode), a
         ld      a, 2
