@@ -550,7 +550,9 @@ command_boot_bios:
         ld      (x86_real_bounds_enable), a
         ld      a, 1
         ld      (x86_real_progress_enable), a
-        call    x86_real_execute
+        ; The interpreter lives in overlay bank 68. Always enter through
+        ; the resident gateway so MPAG is explicitly set after BIOS reset.
+        call    bank_call_x86_real_execute
         xor     a
         ld      (x86_real_progress_enable), a
         ; Compact stop trace: the host drains DBIT and mirrors it to port EF.
