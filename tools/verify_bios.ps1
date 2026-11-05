@@ -6,12 +6,12 @@ if (-not (Test-Path -LiteralPath $biosPath -PathType Leaf)) {
     exit 1
 }
 $length = (Get-Item -LiteralPath $biosPath).Length
-if ($length -lt 1 -or $length -gt 8192) {
-    Write-Error ("Unsupported BIOS size: {0}; allowed range is 1..8192 bytes" -f $length)
+if ($length -ne 8192) {
+    Write-Error ("Unexpected BIOS size: {0}; expected exactly 8192 bytes" -f $length)
     exit 1
 }
 $sha = (Get-FileHash -LiteralPath $biosPath -Algorithm SHA256).Hash.ToLowerInvariant()
-Write-Host ("BIOS image accepted: {0} bytes (maximum 8192)" -f $length)
-Write-Host "BIOS content/signature/reset-vector checks: disabled"
+Write-Host "BIOS image: 8192 bytes (8 KiB)"
+Write-Host "Content validation: disabled; any byte sequence is accepted"
 Write-Host ("SHA-256: {0}" -f $sha)
 exit 0

@@ -4,8 +4,8 @@
 ; Expected TR-DOS directory entry:
 ;   Name: BIOS
 ;   Type: C
-;   Length: 1..8192 bytes
-;   Sectors: ceil(length / 256), 1..32
+;   Length: 8192 bytes
+;   Sectors: 32
 ;
 ; BIOS.C is staged in host RAM at #C000..#DFFF before DMA starts. The complete
 ; disk-read phase and DMA-send phase are deliberately kept separate.
@@ -16,18 +16,17 @@
 ;   zx_main/bios_file_loader.asm
 ;
 ; Entry: neogs_bios_load_from_trdos
-; OUT: carry clear after the file is transferred and NeoGS acknowledges it.
+; OUT: carry clear after NeoGS acknowledges the complete 8 KiB transfer.
 ;     A=0 on success; A=error code on failure.
 ; The routine leaves interrupts disabled; caller owns final EI/DI policy.
 ; =========================================================================
 
-BIOS_TRDOS_MAX_SIZE        EQU #2000
-BIOS_TRDOS_MAX_SECTORS     EQU #20
+BIOS_TRDOS_FILE_SIZE       EQU #2000
+BIOS_TRDOS_SECTOR_COUNT    EQU #20
 BIOS_TRDOS_SECTOR_SIZE     EQU #0100
 BIOS_TRDOS_BUFFER          EQU #C000
 
-; Open BIOS.C, stage its sectors, right-align it in the 8 KiB ROM window,
-; pad unused leading bytes with FFh, and send the complete window to NeoGS.
+; Open BIOS.C, require exactly 8 KiB, stage 32 sectors and send them to NeoGS page 75.
 neogs_bios_load_from_trdos:
         di
         ld      (bios_trdos_saved_sp), sp
@@ -66,33 +65,15 @@ neogs_bios_load_from_trdos:
         or      b
         jp      nz, bios_trdos_bad_descriptor
 
-        ; Accept any non-empty BIOS image up to the 8 KiB ROM window.
-        ; No vendor marker, checksum, opcode, or reset-vector pattern is required.
+        ; Reject any file whose byte length or sector count is not exact.
         ld      hl, (#5CE8)
-        ld      a, h
-        or      l
-        jp      z, bios_trdos_bad_size
-        ld      (bios_trdos_file_size), hl
-        ld      de, BIOS_TRDOS_MAX_SIZE
+        ld      de, BIOS_TRDOS_FILE_SIZE
         or      a
         sbc     hl, de
-        jp      c, .bios_size_in_range
-        jr      z, .bios_size_in_range
-        jp      bios_trdos_bad_size
+        jp      nz, bios_trdos_bad_size
 
-.bios_size_in_range:
-        ; TR-DOS catalogue sector count must match ceil(file_length / 256).
-        ld      hl, (bios_trdos_file_size)
-        ld      de, #00FF
-        add     hl, de
-        ld      a, h
-        ld      b, a
         ld      a, (#5CEA)
-        or      a
-        jp      z, bios_trdos_bad_size
-        cp      BIOS_TRDOS_MAX_SECTORS + 1
-        jp      nc, bios_trdos_bad_size
-        cp      b
+        cp      BIOS_TRDOS_SECTOR_COUNT
         jp      nz, bios_trdos_bad_size
         ld      (bios_trdos_sectors_left), a
 
@@ -115,42 +96,11 @@ neogs_bios_load_from_trdos:
         jr      .bios_read_all_sectors
 
 .bios_all_sectors_read:
-        ; Move the selected file to the top of the 8 KiB ROM window. The x86
-        ; reset vector is always at FFFF0h, so shorter ROMs must be end-aligned.
-        ld      hl, (bios_trdos_file_size)
-        ld      de, #C000
-        add     hl, de
-        dec     hl
-        ld      de, #DFFF
-        ld      bc, (bios_trdos_file_size)
-        lddr
-
-        ; Fill the unused leading part with FFh (erased EPROM value).
-        ld      hl, BIOS_TRDOS_MAX_SIZE
-        ld      de, (bios_trdos_file_size)
-        or      a
-        sbc     hl, de
-        ld      (bios_trdos_prefix_size), hl
-        ld      a, h
-        or      l
-        jr      z, .bios_image_staged
-        ld      hl, #C000
-        ld      bc, (bios_trdos_prefix_size)
-.bios_fill_prefix:
-        ld      (hl), #FF
-        inc     hl
-        dec     bc
-        ld      a, b
-        or      c
-        jr      nz, .bios_fill_prefix
-
-.bios_image_staged:
-        ; Transfer a complete 8 KiB backing window; only the selected file
-        ; bytes occupy its end, preserving the 8086 FFFF:0000 reset mapping.
+        ; The complete 8 KiB image is resident at #C000..#DFFF.
         call    neogs_bios_transfer_start
         jp      c, bios_trdos_start_error
 
-        ld      a, BIOS_TRDOS_MAX_SECTORS
+        ld      a, BIOS_TRDOS_SECTOR_COUNT
         ld      (bios_trdos_transfer_sectors_left), a
         ld      hl, BIOS_TRDOS_BUFFER
 .bios_transfer_all_sectors:
@@ -178,12 +128,12 @@ neogs_bios_load_from_trdos:
 
         ld      a, (bios_host_result_status)
         or      a
-        jp      nz, bios_trdos_rom_validation_error
+        jp      nz, bios_trdos_firmware_error
         ld      hl, (bios_host_result_ax)
         ld      de, #B105
         or      a
         sbc     hl, de
-        jp      nz, bios_trdos_rom_validation_error
+        jp      nz, bios_trdos_firmware_error
 
         xor     a
         ld      (bios_trdos_file_error), a
@@ -217,7 +167,7 @@ bios_trdos_finish_error:
 bios_trdos_result_error:
         ld      a, 9
         jr      bios_trdos_fail
-bios_trdos_rom_validation_error:
+bios_trdos_firmware_error:
         ld      a, 10
 
 bios_trdos_fail:
@@ -293,5 +243,3 @@ bios_trdos_file_error:   db 0
 bios_trdos_saved_sp:     dw 0
 bios_trdos_read_buffer:  dw BIOS_TRDOS_BUFFER
 bios_trdos_transfer_sectors_left: db 0
-bios_trdos_file_size:            dw 0
-bios_trdos_prefix_size:          dw 0

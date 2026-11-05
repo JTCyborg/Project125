@@ -1,31 +1,29 @@
-# Project125 BIOS image manifest
+# Project125 BIOS image contract
 
-## BIOS file contract
+## Accepted image
 
-- Active disk image: `bios/BIOS.BIN`
-- Accepted size: 1..8192 bytes (inclusive)
-- File type on TR-DOS: C; name: BIOS
-- No vendor identification string is required.
-- No checksum, signature, opcode, or reset-vector byte pattern is checked.
-- The selected bytes are right-aligned in the 8 KiB ROM window.
-- Unused leading bytes are filled with FFh.
-- Guest physical ROM window: FE000h..FFFFFh.
-- NeoGS backing: physical page 75, offsets 0000h..1FFFh.
-- 8086 reset entry remains FFFF:0000 (physical FFFF0h).
+- File: `bios/BIOS.BIN`
+- Required size: exactly 8192 bytes (8 KiB)
+- Accepted contents: arbitrary; no manufacturer, product, signature, checksum,
+  opcode, reset-vector, or BIOS-version checks are performed.
+- TR-DOS transfer: 32 sectors of 256 bytes each.
+- NeoGS destination: physical page 75, offsets `0000h..1FFFh`.
+- Guest mapping: physical `FE000h..FFFFFh`.
+- 8086 reset state: `FFFF:0000` (physical `FFFF0h`).
 
-## Size and transfer constraints
+## Loader contract
 
-The host reads the TR-DOS file into its staging buffer, checks only that the
-file is non-empty and no larger than 8192 bytes, and verifies that the
-catalogue sector count matches ceil(file_length / 256). It then end-aligns the
-file in an 8 KiB buffer and transfers the complete buffer to NeoGS.
+The host verifies that the TR-DOS directory entry describes exactly 8192 bytes
+and 32 sectors, reads the complete file, and transfers all 32 sectors to NeoGS.
+NeoGS acknowledges successful receipt. The five bytes at reset-vector offset
+`1FF0h` may be printed as diagnostics, but are never used to accept or reject
+the image.
 
-The fixed 8 KiB DMA transfer is retained, so the existing page-75 mapping and
-x86 ROM overlay do not need resizing. The reset-vector bytes are emitted to the
-debug log for inspection only; they are not used to accept or reject the image.
+Accepting an image does not guarantee that it contains executable BIOS code or
+that it will complete POST. Execution compatibility is a separate runtime
+property.
 
-## Runtime compatibility
+## Verification
 
-Accepting a file does not guarantee that it is a valid or executable BIOS.
-The 8086 emulator may stop on unsupported instructions, and the selected BIOS
-may expect hardware services that Project125 does not yet implement.
+`tools/verify_bios.ps1` checks only that `bios/BIOS.BIN` exists and is exactly
+8192 bytes. SHA-256 is printed for identification only.

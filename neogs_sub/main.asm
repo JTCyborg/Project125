@@ -463,7 +463,7 @@ command_run_x86_real:
 
 ; -------------------------------------------------------------------------
 ; Project125 BIOS ROM transfer.
-; Host streams an 8 KiB backing window through the existing ZX DMA channel.
+; Host streams exactly 8192 bytes through the existing ZX DMA channel.
 ; DMA physical target 12C000h is the start of NeoGS physical page 75.
 ; Host ends the transfer by asserting CBIT after the last byte.
 ; -------------------------------------------------------------------------
@@ -510,8 +510,7 @@ command_load_bios:
 .bios_dma_host_end:
         xor     a
         out     (DMA_CST), a
-        ; Report the raw top-of-ROM bytes for diagnostics only. They are
-        ; never compared against a vendor signature or a reset-vector pattern.
+        ; Diagnostic-only reset-vector dump. BIOS contents are not validated.
         call    bios_rom_debug_dump_tail
         ld      a, 1
         ld      (bios_rom_loaded), a
@@ -522,19 +521,8 @@ command_load_bios:
         out     (CLRCBIT), a
         jp      main_loop
 
-bios_boot_entry_debug:
-        defb "[NGS] BOOT BIOS ENTRY", 13, 10, 0
-bios_boot_reset_done_debug:
-        defb "[NGS] BIOS RESET STATE DONE", 13, 10, 0
-bios_exec_call_debug:
-        defb "[NGS] CALL BIOS EXEC BANK68", 13, 10, 0
-bios_exec_return_debug:
-        defb "[NGS] BIOS EXEC RETURNED", 13, 10, 0
-
-; Start the real 8086 reset sequence at FFFF:0000 after BIOS transfer/validation.
+; Start the real 8086 reset sequence after an acknowledged 8 KiB transfer.
 command_boot_bios:
-        ld      hl, bios_boot_entry_debug
-        call    neo_debug_port_string
         ld      a, (bios_rom_loaded)
         or      a
         jr      nz, .bios_ready
@@ -554,29 +542,15 @@ command_boot_bios:
         ld      hl, bios_boot_message
         call    neo_debug_send_string
         call    bios_rom_reset_state
-        ld      hl, bios_boot_reset_done_debug
-        call    neo_debug_port_string
-        ; Enable bounded guest I/O tracing only for the BIOS run. Records
-        ; travel through the existing DBIT/GSDAT IPC stream, never OUT ports.
-        xor     a
-        ld      (x86_io_trace_count), a
-        ld      a, 1
-        ld      (x86_io_trace_enable), a
         ; BIOS execution is unrestricted real-mode ROM fetch, never the
         ; bounded 0000:5002 DMA-task sandbox.
         xor     a
         ld      (x86_real_bounds_enable), a
         ld      a, 1
         ld      (x86_real_progress_enable), a
-        ; The executor lives in overlay page 68; always enter through its bank gateway.
-        ld      hl, bios_exec_call_debug
-        call    neo_debug_port_string
-        call    bank_call_x86_real_execute
-        ld      hl, bios_exec_return_debug
-        call    neo_debug_port_string
+        call    x86_real_execute
         xor     a
         ld      (x86_real_progress_enable), a
-        ld      (x86_io_trace_enable), a
         ; Compact stop trace: the host drains DBIT and mirrors it to port EF.
         ld      hl, bios_stop_prefix
         call    neo_debug_send_string
@@ -609,10 +583,6 @@ command_boot_bios:
         ld      a, 13
         call    neo_send_data_byte
         ld      a, 10
-        call    neo_send_data_byte
-        ; Out-of-band terminal byte: host must not confuse transient CBIT
-        ; clears from keyboard DMA with completion of the BIOS executor.
-        ld      a, NGS_BIOS_DONE_MARKER
         call    neo_send_data_byte
         ld      hl, (x86_reg_ax)
         ld      (saved_x86_ax), hl
@@ -983,151 +953,55 @@ neo_debug_send_string:
         call    neo_send_data_byte
         jr      neo_debug_send_string
 
-; One-shot proof that the 8086 interpreter fetched its first guest opcode.
-; IN: A = opcode byte. Preserves all Z80 registers and flags.
-bios_first_fetch_emit:
-        push    af
-        push    bc
-        push    de
-        push    hl
-        ld      hl, bios_first_fetch_prefix
-        call    neo_debug_port_string
-        ld      hl, (x86_reg_cs)
-        call    neo_debug_port_hex16
-        ld      a, ':'
-        out     (#EF), a
-        ld      hl, (x86_reg_ip)
-        call    neo_debug_port_hex16
-        ld      hl, bios_first_fetch_opcode_label
-        call    neo_debug_port_string
-        ld      a, (x86_real_opcode)
-        call    neo_debug_port_hex8
-        ld      a, 13
-        out     (#EF), a
-        ld      a, 10
-        out     (#EF), a
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
-        ret
-
-bios_first_fetch_prefix:
-        defb "[NGS] BIOS FIRST FETCH CS:IP=", 0
-bios_first_fetch_opcode_label:
-        defb " OP=", 0
-
-; BIOS heartbeat is emitted directly to NeoGS debug port #EF.
-; It is independent of DBIT/GSDAT, so guest execution and keyboard DMA
-; cannot block each other. One record per 2048 instructions or REP elements.
-; Emit one complete 8086 execution snapshot on the shared #EF debug port.
-; CS:IP is the NEXT instruction address at the dispatch boundary.
-; LASTOP is the opcode fetched for the instruction that just completed.
-; All guest registers are read from the x86 register file; host registers preserved.
+; BIOS execution heartbeat, called from the page-68 interpreter and REP engine.
+; Preserves all guest-visible Z80 working registers; transport errors are
+; intentionally ignored so diagnostics can never change guest execution.
+; One record every 2048 instructions or REP elements:
+;   [BIOS] STEP CS:IP CX=hhhh
 bios_progress_emit:
         push    af
         push    bc
         push    de
         push    hl
-
         ld      hl, bios_progress_prefix
-        call    neo_debug_port_string
-
-        ; CS:IP — address of the next guest instruction.
+        call    neo_debug_send_string
         ld      hl, (x86_reg_cs)
-        call    neo_debug_port_hex16
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
         ld      a, ':'
-        out     (#EF), a
+        call    neo_send_data_byte
         ld      hl, (x86_reg_ip)
-        call    neo_debug_port_hex16
-
-        ; LASTOP is the most recently fetched guest opcode.
-        ld      hl, bios_progress_lastop_label
-        call    neo_debug_port_string
-        ld      a, (x86_real_opcode)
-        call    neo_debug_port_hex8
-
-        ld      hl, bios_progress_ax_label
-        call    neo_debug_port_string
-        ld      hl, (x86_reg_ax)
-        call    neo_debug_port_hex16
-
-        ld      hl, bios_progress_bx_label
-        call    neo_debug_port_string
-        ld      hl, (x86_reg_bx)
-        call    neo_debug_port_hex16
-
-        ld      hl, bios_progress_cx_label
-        call    neo_debug_port_string
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
         ld      hl, (x86_reg_cx)
-        call    neo_debug_port_hex16
-
-        ld      hl, bios_progress_dx_label
-        call    neo_debug_port_string
-        ld      hl, (x86_reg_dx)
-        call    neo_debug_port_hex16
-
-        ld      hl, bios_progress_flags_label
-        call    neo_debug_port_string
-        ld      hl, (x86_reg_flags)
-        call    neo_debug_port_hex16
-
+        ld      a, ' '
+        call    neo_send_data_byte
+        ld      a, 'C'
+        call    neo_send_data_byte
+        ld      a, 'X'
+        call    neo_send_data_byte
+        ld      a, '='
+        call    neo_send_data_byte
+        ld      a, h
+        call    neo_debug_hex8
+        ld      a, l
+        call    neo_debug_hex8
         ld      a, 13
-        out     (#EF), a
+        call    neo_send_data_byte
         ld      a, 10
-        out     (#EF), a
-
+        call    neo_send_data_byte
         pop     hl
         pop     de
         pop     bc
         pop     af
         ret
 
-; IN: HL=word. Emits four hexadecimal digits, preserving HL.
-neo_debug_port_hex16:
-        push    hl
-        ld      a, h
-        call    neo_debug_port_hex8
-        ld      a, l
-        call    neo_debug_port_hex8
-        pop     hl
-        ret
-
 bios_progress_prefix:
-        defb "[NGS] BIOS ", 0
-bios_progress_lastop_label:
-        defb " LASTOP=", 0
-bios_progress_ax_label:
-        defb " AX=", 0
-bios_progress_bx_label:
-        defb " BX=", 0
-bios_progress_cx_label:
-        defb " CX=", 0
-bios_progress_dx_label:
-        defb " DX=", 0
-bios_progress_flags_label:
-        defb " FLAGS=", 0
-
-; A=byte; write two uppercase hexadecimal digits to NeoGS debug port #EF.
-neo_debug_port_hex8:
-        push    af
-        rrca
-        rrca
-        rrca
-        rrca
-        and     #0F
-        call    neo_debug_port_hex_nibble
-        pop     af
-        and     #0F
-neo_debug_port_hex_nibble:
-        add     a, '0'
-        cp      '9'+1
-        jr      c, .neo_port_hex_digit
-        add     a, 7
-.neo_port_hex_digit:
-        out     (#EF), a
-        ret
-
+        defb    "[BIOS] STEP ", 0
 x86_real_progress_enable:
         db      0
 
@@ -1411,6 +1285,47 @@ x86_uart_com1_regs:
         db 0,0,0,0,0,0,0,0
 x86_uart_com2_regs:
         db 0,0,0,0,0,0,0,0
+
+x86_resident_io_trace_read8:
+        ; Keep the first 16 unmapped reads, not just the first one.
+        ; This reveals the complete BIOS probe sequence before System error.
+        ld      a, (x86_io_trace_count)
+        cp      16
+        ret     nc
+        inc     a
+        ld      (x86_io_trace_count), a
+        push    af
+        push    hl
+        ld      a, '!'
+        out     (#EF), a
+        ld      hl, (x86_io_port)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     af
+        ret
+
+x86_io_trace_count: db 0
 
 ; Trace the first four SCAS comparisons during BIOS startup.
 ; The previous failure-only trace produced no output, so the current
@@ -1768,14 +1683,6 @@ x86_io_tick:
         ret
 
 x86_ppi_read_port_a:
-        ; PCem keyboard_xt.c: while PB7 is asserted the XT data port
-        ; exposes the system configuration byte, not the keyboard latch.
-        ld      a, (x86_ppi_keyboard_pb)
-        bit     7, a
-        jr      z, .keyboard_data
-        ld      a, #6D                    ; IBM 5150 CGA, no 8087 installed
-        ret
-.keyboard_data:
         ld      a, (x86_ppi_keyboard_data)
         ret
 
@@ -1784,9 +1691,6 @@ x86_ppi_read_port_b:
         ret
 
 x86_ppi_read_port_c:
-        ; IBM 5150 with 640 KiB: (640-64)/32 = 12h.
-        ; PB2 selects the low/high memory-size nibble. Cassette input and
-        ; PIT channel-2 speaker sense remain low until those devices exist.
         ld      a, (x86_ppi_port_b)
         bit     2, a
         ld      a, 1
@@ -1799,79 +1703,40 @@ x86_ppi_read_control:
         ret
 
 x86_ppi_write_port_b:
-        ; PCem keyboard_xt_write(): store PB, process PB6 reset edge,
-        ; then apply PB7 keyboard acknowledge.
+        ; IBM XT keyboard acknowledge is level-qualified by PB7: every write
+        ; with PB7 high clears the current PA byte (not only a rising edge).
         ld      a, (x86_ppi_keyboard_pb)
         ld      b, a
         ld      a, (x86_io_value)
         ld      (x86_ppi_port_b), a
         ld      (x86_ppi_keyboard_pb), a
+        bit     7, a
+        call    nz, x86_kbd_acknowledge
 
-        ; PB6 low-to-high resets the XT interface and queues BAT AA.
+        ; PB6 low-to-high is the XT keyboard reset pulse. PCem's reference
+        ; model flushes pending keys and queues BAT AA; reproduce that order.
+        ld      a, (x86_ppi_keyboard_pb)
         bit     6, b
-        jr      nz, .acknowledge
+        ret     nz
         bit     6, a
-        jr      z, .acknowledge
+        ret     z
         xor     a
         ld      (x86_kbd_queue_read), a
         ld      (x86_kbd_queue_write), a
         ld      (x86_kbd_queue_count), a
-        ld      (x86_kbd_wantirq), a
         ld      (x86_ppi_keyboard_ready), a
         ld      (x86_ppi_keyboard_data), a
         ld      (x86_kbd_latch_from_queue), a
         ld      a, (x86_pic_pending)
-        and     #FD
+        res     1, a
         ld      (x86_pic_pending), a
         ld      a, #AA
         ld      (x86_kbd_key_code), a
-        call    x86_kbd_enqueue
-
-.acknowledge:
-        ld      a, (x86_ppi_keyboard_pb)
-        bit     7, a
-        call    nz, x86_kbd_acknowledge
-        ret
+        jp      x86_kbd_enqueue
 
 x86_ppi_write_control:
         ld      a, (x86_io_value)
-        bit     7, a
-        jr      z, .bit_set_reset
-        ; Mode-set control word.
         ld      (x86_ppi_control), a
-        ret
-.bit_set_reset:
-        ; 8255 BSR: D3..D1 select PC bit, D0 sets (1) or resets (0).
-        ld      b, a
-        and     #0E
-        srl     a
-        ld      c, a
-        ld      a, 1
-.bsr_mask:
-        ld      e, a
-        ld      a, c
-        or      a
-        jr      z, .bsr_apply
-        ld      a, e
-        add     a, a
-        dec     c
-        jr      .bsr_mask
-.bsr_apply:
-        ld      b, a
-        ld      a, (x86_io_value)
-        bit     0, a
-        ld      a, (x86_ppi_port_c)
-        jr      z, .bsr_clear
-        or      b
-        jr      .bsr_store
-.bsr_clear:
-        ld      a, b
-        cpl
-        ld      b, a
-        ld      a, (x86_ppi_port_c)
-        and     b
-.bsr_store:
-        ld      (x86_ppi_port_c), a
         ret
 
 
@@ -1888,33 +1753,13 @@ x86_ppi_write_control:
 X86_KBD_DMA_WAIT EQU #FFFF
 
 x86_host_input_service_poll:
-        ; #EF is the independent shared debug port. Do not put diagnostics
-        ; into DBIT/GSDAT here: the host may be waiting for this READY edge.
-        push    af
-        push    bc
-        push    de
-        push    hl
-        ld      a, (x86_host_input_poll_seen)
-        or      a
-        jr      nz, .kbd_poll_marker_done
-        inc     a
-        ld      (x86_host_input_poll_seen), a
-        ld      hl, x86_kbd_poll_message
-        call    neo_debug_port_string
-.kbd_poll_marker_done:
-        ; CMD_BOOT_BIOS has already been acknowledged. A new CBIT edge while
-        ; the interpreter runs is the host keyboard mailbox doorbell.
         in      a, (ZXSTAT)
         bit     B_CBIT, a
-        jr      z, .kbd_service_done
-        ; The same command latch used by main_loop identifies the request.
-        ; Do not treat an unrelated CBIT transaction as a keyboard DMA frame.
+        ret     z
         in      a, (ZXCMD)
         cp      CMD_HOST_INPUT
-        jr      nz, .kbd_service_done
-        ld      hl, x86_kbd_request_message
-        call    neo_debug_port_string
-        ; Arm the complete DMA receiver before releasing CBIT to the host.
+        ret     nz
+
         ld      a, C_DMA_ZX
         out     (DMA_MOD), a
         xor     a
@@ -1927,6 +1772,7 @@ x86_host_input_service_poll:
         out     (DMA_CST), a
         xor     a
         out     (CLRCBIT), a
+
         ld      d, 8
 .kbd_dma_outer:
         ld      bc, X86_KBD_DMA_WAIT
@@ -1940,45 +1786,16 @@ x86_host_input_service_poll:
         jr      nz, .kbd_dma_wait
         dec     d
         jr      nz, .kbd_dma_outer
-        ; Bounded recovery: close DMA and release the host if its end marker
-        ; never arrived. Do not leave the DMA engine armed across BIOS code.
         xor     a
         out     (DMA_CST), a
         out     (CLRCBIT), a
-        ld      hl, x86_kbd_timeout_message
-        call    neo_debug_port_string
-        jr      .kbd_service_done
+        ret
 .kbd_dma_done:
         xor     a
         out     (DMA_CST), a
         out     (CLRCBIT), a
         call    x86_kbd_process_matrix
-        ld      hl, x86_kbd_done_message
-        call    neo_debug_port_string
-.kbd_service_done:
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
         ret
-
-; Independent local NeoGS debug-port helper, retained for #EF-only traces.
-neo_debug_port_string:
-        ld      a, (hl)
-        inc     hl
-        or      a
-        ret     z
-        out     (#EF), a
-        jr      neo_debug_port_string
-
-x86_kbd_poll_message:
-        defb "[NGS] INPUT POLL", 13, 10, 0
-x86_kbd_request_message:
-        defb "[NGS] INPUT REQUEST CBIT=1", 13, 10, 0
-x86_kbd_timeout_message:
-        defb "[NGS] INPUT DMA TIMEOUT", 13, 10, 0
-x86_kbd_done_message:
-        defb "[NGS] INPUT DMA DONE", 13, 10, 0
 
 ; Compare the eight 5-bit rows and enqueue XT make/break scan codes.
 x86_kbd_process_matrix:
@@ -2025,7 +1842,7 @@ x86_kbd_process_matrix:
         or      #80
         ld      (x86_kbd_key_code), a
 .key_make:
-        call    x86_kbd_bios_capture
+        call    x86_kbd_debug_emit
         call    x86_kbd_enqueue
 
 .bit_advance:
@@ -2078,46 +1895,11 @@ x86_kbd_enqueue:
         ret
 
 x86_kbd_load_latch:
-        ; PCem keyboard_xt_poll() cadence is 1 ms. The NeoGS monotonic
-        ; timer runs at 37.5 kHz, so poll at 37 ticks rather than once
-        ; per emulated 8086 instruction.
-        ld      hl, (neo_timer_ticks)
-        ld      de, (x86_kbd_poll_last_tick)
-        or      a
-        sbc     hl, de
-        ld      de, 37
-        or      a
-        sbc     hl, de
-        ret     c
-        ld      hl, (neo_timer_ticks)
-        ld      (x86_kbd_poll_last_tick), hl
-
-        ; XT keyboard scanning is inhibited while PB6 is low.
+        ; XT keyboard scanning is inhibited while PB6 holds the interface in
+        ; reset. A queued event is presented only after the BIOS releases it.
         ld      a, (x86_ppi_port_b)
         bit     6, a
-        jr      nz, .interface_enabled
-        xor     a
-        ld      (x86_kbd_wantirq), a
-        ret
-
-.interface_enabled:
-        ; Match PCem's two-stage poll: first arm a queued byte, then on the
-        ; next 1 ms poll place it on PA and raise IRQ1.
-        ld      a, (x86_kbd_wantirq)
-        or      a
-        jr      z, .queue_next
-        xor     a
-        ld      (x86_kbd_wantirq), a
-        ld      a, (x86_kbd_key_waiting)
-        ld      (x86_ppi_keyboard_data), a
-        ld      a, 1
-        ld      (x86_ppi_keyboard_ready), a
-        ld      a, (x86_pic_pending)
-        set     1, a
-        ld      (x86_pic_pending), a
-        ret
-
-.queue_next:
+        ret     z
         ld      a, (x86_ppi_keyboard_ready)
         or      a
         ret     nz
@@ -2130,7 +1912,8 @@ x86_kbd_load_latch:
         ld      hl, x86_kbd_queue
         add     hl, de
         ld      a, (hl)
-        ld      (x86_kbd_key_waiting), a
+        ld      (x86_ppi_keyboard_data), a
+        ; Remove the byte from the FIFO when it enters the XT data latch.
         ld      a, (x86_kbd_queue_read)
         inc     a
         and     #1F
@@ -2139,12 +1922,17 @@ x86_kbd_load_latch:
         dec     a
         ld      (x86_kbd_queue_count), a
         ld      a, 1
-        ld      (x86_kbd_wantirq), a
+        ld      (x86_ppi_keyboard_ready), a
+        ld      (x86_kbd_latch_from_queue), a
+        ld      a, (x86_pic_pending)
+        set     1, a
+        ld      (x86_pic_pending), a
         ret
 
 x86_kbd_acknowledge:
-        ; PCem clears PA, shift_full and IRQ1 on every PB7-high write,
-        ; even if no byte is currently latched.
+        ld      a, (x86_ppi_keyboard_ready)
+        or      a
+        ret     z
         xor     a
         ld      (x86_ppi_keyboard_ready), a
         ld      (x86_ppi_keyboard_data), a
@@ -2152,110 +1940,87 @@ x86_kbd_acknowledge:
         ld      a, (x86_pic_pending)
         res     1, a
         ld      (x86_pic_pending), a
-        ; PCem clears PA/shift_full here. The next queued byte is staged by
-        ; the following 1 ms keyboard poll, never inside the acknowledge.
+        ; Do not load the next byte here. The next instruction-boundary
+        ; keyboard poll presents it, matching the XT controller's delay. 
         ret
 
-; Capture make codes for the BIOS INT 16h compatibility hook. The physical
-; XT FIFO and IRQ1 path remain independent and receive both make and break.
-x86_kbd_bios_capture:
+; NeoGS scan-code trace written directly to local debug port EFh.
+; Format matches ATM: [NGS] K=xx SC=xx M/B.
+x86_kbd_debug_emit:
         push    af
         push    bc
         push    de
         push    hl
+        ld      a, '['
+        out     (#EF), a
+        ld      a, 'N'
+        out     (#EF), a
+        ld      a, 'G'
+        out     (#EF), a
+        ld      a, 'S'
+        out     (#EF), a
+        ld      a, ']'
+        out     (#EF), a
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'K'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      a, (x86_kbd_matrix_index)
+        call    x86_kbd_debug_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'S'
+        out     (#EF), a
+        ld      a, 'C'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
         ld      a, (x86_kbd_key_code)
-        and     #7F                       ; normalize make/break scan code
-        cp      #2A                       ; left Shift
-        jp      z, .shift_key
-        cp      #1D                       ; Ctrl
-        jp      z, .control_key
+        call    x86_kbd_debug_hex8
+        ld      a, ' '
+        out     (#EF), a
         ld      a, (x86_kbd_new_bit)
         or      a
-        jp      nz, .done                 ; INT 16h queues make codes only
-        ld      a, (bios_keyboard_pending)
-        cp      16
-        jp      nc, .done                 ; bounded 16-key BIOS queue
-        ld      a, (x86_kbd_key_code)
-        cp      #40
-        jp      nc, .done
-        ld      e, a
-        ld      d, 0
-        ld      hl, x86_kbd_ascii_table
-        add     hl, de
-        ld      a, (hl)
-        or      a
-        jp      z, .done
-        ld      b, a
-        ld      a, (bios_keyboard_shift_flags)
-        bit     1, a
-        jr      z, .ascii_ready
-        ld      a, b
-        cp      #61
-        jr      c, .ascii_ready
-        cp      #7B
-        jr      nc, .ascii_ready
-        sub     #20
-        ld      b, a
-.ascii_ready:
-        ; Append AX-format key word (AH=scan, AL=ASCII) to BIOS queue.
-        ld      a, (bios_keyboard_queue_write)
-        add     a, a
-        ld      e, a
-        ld      d, 0
-        ld      hl, bios_keyboard_queue
-        add     hl, de
-        ld      a, (x86_kbd_key_code)
-        ld      (hl), a
-        inc     hl
-        ld      (hl), b
-        ld      a, (bios_keyboard_queue_write)
-        inc     a
-        and     #0F
-        ld      (bios_keyboard_queue_write), a
-        ld      a, (bios_keyboard_pending)
-        inc     a
-        ld      (bios_keyboard_pending), a
-        jp      .done
-.shift_key:
-        ld      a, (bios_keyboard_shift_flags)
-        ld      b, a
-        ld      a, (x86_kbd_new_bit)
-        or      a
-        ld      a, b
-        jr      nz, .shift_release
-        or      #02
-        jr      .shift_store
-.shift_release:
-        and     #FD
-.shift_store:
-        ld      (bios_keyboard_shift_flags), a
-        jr      .done
-.control_key:
-        ld      a, (bios_keyboard_shift_flags)
-        ld      b, a
-        ld      a, (x86_kbd_new_bit)
-        or      a
-        ld      a, b
-        jr      nz, .control_release
-        or      #04
-        jr      .control_store
-.control_release:
-        and     #FB
-.control_store:
-        ld      (bios_keyboard_shift_flags), a
-.done:
+        jr      nz, .break
+        ld      a, 'M'
+        out     (#EF), a
+        jr      .newline
+.break:
+        ld      a, 'B'
+        out     (#EF), a
+.newline:
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
         pop     hl
         pop     de
         pop     bc
         pop     af
         ret
 
-; XT set-1 scan-code to unshifted ASCII. Entries 00h..3Fh.
-x86_kbd_ascii_table:
-        db #00,#1B,#31,#32,#33,#34,#35,#36,#37,#38,#39,#30,#2D,#3D,#08,#09
-        db #71,#77,#65,#72,#74,#79,#75,#69,#6F,#70,#5B,#5D,#0D,#00,#61,#73
-        db #64,#66,#67,#68,#6A,#6B,#6C,#3B,#27,#60,#00,#5C,#7A,#78,#63,#76
-        db #62,#6E,#6D,#2C,#2E,#2F,#00,#2A,#00,#20,#00,#00,#00,#00,#00,#00
+x86_kbd_debug_hex8:
+        push    af
+        rrca
+        rrca
+        rrca
+        rrca
+        and     #0F
+        call    x86_kbd_debug_nibble
+        pop     af
+        and     #0F
+        jp      x86_kbd_debug_nibble
+
+x86_kbd_debug_nibble:
+        add     a, '0'
+        cp      '9'+1
+        jr      c, .digit
+        add     a, 7
+.digit:
+        out     (#EF), a
+        ret
 
 x86_kbd_scancode_table:
         db #2A,#2C,#2D,#2E,#2F
@@ -2268,7 +2033,6 @@ x86_kbd_scancode_table:
         db #39,#1D,#32,#31,#30
 
 x86_kbd_matrix_previous: defs 8, #1F
-x86_host_input_poll_seen: db 0
 x86_kbd_matrix_index: db 0
 x86_kbd_row_index: db 0
 x86_kbd_new_row: db 0
@@ -2279,9 +2043,7 @@ x86_kbd_queue: defs 32, 0
 x86_kbd_queue_read: db 0
 x86_kbd_queue_write: db 0
 x86_kbd_queue_count: db 0
-x86_kbd_key_waiting: db 0
-x86_kbd_wantirq: db 0
-x86_kbd_poll_last_tick: dw 0
+
 
 x86_ppi_keyboard_ready: db 0
 x86_kbd_latch_from_queue: db 0
