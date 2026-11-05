@@ -1070,8 +1070,8 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261106-18",13,10
-        defb "[NGS] BASE COMMIT 985654D",13,10,0
+        defb "[NGS] BUILD 20261106-19",13,10
+        defb "[NGS] BASE COMMIT 5CF9E68",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
 trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
@@ -3384,7 +3384,6 @@ x86_stack_transition_trace:
         ld      hl, x86_stack_trace_sp_reg_prefix
         call    x86_f7_trace_string
 .trace_sp_fields:
-        call    x86_stack_trace_print_cs_ip
         call    x86_stack_trace_print_cs_ip
         ld      hl, x86_stack_trace_ss_label
         call    x86_f7_trace_string
