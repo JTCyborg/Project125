@@ -2042,9 +2042,9 @@ x86_kbd_bios_capture:
         ld      a, (x86_kbd_key_code)
         and     #7F                       ; normalize make/break scan code
         cp      #2A                       ; left Shift
-        jr      z, .shift_key
+        jp      z, .shift_key
         cp      #1D                       ; Ctrl
-        jr      z, .control_key
+        jp      z, .control_key
         ld      a, (x86_kbd_new_bit)
         or      a
         jp      nz, .done                 ; INT 16h queues make codes only
