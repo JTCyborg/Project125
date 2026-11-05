@@ -31,6 +31,9 @@ bank_call_x86_real_execute:
         pop     af
         ld      hl, trace_gate_mapped
         call    neo_trace_ef_string
+        ; Read the actual bytes visible through WIN2 after selecting page 68.
+        ; This runs in resident bank code, before CALL into any overlay symbol.
+        call    bank_trace_overlay68_window
         call    neogs_overlay68_probe
         ld      hl, trace_gate_probe_return
         call    neo_trace_ef_string
@@ -53,6 +56,62 @@ trace_gate_probe_return: defb "[GATE PROBE RET]",13,10,0
 trace_gate_call:      defb "[GATE X86 CALL]",13,10,0
 trace_gate_after_call: defb "[GATE X86 RET]",13,10,0
 trace_gate_exit:      defb "[GATE RETURN]",13,10,0
+
+; Dump the first 16 bytes visible at $8000 after MPAG has been set to page 68.
+; Direct #EF output is intentional: this probe must not depend on DBIT/DMA.
+; Preserves all caller registers.
+bank_trace_overlay68_window:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, trace_overlay68_window_prefix
+        call    neo_trace_ef_string
+        ld      hl, #8000
+        ld      b, 16
+.byte_loop:
+        ld      a, (hl)
+        push    hl
+        push    bc
+        call    bank_trace_overlay68_hex8
+        pop     bc
+        pop     hl
+        inc     hl
+        djnz    .byte_loop
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+; IN: A=byte. Emit two hex digits directly to the shared debug port.
+bank_trace_overlay68_hex8:
+        push    af
+        rrca
+        rrca
+        rrca
+        rrca
+        and     #0F
+        call    bank_trace_overlay68_nibble
+        pop     af
+        and     #0F
+        jp      bank_trace_overlay68_nibble
+
+bank_trace_overlay68_nibble:
+        add     a, '0'
+        cp      '9'+1
+        jr      c, .digit
+        add     a, 7
+.digit:
+        out     (#EF), a
+        ret
+
+trace_overlay68_window_prefix:
+        defb    "[NGS BANK68 BYTES 8000-800F] ",0
 
 bank_call_x86_int_self_test:
         push    af
