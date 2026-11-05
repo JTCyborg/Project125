@@ -23,7 +23,7 @@ x86_real_io_instruction:
         ld      (trace_io_instruction_once), a
         ld      hl, trace_io_instruction
         call    neo_trace_ef_string
- .io_instruction_trace_done:
+.io_instruction_trace_done:
         pop     af
         ld      (x86_io_opcode), a
 
