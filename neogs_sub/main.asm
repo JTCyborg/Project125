@@ -1002,49 +1002,93 @@ neo_debug_send_string:
 ; BIOS heartbeat is emitted directly to NeoGS debug port #EF.
 ; It is independent of DBIT/GSDAT, so guest execution and keyboard DMA
 ; cannot block each other. One record per 2048 instructions or REP elements.
+; Emit one complete 8086 execution snapshot on the shared #EF debug port.
+; CS:IP is the NEXT instruction address at the dispatch boundary.
+; LASTOP is the opcode fetched for the instruction that just completed.
+; All guest registers are read from the x86 register file; host registers preserved.
 bios_progress_emit:
         push    af
         push    bc
         push    de
         push    hl
+
         ld      hl, bios_progress_prefix
         call    neo_debug_port_string
+
+        ; CS:IP — address of the next guest instruction.
         ld      hl, (x86_reg_cs)
-        ld      a, h
-        call    neo_debug_port_hex8
-        ld      a, l
-        call    neo_debug_port_hex8
+        call    neo_debug_port_hex16
         ld      a, ':'
         out     (#EF), a
         ld      hl, (x86_reg_ip)
-        ld      a, h
+        call    neo_debug_port_hex16
+
+        ; LASTOP is the most recently fetched guest opcode.
+        ld      hl, bios_progress_lastop_label
+        call    neo_debug_port_string
+        ld      a, (x86_real_opcode)
         call    neo_debug_port_hex8
-        ld      a, l
-        call    neo_debug_port_hex8
+
+        ld      hl, bios_progress_ax_label
+        call    neo_debug_port_string
+        ld      hl, (x86_reg_ax)
+        call    neo_debug_port_hex16
+
+        ld      hl, bios_progress_bx_label
+        call    neo_debug_port_string
+        ld      hl, (x86_reg_bx)
+        call    neo_debug_port_hex16
+
+        ld      hl, bios_progress_cx_label
+        call    neo_debug_port_string
         ld      hl, (x86_reg_cx)
-        ld      a, ' '
-        out     (#EF), a
-        ld      a, 'C'
-        out     (#EF), a
-        ld      a, 'X'
-        out     (#EF), a
-        ld      a, '='
-        out     (#EF), a
-        ld      a, h
-        call    neo_debug_port_hex8
-        ld      a, l
-        call    neo_debug_port_hex8
+        call    neo_debug_port_hex16
+
+        ld      hl, bios_progress_dx_label
+        call    neo_debug_port_string
+        ld      hl, (x86_reg_dx)
+        call    neo_debug_port_hex16
+
+        ld      hl, bios_progress_flags_label
+        call    neo_debug_port_string
+        ld      hl, (x86_reg_flags)
+        call    neo_debug_port_hex16
+
         ld      a, 13
         out     (#EF), a
         ld      a, 10
         out     (#EF), a
+
         pop     hl
         pop     de
         pop     bc
         pop     af
         ret
+
+; IN: HL=word. Emits four hexadecimal digits, preserving HL.
+neo_debug_port_hex16:
+        push    hl
+        ld      a, h
+        call    neo_debug_port_hex8
+        ld      a, l
+        call    neo_debug_port_hex8
+        pop     hl
+        ret
+
 bios_progress_prefix:
         defb "[NGS] BIOS ", 0
+bios_progress_lastop_label:
+        defb " LASTOP=", 0
+bios_progress_ax_label:
+        defb " AX=", 0
+bios_progress_bx_label:
+        defb " BX=", 0
+bios_progress_cx_label:
+        defb " CX=", 0
+bios_progress_dx_label:
+        defb " DX=", 0
+bios_progress_flags_label:
+        defb " FLAGS=", 0
 
 ; A=byte; write two uppercase hexadecimal digits to NeoGS debug port #EF.
 neo_debug_port_hex8:
