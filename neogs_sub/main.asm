@@ -2385,9 +2385,14 @@ x86_resident_shift_byte_dispatch:
         ld      (x86_shift_diag_modrm), a
         ld      a, #D0
         ld      (x86_shift_diag_stage), a
-        ld      a, (x86_shift_diag_modrm)
+        ; Decode the byte returned by x86_real_fetch8. Do not substitute
+        ; backend last-read state: the fetch result in A is authoritative.
+        ld      a, (x86_shift_dispatch_byte)
+        ld      (x86_shift_diag_modrm), a
         and     #38
         ld      (x86_shift_diag_mask), a
+        cp      #00                    ; /0 ROL r/m8,1 (PCem 808x.c)
+        jp      z, x86_resident_shift_byte_rol_one
         cp      #08                    ; /1 ROR r/m8,1 (PCem 808x.c)
         jp      z, x86_resident_shift_byte_ror_one
         cp      #20                    ; /4 SHL (D0 /4 and /6)
@@ -2397,6 +2402,63 @@ x86_resident_shift_byte_dispatch:
         cp      #28                    ; /5 SHR
         jp      z, x86_real_shift_byte_one_shr
         jp      x86_real_shift_byte_one_unsupported
+
+; D0 /0: ROL r/m8,1. PCem 808x.c case 0xD0, case 0x00.
+; Rotate through the operand's own high bit; only CF and OF are modified.
+x86_resident_shift_byte_rol_one:
+        ld      a, 1
+        ld      (x86_mov_width), a
+        ld      a, (x86_shift_diag_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_mov_read_rm
+        ret     c
+
+        ld      a, l
+        ld      (x86_shift_original), a
+        rlca
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+
+        ; ROL leaves PF/AF/ZF/SF unchanged. CF=old bit 7.
+        ; For count=1, OF = new bit 7 XOR CF.
+        ld      hl, (x86_reg_flags)
+        ld      a, l
+        and     #FE
+        ld      l, a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .rol_cf_ready
+        set     0, l
+.rol_cf_ready:
+        ld      a, h
+        and     #F7
+        ld      h, a
+        ld      a, (x86_shift_result)
+        and     #80
+        ld      b, a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .rol_cf_zero
+        ld      a, #80
+        jr      .rol_of_test
+.rol_cf_zero:
+        xor     a
+.rol_of_test:
+        xor     b
+        or      a
+        jr      z, .rol_flags_ready
+        set     3, h
+.rol_flags_ready:
+        ld      (x86_reg_flags), hl
+
+        ld      hl, 0
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
 
 ; D0 /5: SHR AL,1. Kept resident with the D0 selector to reduce overlay68.
 ; FLAGS behavior follows the existing 8086 byte-shift implementation.
