@@ -475,12 +475,9 @@ bios_work_value:      db 0
 
 
 ; -------------------------------------------------------------------------
-; BIOS INT 16h keyboard services.
-; The physical Spectrum/ATM keyboard bridge is not implemented yet. During
-; BIOS startup, expose one synthetic Enter key (scan 1Ch, ASCII 0Dh).
-; AH=00/10 read it; AH=01/11 report it without consuming it. Once consumed,
-; a blocking read returns NUL rather than hanging the entire NeoGS command.
-; AH=02 returns zero keyboard shift flags.
+; BIOS INT 16h keyboard service backed by the physical ATM-to-XT bridge.
+; AH=00/10 dequeue an AX-format key, AH=01/11 peek, AH=02 returns shift flags.
+; Empty reads retain the project's nonblocking return behavior (AX=0).
 ; -------------------------------------------------------------------------
 bios_int16_dispatch:
         ld      a, (x86_reg_ax+1)
