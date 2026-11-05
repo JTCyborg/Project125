@@ -559,6 +559,12 @@ command_boot_bios:
         ld      hl, bios_boot_message
         call    neo_debug_send_string
         call    bios_rom_reset_state
+        ; Enable bounded guest I/O tracing only for the BIOS run. Records
+        ; travel through the existing DBIT/GSDAT IPC stream, never OUT ports.
+        xor     a
+        ld      (x86_io_trace_count), a
+        ld      a, 1
+        ld      (x86_io_trace_enable), a
         ; BIOS execution is unrestricted real-mode ROM fetch, never the
         ; bounded 0000:5002 DMA-task sandbox.
         xor     a
@@ -568,6 +574,7 @@ command_boot_bios:
         call    x86_real_execute
         xor     a
         ld      (x86_real_progress_enable), a
+        ld      (x86_io_trace_enable), a
         ; Compact stop trace: the host drains DBIT and mirrors it to port EF.
         ld      hl, bios_stop_prefix
         call    neo_debug_send_string
