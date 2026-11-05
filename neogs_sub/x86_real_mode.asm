@@ -649,6 +649,12 @@ x86_real_dispatch_no_progress:
         cp      #CA
         jp      z, x86_real_ret_far_imm
 
+        ; ESC opcodes D8h..DFh are ignored when no 8087 is installed.
+        cp      #D8
+        jr      c, .unsupported_opcode
+        cp      #E0
+        jp      c, x86_real_escape
+.unsupported_opcode:
         ld      (x86_real_unsupported_opcode), a
         ld      a, 2
         ld      (x86_exit_status), a
