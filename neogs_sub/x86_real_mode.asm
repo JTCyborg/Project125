@@ -2410,7 +2410,7 @@ x86_real_shift_word_cl:
         cp      #B0
         jp      z, x86_resident_shift_word_mem_shl_cl
         cp      #E8
-        jr      nz, x86_real_shift_cl_unsupported
+        jp      nz, x86_real_shift_cl_unsupported
         ld      a, (x86_reg_cx)
         or      a
         jp      z, x86_real_next
@@ -2466,7 +2466,6 @@ x86_real_shift_word_cl:
         set     7, (hl)
 .shr_overflow:
         ; OF is defined only for count=1: it receives the original MSB.
-        ld      a, (x86_shift_count)
         ; The loop has reduced count to zero; the original CL is retained
         ; separately so this test is independent of the loop counter.
         ld      a, (x86_shift_original_count)
