@@ -452,7 +452,7 @@ atm_keyboard_poll_and_send:
         jr      nz, .atm_kbd_ready_wait
         dec     d
         jr      nz, .atm_kbd_ready_outer
-        jr      .atm_kbd_timeout
+        jr      .atm_kbd_ready_timeout
 
 .atm_kbd_dma_ready:
         ld      hl, atm_keyboard_matrix
@@ -478,7 +478,7 @@ atm_keyboard_poll_and_send:
         jr      nz, .atm_kbd_done_wait
         dec     d
         jr      nz, .atm_kbd_done_outer
-        jr      .atm_kbd_timeout
+        jr      .atm_kbd_end_timeout
 
 .atm_kbd_dma_done:
         ; Restore the long-running BIOS command token. The guest executor
@@ -497,13 +497,34 @@ atm_keyboard_poll_and_send:
         call    p125_print_string
         jr      .atm_kbd_done
 
-.atm_kbd_timeout:
+.atm_kbd_ready_timeout:
+        ; NeoGS never released CBIT: the host did not receive DMA READY.
+        in      a, (GSSTAT)
+        ld      (atm_kbd_timeout_status), a
+        ld      hl, msg_kbd_ready_timeout
+        call    p125_print_string
+        jr      .atm_kbd_restore_bios_command
+
+.atm_kbd_end_timeout:
+        ; DMA data was sent, but NeoGS did not acknowledge the end marker.
+        in      a, (GSSTAT)
+        ld      (atm_kbd_timeout_status), a
+        ld      hl, msg_kbd_end_timeout
+        call    p125_print_string
+
+.atm_kbd_restore_bios_command:
         ; Do not let a failed input transaction leave the command register
         ; pointing at the keyboard service.
         ld      a, CMD_BOOT_BIOS
         out     (GSCOM), a
-        ld      hl, msg_kbd_dma_timeout
+        ld      hl, msg_kbd_timeout_status
         call    p125_print_string
+        ld      a, (atm_kbd_timeout_status)
+        call    p125_print_hex8
+        ld      a, 13
+        call    p125_emit_char
+        ld      a, 10
+        call    p125_emit_char
 
 .atm_kbd_done:
         pop     hl
@@ -517,6 +538,8 @@ atm_keyboard_matrix:
 atm_keyboard_previous:
         defs    NGS_KBD_MATRIX_SIZE, #1F
 atm_keyboard_initialized:
+        db      0
+atm_kbd_timeout_status:
         db      0
 
 atm_keyboard_log_scancodes:
@@ -653,8 +676,12 @@ msg_kbd_matrix:
         defb    "[KBD] MATRIX ", 0
 msg_kbd_dma_ok:
         defb    "[KBD] DMA OK", 13, 10, 0
-msg_kbd_dma_timeout:
-        defb    "[KBD] DMA TIMEOUT", 13, 10, 0
+msg_kbd_ready_timeout:
+        defb    "[KBD] READY TIMEOUT", 13, 10, 0
+msg_kbd_end_timeout:
+        defb    "[KBD] END TIMEOUT", 13, 10, 0
+msg_kbd_timeout_status:
+        defb    "[KBD] GSSTAT=", 0
 
 bios_host_tail_data:
         defs    5, 0
