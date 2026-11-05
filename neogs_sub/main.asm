@@ -586,6 +586,10 @@ command_boot_bios:
         call    neo_send_data_byte
         ld      a, 10
         call    neo_send_data_byte
+        ; A zero byte is reserved as the end-of-BIOS-debug-stream token.
+        ; It is sent only after execution and all stop diagnostics are complete.
+        xor     a
+        call    neo_send_data_byte
         ld      hl, (x86_reg_ax)
         ld      (saved_x86_ax), hl
         call    z80_stack_guard_check
