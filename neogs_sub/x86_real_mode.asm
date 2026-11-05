@@ -2030,11 +2030,17 @@ x86_real_shift_word_one:
 ; Count zero leaves AL and FLAGS unchanged. Only register-direct AL is
 ; currently required by the BIOS path; other ModR/M forms stop explicitly.
 x86_real_shift_byte_cl:
+        ; The D2 entry reaches this overlay with IP still pointing at the
+        ; opcode byte on the current BIOS path. Advance to the ModR/M byte
+        ; before fetching it. This mirrors the proven F7 group entry fix:
+        ; the diagnostic trace showed the unadjusted fetch rereading D2's
+        ; preceding byte at E1DA instead of ModR/M 0B at E1DB.
+        ld      hl, (x86_reg_ip)
+        inc     hl
+        ld      (x86_reg_ip), hl
         call    x86_real_fetch8
         ret     c
-        ; Pass the fetch result directly to resident code, exactly as D0 does.
-        ; The resident entry snapshots A and the backend read address before
-        ; any other helper can alter them.
+        ; Pass the fetched ModR/M directly to resident code.
         jp      x86_resident_shift_byte_cl_dispatch
 
 ; Legacy AL-only D2 handlers remain below for reference.
