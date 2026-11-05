@@ -2239,6 +2239,26 @@ x86_resident_shift_word_mem_shl_cl:
         jp      z, x86_real_shift_word_cl_shr
         jp      x86_real_shift_cl_unsupported
 
+; Resident helpers keep the overlay68 fetch path within its 16 KiB bank.
+x86_fetch_diag_begin:
+        xor     a
+        ld      (x86_fetch_diag_stage), a
+        ret
+
+x86_fetch_diag_address:
+        ld      a, 1
+        ld      (x86_fetch_diag_stage), a
+        ld      hl, (x86_mem_addr)
+        ld      (x86_fetch_diag_phys), hl
+        ld      a, (x86_mem_addr+2)
+        ld      (x86_fetch_diag_phys+2), a
+        ret
+
+x86_fetch_diag_read_ok:
+        ld      a, 2
+        ld      (x86_fetch_diag_stage), a
+        ret
+
 x86_shift_diag_stage: db 0
 ; Last guest instruction-fetch diagnostics (shared resident state).
 x86_fetch_diag_stage: db 0
