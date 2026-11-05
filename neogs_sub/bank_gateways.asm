@@ -31,6 +31,9 @@ bank_call_x86_real_execute:
         pop     af
         ld      hl, trace_gate_mapped
         call    neo_trace_ef_string
+        call    neogs_overlay68_probe
+        ld      hl, trace_gate_probe_return
+        call    neo_trace_ef_string
         ld      hl, trace_gate_call
         call    neo_trace_ef_string
         call    x86_real_execute
@@ -46,6 +49,7 @@ bank_call_x86_real_execute:
 
 trace_gate_enter:     defb "[GATE ENTER]",13,10,0
 trace_gate_mapped:    defb "[GATE BANK68]",13,10,0
+trace_gate_probe_return: defb "[GATE PROBE RET]",13,10,0
 trace_gate_call:      defb "[GATE X86 CALL]",13,10,0
 trace_gate_after_call: defb "[GATE X86 RET]",13,10,0
 trace_gate_exit:      defb "[GATE RETURN]",13,10,0
