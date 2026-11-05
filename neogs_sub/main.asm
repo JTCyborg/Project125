@@ -1797,6 +1797,18 @@ x86_host_input_service_poll:
         push    de
         push    hl
 
+        ; One-shot execution marker. If the host sees P but never K, the
+        ; instruction-boundary poll is running but the local CBIT read is low.
+        ; If P is absent, the BIOS executor is not reaching this service.
+        ld      a, (x86_host_input_poll_seen)
+        or      a
+        jr      nz, .kbd_poll_marker_done
+        inc     a
+        ld      (x86_host_input_poll_seen), a
+        ld      a, 'P'
+        call    neo_send_data_byte
+.kbd_poll_marker_done:
+
         ; During the BIOS executor, the boot command has already been
         ; acknowledged and no other command is permitted. Therefore any new
         ; CBIT edge here is the host keyboard mailbox request. Do not read
@@ -2140,6 +2152,7 @@ x86_kbd_scancode_table:
         db #39,#1D,#32,#31,#30
 
 x86_kbd_matrix_previous: defs 8, #1F
+x86_host_input_poll_seen: db 0
 x86_kbd_matrix_index: db 0
 x86_kbd_row_index: db 0
 x86_kbd_new_row: db 0
