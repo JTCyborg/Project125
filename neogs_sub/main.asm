@@ -559,12 +559,6 @@ command_boot_bios:
         ld      hl, bios_boot_message
         call    neo_debug_send_string
         call    bios_rom_reset_state
-        ; Enable bounded guest I/O tracing only for the BIOS run. Records
-        ; travel through the existing DBIT/GSDAT IPC stream, never OUT ports.
-        xor     a
-        ld      (x86_io_trace_count), a
-        ld      a, 1
-        ld      (x86_io_trace_enable), a
         ; BIOS execution is unrestricted real-mode ROM fetch, never the
         ; bounded 0000:5002 DMA-task sandbox.
         xor     a
@@ -574,7 +568,6 @@ command_boot_bios:
         call    x86_real_execute
         xor     a
         ld      (x86_real_progress_enable), a
-        ld      (x86_io_trace_enable), a
         ; Compact stop trace: the host drains DBIT and mirrors it to port EF.
         ld      hl, bios_stop_prefix
         call    neo_debug_send_string
@@ -607,10 +600,6 @@ command_boot_bios:
         ld      a, 13
         call    neo_send_data_byte
         ld      a, 10
-        call    neo_send_data_byte
-        ; Out-of-band terminal byte: host must not confuse transient CBIT
-        ; clears from keyboard DMA with completion of the BIOS executor.
-        ld      a, NGS_BIOS_DONE_MARKER
         call    neo_send_data_byte
         ld      hl, (x86_reg_ax)
         ld      (saved_x86_ax), hl
@@ -1314,6 +1303,47 @@ x86_uart_com1_regs:
 x86_uart_com2_regs:
         db 0,0,0,0,0,0,0,0
 
+x86_resident_io_trace_read8:
+        ; Keep the first 16 unmapped reads, not just the first one.
+        ; This reveals the complete BIOS probe sequence before System error.
+        ld      a, (x86_io_trace_count)
+        cp      16
+        ret     nc
+        inc     a
+        ld      (x86_io_trace_count), a
+        push    af
+        push    hl
+        ld      a, '!'
+        out     (#EF), a
+        ld      hl, (x86_io_port)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_mem_watch_hex8
+        ld      a, l
+        call    x86_mem_watch_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     af
+        ret
+
+x86_io_trace_count: db 0
+
 ; Trace the first four SCAS comparisons during BIOS startup.
 ; The previous failure-only trace produced no output, so the current
 ; diagnostic captures successful comparisons too, including ES:DI and the
@@ -1670,14 +1700,6 @@ x86_io_tick:
         ret
 
 x86_ppi_read_port_a:
-        ; PCem keyboard_xt.c: while PB7 is asserted the XT data port
-        ; exposes the system configuration byte, not the keyboard latch.
-        ld      a, (x86_ppi_keyboard_pb)
-        bit     7, a
-        jr      z, .keyboard_data
-        ld      a, #6D                    ; IBM 5150 CGA, no 8087 installed
-        ret
-.keyboard_data:
         ld      a, (x86_ppi_keyboard_data)
         ret
 
@@ -1686,9 +1708,6 @@ x86_ppi_read_port_b:
         ret
 
 x86_ppi_read_port_c:
-        ; IBM 5150 with 640 KiB: (640-64)/32 = 12h.
-        ; PB2 selects the low/high memory-size nibble. Cassette input and
-        ; PIT channel-2 speaker sense remain low until those devices exist.
         ld      a, (x86_ppi_port_b)
         bit     2, a
         ld      a, 1
@@ -1701,79 +1720,40 @@ x86_ppi_read_control:
         ret
 
 x86_ppi_write_port_b:
-        ; PCem keyboard_xt_write(): store PB, process PB6 reset edge,
-        ; then apply PB7 keyboard acknowledge.
+        ; IBM XT keyboard acknowledge is level-qualified by PB7: every write
+        ; with PB7 high clears the current PA byte (not only a rising edge).
         ld      a, (x86_ppi_keyboard_pb)
         ld      b, a
         ld      a, (x86_io_value)
         ld      (x86_ppi_port_b), a
         ld      (x86_ppi_keyboard_pb), a
+        bit     7, a
+        call    nz, x86_kbd_acknowledge
 
-        ; PB6 low-to-high resets the XT interface and queues BAT AA.
+        ; PB6 low-to-high is the XT keyboard reset pulse. PCem's reference
+        ; model flushes pending keys and queues BAT AA; reproduce that order.
+        ld      a, (x86_ppi_keyboard_pb)
         bit     6, b
-        jr      nz, .acknowledge
+        ret     nz
         bit     6, a
-        jr      z, .acknowledge
+        ret     z
         xor     a
         ld      (x86_kbd_queue_read), a
         ld      (x86_kbd_queue_write), a
         ld      (x86_kbd_queue_count), a
-        ld      (x86_kbd_wantirq), a
         ld      (x86_ppi_keyboard_ready), a
         ld      (x86_ppi_keyboard_data), a
         ld      (x86_kbd_latch_from_queue), a
         ld      a, (x86_pic_pending)
-        and     #FD
+        res     1, a
         ld      (x86_pic_pending), a
         ld      a, #AA
         ld      (x86_kbd_key_code), a
-        call    x86_kbd_enqueue
-
-.acknowledge:
-        ld      a, (x86_ppi_keyboard_pb)
-        bit     7, a
-        call    nz, x86_kbd_acknowledge
-        ret
+        jp      x86_kbd_enqueue
 
 x86_ppi_write_control:
         ld      a, (x86_io_value)
-        bit     7, a
-        jr      z, .bit_set_reset
-        ; Mode-set control word.
         ld      (x86_ppi_control), a
-        ret
-.bit_set_reset:
-        ; 8255 BSR: D3..D1 select PC bit, D0 sets (1) or resets (0).
-        ld      b, a
-        and     #0E
-        srl     a
-        ld      c, a
-        ld      a, 1
-.bsr_mask:
-        ld      e, a
-        ld      a, c
-        or      a
-        jr      z, .bsr_apply
-        ld      a, e
-        add     a, a
-        dec     c
-        jr      .bsr_mask
-.bsr_apply:
-        ld      b, a
-        ld      a, (x86_io_value)
-        bit     0, a
-        ld      a, (x86_ppi_port_c)
-        jr      z, .bsr_clear
-        or      b
-        jr      .bsr_store
-.bsr_clear:
-        ld      a, b
-        cpl
-        ld      b, a
-        ld      a, (x86_ppi_port_c)
-        and     b
-.bsr_store:
-        ld      (x86_ppi_port_c), a
         ret
 
 
@@ -1790,25 +1770,12 @@ x86_ppi_write_control:
 X86_KBD_DMA_WAIT EQU #FFFF
 
 x86_host_input_service_poll:
-        ; Preserve the interpreter's scratch registers: this service is called
-        ; from the instruction-boundary dispatcher and the HLT wait loop.
-        push    af
-        push    bc
-        push    de
-        push    hl
-
-        ; During the BIOS executor, the boot command has already been
-        ; acknowledged and no other command is permitted. Therefore any new
-        ; CBIT edge here is the host keyboard mailbox request. Do not read
-        ; ZXCMD: the command latch is not a reliable discriminator while the
-        ; previous long-running command owns the interpreter.
         in      a, (ZXSTAT)
         bit     B_CBIT, a
-        jr      z, .kbd_service_done
-
-        ; Diagnostic acknowledgement: host drains DBIT while waiting READY.
-        ld      a, 'K'
-        call    neo_send_data_byte
+        ret     z
+        in      a, (ZXCMD)
+        cp      CMD_HOST_INPUT
+        ret     nz
 
         ld      a, C_DMA_ZX
         out     (DMA_MOD), a
@@ -1839,17 +1806,12 @@ x86_host_input_service_poll:
         xor     a
         out     (DMA_CST), a
         out     (CLRCBIT), a
-        jr      .kbd_service_done
+        ret
 .kbd_dma_done:
         xor     a
         out     (DMA_CST), a
         out     (CLRCBIT), a
         call    x86_kbd_process_matrix
-.kbd_service_done:
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
         ret
 
 ; Compare the eight 5-bit rows and enqueue XT make/break scan codes.
@@ -1897,7 +1859,7 @@ x86_kbd_process_matrix:
         or      #80
         ld      (x86_kbd_key_code), a
 .key_make:
-        call    x86_kbd_bios_capture
+        call    x86_kbd_debug_emit
         call    x86_kbd_enqueue
 
 .bit_advance:
@@ -1950,46 +1912,11 @@ x86_kbd_enqueue:
         ret
 
 x86_kbd_load_latch:
-        ; PCem keyboard_xt_poll() cadence is 1 ms. The NeoGS monotonic
-        ; timer runs at 37.5 kHz, so poll at 37 ticks rather than once
-        ; per emulated 8086 instruction.
-        ld      hl, (neo_timer_ticks)
-        ld      de, (x86_kbd_poll_last_tick)
-        or      a
-        sbc     hl, de
-        ld      de, 37
-        or      a
-        sbc     hl, de
-        ret     c
-        ld      hl, (neo_timer_ticks)
-        ld      (x86_kbd_poll_last_tick), hl
-
-        ; XT keyboard scanning is inhibited while PB6 is low.
+        ; XT keyboard scanning is inhibited while PB6 holds the interface in
+        ; reset. A queued event is presented only after the BIOS releases it.
         ld      a, (x86_ppi_port_b)
         bit     6, a
-        jr      nz, .interface_enabled
-        xor     a
-        ld      (x86_kbd_wantirq), a
-        ret
-
-.interface_enabled:
-        ; Match PCem's two-stage poll: first arm a queued byte, then on the
-        ; next 1 ms poll place it on PA and raise IRQ1.
-        ld      a, (x86_kbd_wantirq)
-        or      a
-        jr      z, .queue_next
-        xor     a
-        ld      (x86_kbd_wantirq), a
-        ld      a, (x86_kbd_key_waiting)
-        ld      (x86_ppi_keyboard_data), a
-        ld      a, 1
-        ld      (x86_ppi_keyboard_ready), a
-        ld      a, (x86_pic_pending)
-        set     1, a
-        ld      (x86_pic_pending), a
-        ret
-
-.queue_next:
+        ret     z
         ld      a, (x86_ppi_keyboard_ready)
         or      a
         ret     nz
@@ -2002,7 +1929,8 @@ x86_kbd_load_latch:
         ld      hl, x86_kbd_queue
         add     hl, de
         ld      a, (hl)
-        ld      (x86_kbd_key_waiting), a
+        ld      (x86_ppi_keyboard_data), a
+        ; Remove the byte from the FIFO when it enters the XT data latch.
         ld      a, (x86_kbd_queue_read)
         inc     a
         and     #1F
@@ -2011,12 +1939,17 @@ x86_kbd_load_latch:
         dec     a
         ld      (x86_kbd_queue_count), a
         ld      a, 1
-        ld      (x86_kbd_wantirq), a
+        ld      (x86_ppi_keyboard_ready), a
+        ld      (x86_kbd_latch_from_queue), a
+        ld      a, (x86_pic_pending)
+        set     1, a
+        ld      (x86_pic_pending), a
         ret
 
 x86_kbd_acknowledge:
-        ; PCem clears PA, shift_full and IRQ1 on every PB7-high write,
-        ; even if no byte is currently latched.
+        ld      a, (x86_ppi_keyboard_ready)
+        or      a
+        ret     z
         xor     a
         ld      (x86_ppi_keyboard_ready), a
         ld      (x86_ppi_keyboard_data), a
@@ -2024,110 +1957,87 @@ x86_kbd_acknowledge:
         ld      a, (x86_pic_pending)
         res     1, a
         ld      (x86_pic_pending), a
-        ; PCem clears PA/shift_full here. The next queued byte is staged by
-        ; the following 1 ms keyboard poll, never inside the acknowledge.
+        ; Do not load the next byte here. The next instruction-boundary
+        ; keyboard poll presents it, matching the XT controller's delay. 
         ret
 
-; Capture make codes for the BIOS INT 16h compatibility hook. The physical
-; XT FIFO and IRQ1 path remain independent and receive both make and break.
-x86_kbd_bios_capture:
+; NeoGS scan-code trace written directly to local debug port EFh.
+; Format matches ATM: [NGS] K=xx SC=xx M/B.
+x86_kbd_debug_emit:
         push    af
         push    bc
         push    de
         push    hl
+        ld      a, '['
+        out     (#EF), a
+        ld      a, 'N'
+        out     (#EF), a
+        ld      a, 'G'
+        out     (#EF), a
+        ld      a, 'S'
+        out     (#EF), a
+        ld      a, ']'
+        out     (#EF), a
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'K'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
+        ld      a, (x86_kbd_matrix_index)
+        call    x86_kbd_debug_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'S'
+        out     (#EF), a
+        ld      a, 'C'
+        out     (#EF), a
+        ld      a, '='
+        out     (#EF), a
         ld      a, (x86_kbd_key_code)
-        and     #7F                       ; normalize make/break scan code
-        cp      #2A                       ; left Shift
-        jp      z, .shift_key
-        cp      #1D                       ; Ctrl
-        jp      z, .control_key
+        call    x86_kbd_debug_hex8
+        ld      a, ' '
+        out     (#EF), a
         ld      a, (x86_kbd_new_bit)
         or      a
-        jp      nz, .done                 ; INT 16h queues make codes only
-        ld      a, (bios_keyboard_pending)
-        cp      16
-        jp      nc, .done                 ; bounded 16-key BIOS queue
-        ld      a, (x86_kbd_key_code)
-        cp      #40
-        jp      nc, .done
-        ld      e, a
-        ld      d, 0
-        ld      hl, x86_kbd_ascii_table
-        add     hl, de
-        ld      a, (hl)
-        or      a
-        jp      z, .done
-        ld      b, a
-        ld      a, (bios_keyboard_shift_flags)
-        bit     1, a
-        jr      z, .ascii_ready
-        ld      a, b
-        cp      #61
-        jr      c, .ascii_ready
-        cp      #7B
-        jr      nc, .ascii_ready
-        sub     #20
-        ld      b, a
-.ascii_ready:
-        ; Append AX-format key word (AH=scan, AL=ASCII) to BIOS queue.
-        ld      a, (bios_keyboard_queue_write)
-        add     a, a
-        ld      e, a
-        ld      d, 0
-        ld      hl, bios_keyboard_queue
-        add     hl, de
-        ld      a, (x86_kbd_key_code)
-        ld      (hl), a
-        inc     hl
-        ld      (hl), b
-        ld      a, (bios_keyboard_queue_write)
-        inc     a
-        and     #0F
-        ld      (bios_keyboard_queue_write), a
-        ld      a, (bios_keyboard_pending)
-        inc     a
-        ld      (bios_keyboard_pending), a
-        jp      .done
-.shift_key:
-        ld      a, (bios_keyboard_shift_flags)
-        ld      b, a
-        ld      a, (x86_kbd_new_bit)
-        or      a
-        ld      a, b
-        jr      nz, .shift_release
-        or      #02
-        jr      .shift_store
-.shift_release:
-        and     #FD
-.shift_store:
-        ld      (bios_keyboard_shift_flags), a
-        jr      .done
-.control_key:
-        ld      a, (bios_keyboard_shift_flags)
-        ld      b, a
-        ld      a, (x86_kbd_new_bit)
-        or      a
-        ld      a, b
-        jr      nz, .control_release
-        or      #04
-        jr      .control_store
-.control_release:
-        and     #FB
-.control_store:
-        ld      (bios_keyboard_shift_flags), a
-.done:
+        jr      nz, .break
+        ld      a, 'M'
+        out     (#EF), a
+        jr      .newline
+.break:
+        ld      a, 'B'
+        out     (#EF), a
+.newline:
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
         pop     hl
         pop     de
         pop     bc
         pop     af
         ret
 
-; XT set-1 scan-code to unshifted ASCII. Entries 00h..3Fh.
-x86_kbd_ascii_table:
-        db #00,#1B,#31,#32,#33,#34,#35,#36,#37,#38,#39,#30,#2D,#3D,#08,#09
-        db #71,#77,#65,#72,#74,#79,#75,#69,#6F,#70,#5B,#5D,#0D,#00,#61,#73
-        db #64,#66,#67,#68,#6A,#6B,#6C,#3B,#27,#60,#00,#5C,#7A,#78,#63,#76
-        db #62,#6E,#6D,#2C,#2E,#2F,#00,#2A,#00,#20,#00,#00,#00,#00,#00,#00
+x86_kbd_debug_hex8:
+        push    af
+        rrca
+        rrca
+        rrca
+        rrca
+        and     #0F
+        call    x86_kbd_debug_nibble
+        pop     af
+        and     #0F
+        jp      x86_kbd_debug_nibble
+
+x86_kbd_debug_nibble:
+        add     a, '0'
+        cp      '9'+1
+        jr      c, .digit
+        add     a, 7
+.digit:
+        out     (#EF), a
+        ret
 
 x86_kbd_scancode_table:
         db #2A,#2C,#2D,#2E,#2F
@@ -2150,9 +2060,7 @@ x86_kbd_queue: defs 32, 0
 x86_kbd_queue_read: db 0
 x86_kbd_queue_write: db 0
 x86_kbd_queue_count: db 0
-x86_kbd_key_waiting: db 0
-x86_kbd_wantirq: db 0
-x86_kbd_poll_last_tick: dw 0
+
 
 x86_ppi_keyboard_ready: db 0
 x86_kbd_latch_from_queue: db 0

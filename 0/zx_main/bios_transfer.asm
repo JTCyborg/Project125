@@ -137,14 +137,13 @@ neogs_bios_transfer_finish:
         or      a
         ret
 
-; Run BIOS and drain the NeoGS debug stream. CBIT is reused by keyboard DMA;
-; the terminal DBIT marker, not CBIT, signals BIOS completion.
-; Every received debug byte is mirrored to the ATM/emulator debug port #EF.
+; Run BIOS and drain the NeoGS debug stream while CBIT remains asserted.
+; Every received byte is mirrored to the ATM/emulator debug port #EF.
 ; BIOS POST performs extensive memory sweeps. A full pass through the
 ; Turbo XT BIOS can take several minutes on the current Z80 interpreter.
 ; Use a 16-bit outer timeout (2048 x 65535 polls), while continuing to drain
 ; DBIT whenever the NeoGS firmware emits progress. This is a watchdog, not
-; an instruction budget; normal completion is signalled by NGS_BIOS_DONE_MARKER.
+; an instruction budget; normal completion is still signalled by CBIT=0.
 ; OUT: carry clear when the NeoGS command completes; call get_result next.
 neogs_bios_boot_and_wait:
         ld      a, CMD_BOOT_BIOS
@@ -170,15 +169,11 @@ neogs_bios_boot_and_wait:
         bit     B_DBIT, a
         jr      z, .bios_boot_no_data
         in      a, (GSDAT)
-        cp      NGS_BIOS_DONE_MARKER
-        jr      z, .bios_boot_done
         call    p125_debug_stream_char
         jr      .bios_boot_inner
 .bios_boot_no_data:
-        ; CBIT is a per-transaction handshake and may drop after each keyboard
-        ; DMA snapshot. BIOS completion is signalled only by the terminal DBIT
-        ; marker emitted after the stop trace.
-        nop
+        bit     B_CBIT, a
+        jr      z, .bios_boot_done
         dec     bc
         ld      a, b
         or      c
@@ -350,7 +345,7 @@ bios_host_tail_prefix:
 bios_host_tail_error:
         defb    "[BIOS DST FFF0] !", 0
 bios_boot_timeout_outer: dw 0
-bios_kbd_poll_counter: dw #0100
+bios_kbd_poll_counter: dw #4000
 
 ; -------------------------------------------------------------------------
 ; ATM physical keyboard scanner and DMA event transport.
@@ -448,20 +443,7 @@ atm_keyboard_poll_and_send:
 .atm_kbd_ready_outer:
         ld      bc, BIOS_HOST_WAIT_LIMIT
 .atm_kbd_ready_wait:
-        ; NeoGS may be blocked while sending an I/O trace byte through DBIT.
-        ; Drain that stream during the DMA READY handshake as well as in the
-        ; outer BIOS loop, otherwise the keyboard doorbell and trace deadlock.
         in      a, (GSSTAT)
-        bit     B_DBIT, a
-        jr      z, .atm_kbd_ready_check_cbit
-        in      a, (GSDAT)
-        push    bc
-        push    de
-        call    p125_debug_stream_char
-        pop     de
-        pop     bc
-        jr      .atm_kbd_ready_wait
-.atm_kbd_ready_check_cbit:
         bit     B_CBIT, a
         jr      z, .atm_kbd_dma_ready
         dec     bc
@@ -487,19 +469,7 @@ atm_keyboard_poll_and_send:
 .atm_kbd_done_outer:
         ld      bc, BIOS_HOST_WAIT_LIMIT
 .atm_kbd_done_wait:
-        ; Keep draining DBIT while NeoGS closes the DMA transaction and
-        ; resumes the guest interpreter.
         in      a, (GSSTAT)
-        bit     B_DBIT, a
-        jr      z, .atm_kbd_done_check_cbit
-        in      a, (GSDAT)
-        push    bc
-        push    de
-        call    p125_debug_stream_char
-        pop     de
-        pop     bc
-        jr      .atm_kbd_done_wait
-.atm_kbd_done_check_cbit:
         bit     B_CBIT, a
         jr      z, .atm_kbd_dma_done
         dec     bc
@@ -511,11 +481,12 @@ atm_keyboard_poll_and_send:
         jr      .atm_kbd_end_timeout
 
 .atm_kbd_dma_done:
-        ; The DMA copy was protected by DI. Restore host interrupts before
-        ; returning to the BIOS wait loop. Do NOT reissue CMD_BOOT_BIOS here:
-        ; that would assert CBIT and be mistaken for another DMA doorbell by
-        ; x86_host_input_service_poll.
-        ei
+        ; Restore the long-running BIOS command token. The guest executor
+        ; ignores it while running; the outer command handler clears CBIT
+        ; only when the BIOS actually returns.
+        ld      a, CMD_BOOT_BIOS
+        out     (GSCOM), a
+
         ld      hl, atm_keyboard_matrix
         ld      de, atm_keyboard_previous
         ld      bc, NGS_KBD_MATRIX_SIZE
@@ -536,17 +507,16 @@ atm_keyboard_poll_and_send:
 
 .atm_kbd_end_timeout:
         ; DMA data was sent, but NeoGS did not acknowledge the end marker.
-        ei
         in      a, (GSSTAT)
         ld      (atm_kbd_timeout_status), a
         ld      hl, msg_kbd_end_timeout
         call    p125_print_string
 
 .atm_kbd_restore_bios_command:
-        ; Do not reissue CMD_BOOT_BIOS: the active BIOS call is still on the
-        ; NeoGS stack, and a new CBIT edge would be interpreted as a DMA
-        ; request. The host reports the timeout and lets the active service
-        ; finish its own bounded recovery path.
+        ; Do not let a failed input transaction leave the command register
+        ; pointing at the keyboard service.
+        ld      a, CMD_BOOT_BIOS
+        out     (GSCOM), a
         ld      hl, msg_kbd_timeout_status
         call    p125_print_string
         ld      a, (atm_kbd_timeout_status)
@@ -703,15 +673,15 @@ atm_kbd_log_bit:   db 0
 atm_kbd_log_code:  db 0
 
 msg_kbd_matrix:
-        defb    "[ATM] [KBD] MATRIX ", 0
+        defb    "[KBD] MATRIX ", 0
 msg_kbd_dma_ok:
-        defb    "[ATM] [KBD] DMA OK", 13, 10, 0
+        defb    "[KBD] DMA OK", 13, 10, 0
 msg_kbd_ready_timeout:
-        defb    "[ATM] [KBD] READY TIMEOUT", 13, 10, 0
+        defb    "[KBD] READY TIMEOUT", 13, 10, 0
 msg_kbd_end_timeout:
-        defb    "[ATM] [KBD] END TIMEOUT", 13, 10, 0
+        defb    "[KBD] END TIMEOUT", 13, 10, 0
 msg_kbd_timeout_status:
-        defb    "[ATM] [KBD] GSSTAT=", 0
+        defb    "[KBD] GSSTAT=", 0
 
 bios_host_tail_data:
         defs    5, 0

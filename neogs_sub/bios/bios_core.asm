@@ -68,44 +68,12 @@ bios_rom_reset_state:
         ld      (x86_reg_cs), hl
         ld      hl, #0002
         ld      (x86_reg_flags), hl
-        ; Cold-reset the IBM 5150 8255/XT keyboard interface. PB starts
-        ; at 40h while the keyboard's previous PB value is zero, matching
-        ; PCem's first PB6 rising-edge reset/BAT sequence.
-        ld      a, #40
-        ld      (x86_ppi_port_b), a
-        xor     a
-        ld      (x86_ppi_keyboard_pb), a
-        ld      (x86_ppi_port_c), a
-        ld      (x86_ppi_keyboard_data), a
-        ld      (x86_ppi_keyboard_ready), a
-        ld      (x86_kbd_latch_from_queue), a
-        ld      (x86_kbd_wantirq), a
-        ld      (x86_kbd_key_waiting), a
-        ld      (x86_kbd_queue_read), a
-        ld      (x86_kbd_queue_write), a
-        ld      (x86_kbd_queue_count), a
-        ld      a, #99
-        ld      (x86_ppi_control), a
-        ld      a, (x86_pic_pending)
-        and     #FD
-        ld      (x86_pic_pending), a
-        ld      hl, (neo_timer_ticks)
-        ld      (x86_kbd_poll_last_tick), hl
-        ld      hl, x86_kbd_matrix_previous
-        ld      b, 8
-        ld      a, #1F
-.keyboard_matrix_reset:
-        ld      (hl), a
-        inc     hl
-        djnz    .keyboard_matrix_reset
-
-        ; The BIOS INT 16h hook consumes real make events from the same
-        ; physical keyboard matrix; no synthetic Enter is injected.
-        xor     a
+        ; The ATM host keyboard is not wired into the guest PC/XT yet.
+        ; Queue one deterministic Enter key so BIOS setup/menu waits can
+        ; complete instead of polling an absent 8255/keyboard controller.
+        ld      a, 1
         ld      (bios_keyboard_pending), a
-        ld      (bios_keyboard_queue_read), a
-        ld      (bios_keyboard_queue_write), a
-        ld      (bios_keyboard_shift_flags), a
+        xor     a
         ld      (bios_video_stream_errors), a
         ld      (x86_real_bounds_enable), a
         ld      (x86_exit_status), a
@@ -475,9 +443,12 @@ bios_work_value:      db 0
 
 
 ; -------------------------------------------------------------------------
-; BIOS INT 16h keyboard service backed by the physical ATM-to-XT bridge.
-; AH=00/10 block until an AX-format key arrives, AH=01/11 peek,
-; AH=02 returns the current XT shift flags.
+; BIOS INT 16h keyboard services.
+; The physical Spectrum/ATM keyboard bridge is not implemented yet. During
+; BIOS startup, expose one synthetic Enter key (scan 1Ch, ASCII 0Dh).
+; AH=00/10 read it; AH=01/11 report it without consuming it. Once consumed,
+; a blocking read returns NUL rather than hanging the entire NeoGS command.
+; AH=02 returns zero keyboard shift flags.
 ; -------------------------------------------------------------------------
 bios_int16_dispatch:
         ld      a, (x86_reg_ax+1)
@@ -498,54 +469,26 @@ bios_int16_dispatch:
         ret
 
 bios_int16_read_key:
-.wait_for_key:
         ld      a, (bios_keyboard_pending)
         or      a
-        jr      nz, .dequeue_key
-        ; INT 16h AH=00/10 is blocking on a real XT. Keep servicing the
-        ; DMA mailbox here so the host can deliver a physical key while the
-        ; guest BIOS is waiting inside this interrupt hook.
-        call    x86_host_input_service_poll
-        jr      .wait_for_key
-.dequeue_key:
-        ; Pop the oldest AX-format key word from the 16-entry ring.
-        ld      a, (bios_keyboard_queue_read)
-        add     a, a
-        ld      e, a
-        ld      d, 0
-        ld      hl, bios_keyboard_queue
-        add     hl, de
-        ld      c, (hl)
-        inc     hl
-        ld      b, (hl)
-        ld      h, c
-        ld      l, b
-        ld      (x86_reg_ax), hl
-        ld      a, (bios_keyboard_queue_read)
-        inc     a
-        and     #0F
-        ld      (bios_keyboard_queue_read), a
-        ld      a, (bios_keyboard_pending)
-        dec     a
+        jr      z, bios_int16_no_key
+        xor     a
         ld      (bios_keyboard_pending), a
+        ld      hl, #1C0D
+        ld      (x86_reg_ax), hl
         or      a
         ret
+bios_int16_no_key:
+        ld      hl, 0
+        ld      (x86_reg_ax), hl
+        or      a
+        ret
+
 bios_int16_check_key:
         ld      a, (bios_keyboard_pending)
         or      a
         jr      z, bios_int16_no_pending
-        ; AH=01/11 peeks at the oldest entry without consuming it.
-        ld      a, (bios_keyboard_queue_read)
-        add     a, a
-        ld      e, a
-        ld      d, 0
-        ld      hl, bios_keyboard_queue
-        add     hl, de
-        ld      c, (hl)
-        inc     hl
-        ld      b, (hl)
-        ld      h, c
-        ld      l, b
+        ld      hl, #1C0D
         ld      (x86_reg_ax), hl
         ld      hl, x86_reg_flags
         res     6, (hl)              ; ZF=0: key available
@@ -558,18 +501,10 @@ bios_int16_no_pending:
         ret
 
 bios_int16_shift_flags:
-        ld      a, (bios_keyboard_shift_flags)
-        ld      (x86_reg_ax), a      ; AL=XT shift flags; AH remains 02h
+        xor     a
+        ld      (x86_reg_ax), a      ; AL=0; preserve AH=02
         or      a
         ret
 
 bios_keyboard_pending:
-        db      0
-bios_keyboard_queue_read:
-        db      0
-bios_keyboard_queue_write:
-        db      0
-bios_keyboard_queue:
-        defs    32, 0
-bios_keyboard_shift_flags:
         db      0
