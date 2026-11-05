@@ -59,7 +59,7 @@ bank_gateway_debug_emit:
         push    hl
         ; Recover the message pointer as the argument to the port writer.
         ; Stack layout: saved HL, DE, BC, AF.
-        ld      hl, 8
+        ld      hl, 0
         add     hl, sp
         ld      e, (hl)
         inc     hl
