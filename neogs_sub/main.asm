@@ -999,6 +999,40 @@ neo_debug_send_string:
         call    neo_send_data_byte
         jr      neo_debug_send_string
 
+; One-shot proof that the 8086 interpreter fetched its first guest opcode.
+; IN: A = opcode byte. Preserves all Z80 registers and flags.
+bios_first_fetch_emit:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, bios_first_fetch_prefix
+        call    neo_debug_port_string
+        ld      hl, (x86_reg_cs)
+        call    neo_debug_port_hex16
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        call    neo_debug_port_hex16
+        ld      hl, bios_first_fetch_opcode_label
+        call    neo_debug_port_string
+        ld      a, (x86_real_opcode)
+        call    neo_debug_port_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+bios_first_fetch_prefix:
+        defb "[NGS] BIOS FIRST FETCH CS:IP=", 0
+bios_first_fetch_opcode_label:
+        defb " OP=", 0
+
 ; BIOS heartbeat is emitted directly to NeoGS debug port #EF.
 ; It is independent of DBIT/GSDAT, so guest execution and keyboard DMA
 ; cannot block each other. One record per 2048 instructions or REP elements.
