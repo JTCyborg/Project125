@@ -374,6 +374,7 @@ x86_trace_fetch_text:  db "[NGS X86] FETCH ",0
 x86_trace_decode_text: db "[NGS X86] MAIN DECODER ENTER",13,10,0
 x86_trace_decode_opcode_text: db "[NGS X86] DECODE OPCODE=",0
 x86_trace_decode_opcode: db 0
+x86_fetch_opcode_saved: db 0
 x86_trace_jmp_far_once: db 0
 x86_trace_jmp_far_text: db "[NGS X86] JMP FAR HANDLER ENTER",13,10,0
 
@@ -569,6 +570,10 @@ x86_real_dispatch_no_progress:
         pop     af
         ret
 .fetch_succeeded:
+        ; Keep the fetched opcode in dedicated storage before any diagnostic
+        ; state checks. Reading bios_first_instruction_trace below uses A and
+        ; must not replace the opcode that the decoder will receive.
+        ld      (x86_fetch_opcode_saved), a
         ; Preserve the fetched opcode and flags across the one-shot diagnostic.
         ; The marker uses A as its state variable; it must not replace the
         ; instruction byte returned by x86_real_fetch8.
@@ -602,6 +607,9 @@ x86_real_dispatch_no_progress:
         call    bios_trace_first_fetch
         pop     af
 .first_fetch_trace_done:
+        ; bios_first_instruction_trace is allowed to change during the
+        ; diagnostic path; restore the exact fetched byte before dispatch.
+        ld      a, (x86_fetch_opcode_saved)
         call    x86_resident_escape_dispatch
         ret     c
         jp      z, x86_real_next
