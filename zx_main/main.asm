@@ -449,7 +449,7 @@ trace_91_crc_test_done:       defb "[TRACE 91] VIDEO CRC DONE", 13, 10, 0
 trace_A0_bios_load_begin:     defb "[TRACE A0] BIOS LOAD BEGIN", 13, 10, 0
 trace_A1_bios_load_done:      defb "[TRACE A1] BIOS LOAD DONE", 13, 10, 0
 trace_B0_bios_exec_begin:     defb "[TRACE B0] BIOS EXEC BEGIN", 13, 10, 0
-trace_B1_bios_exec_return:    defb "[TRACE B1] BIOS EXEC RETURN", 13, 10, 0
+trace_B1_bios_exec_return:    defb "[TRACE B1] BIOS EXEC/RESULT WAIT RETURNED", 13, 10, 0
 
 msg_p125_start:       defb "[P125] ATM HOST START", 13, 10, 0
 msg_p125_build_id:    defb "[P125] BUILD 20261104-A50 ATM-KBD-DMA", 13, 10, 0
