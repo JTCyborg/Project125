@@ -3291,8 +3291,8 @@ neogs_overlay68_end:
 
 ; Save Overlay68 now. Overlay69 reuses the same logical ORG $8000 range,
 ; so waiting until the end of main.asm would save Overlay69 bytes over it.
-SAVEBIN "neogs_overlay68.bin", neogs_overlay68_start, neogs_overlay68_end - neogs_overlay68_start
-SAVEBIN "build/neogs_overlay68.bin", neogs_overlay68_start, neogs_overlay68_end - neogs_overlay68_start
+        SAVEBIN "neogs_overlay68.bin", neogs_overlay68_start, neogs_overlay68_end - neogs_overlay68_start
+        SAVEBIN "build/neogs_overlay68.bin", neogs_overlay68_start, neogs_overlay68_end - neogs_overlay68_start
 
 ; Overlay bank 69: BIOS INT 10h service implementation and its test harness.
 ; Cross-bank calls go through resident gateways in bank_gateways.asm.
