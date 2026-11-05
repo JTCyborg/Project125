@@ -2258,9 +2258,10 @@ x86_resident_group_ff_invalid:
 
 ; D3 group-2 dispatch. Full r/m16 SHL implementation lives in overlay69.
 x86_resident_shift_word_mem_shl_cl:
+        ld      b, a                       ; preserve ModR/M before diagnostics
         ld      a, #10
         ld      (x86_shift_diag_stage), a ; resident D3 dispatcher entered
-        ld      b, a
+        ld      a, b
         and     #38
         cp      #30                    ; /6 SHL (SAL)
         ld      a, b
