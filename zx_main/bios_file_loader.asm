@@ -135,11 +135,14 @@ neogs_bios_load_from_trdos:
         or      l
         jr      z, .bios_image_staged
         ld      hl, #C000
-        ld      (hl), #FF
-        ld      de, #C001
         ld      bc, (bios_trdos_prefix_size)
+.bios_fill_prefix:
+        ld      (hl), #FF
+        inc     hl
         dec     bc
-        ldir
+        ld      a, b
+        or      c
+        jr      nz, .bios_fill_prefix
 
 .bios_image_staged:
         ; Transfer a complete 8 KiB backing window; only the selected file
