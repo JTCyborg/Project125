@@ -1350,6 +1350,20 @@ x86_resident_memtest_scas_trace:
         push    de
         push    hl
 
+        ; Direct NeoGS-originated #EF diagnostics share the host log.
+        ld      a, '['
+        out     (#EF), a
+        ld      a, 'N'
+        out     (#EF), a
+        ld      a, 'G'
+        out     (#EF), a
+        ld      a, 'S'
+        out     (#EF), a
+        ld      a, ']'
+        out     (#EF), a
+        ld      a, ' '
+        out     (#EF), a
+
         ld      a, '['
         out     (#EF), a
         ld      a, 'S'
