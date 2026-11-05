@@ -2347,6 +2347,15 @@ x86_resident_shift_word_mem_shl_cl:
         ld      a, b
         jp      bank_call_x86_shift_shl_cl
 
+; D0 group-2 byte dispatch. ModR/M is passed in A from overlay68.
+; Keep this selector resident so overlay68 does not grow beyond 16 KiB.
+x86_resident_shift_byte_dispatch:
+        cp      #E0                    ; /4 SHL AL,1
+        jp      z, x86_resident_shift_byte_shl_one
+        cp      #C8                    ; /5 SHR AL,1
+        jp      z, x86_real_shift_byte_one_shr
+        jp      x86_real_shift_byte_one_unsupported
+
 ; D0 E0: SHL AL,1. Matches PCem 808x.c D0 /4 and /6 handling.
 ; Called after ModR/M fetch; this BIOS instruction is register-direct AL.
 x86_resident_shift_byte_shl_one:
