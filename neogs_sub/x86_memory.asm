@@ -102,7 +102,18 @@ x86_mem_read8:
         call    x86_mem_map_addr
         ret     c
         ld      a, (hl)
+        ; Capture the exact backend address and byte returned by this read.
+        ; This is independent of the instruction-fetch helper's bookkeeping.
+        ld      (x86_mem_last_read_value), a
+        ld      a, (x86_mem_addr)
+        ld      (x86_mem_last_read_addr), a
+        ld      a, (x86_mem_addr+1)
+        ld      (x86_mem_last_read_addr+1), a
+        ld      a, (x86_mem_addr+2)
+        ld      (x86_mem_last_read_addr+2), a
+        ld      a, (x86_mem_last_read_value)
         call    x86_mem_watch_low_read
+        ld      a, (x86_mem_last_read_value)
         or      a
         ret
 
