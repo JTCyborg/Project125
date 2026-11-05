@@ -45,6 +45,8 @@ BIOS_ROM_BACKING_PAGE     EQU 75
 bios_rom_reset_state:
         call    x86_mem_init
         call    x86_fetch_diag_begin
+        xor     a
+        ld      (x86_host_input_poll_seen), a
         ; A cold PC/XT reset must not inherit random bytes from backing RAM.
         ; In particular, BIOS error flags at 0040:0015 must start at zero,
         ; otherwise the ROM reports a spurious System error #FF.
