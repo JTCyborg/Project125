@@ -2213,8 +2213,19 @@ x86_resident_group_ff_invalid:
 ; D3 B0: SHL word ptr [BX+SI+disp16],CL.
 ; Resident implementation keeps the full 16 KiB interpreter overlay intact.
 x86_resident_shift_word_mem_shl_cl:
-        ; A still contains the fetched ModR/M byte (#B0). Decode it before
-        ; touching A; clearing A here would silently decode ModR/M=00.
+        ; D3 group-2 dispatcher. A contains the ModR/M byte.
+        ; /6 is SHL r/m16,CL; /5 E8 retains the existing SHR AX,CL path.
+        ld      b, a
+        and     #38
+        cp      #30
+        ld      a, b
+        jp      z, .shl_rm16_cl
+        cp      #E8
+        jp      z, x86_real_shift_word_cl_shr
+        jp      x86_real_shift_cl_unsupported
+
+.shl_rm16_cl:
+        ; The ModR/M decoder consumes the original byte and displacement.
         call    x86_real_mov_decode_modrm
         ret     c
         xor     a
