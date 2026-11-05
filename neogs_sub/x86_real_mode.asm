@@ -2032,12 +2032,9 @@ x86_real_shift_word_one:
 x86_real_shift_byte_cl:
         call    x86_real_fetch8
         ret     c
-        ; Preserve the exact ModR/M byte at the overlay boundary. The
-        ; resident selector reloads this byte from shared state rather than
-        ; depending on A surviving a cross-section control transfer.
-        ld      (x86_shift_diag_modrm), a
-        ld      a, #D2
-        ld      (x86_shift_diag_stage), a
+        ; Pass the fetch result directly to resident code, exactly as D0 does.
+        ; The resident entry snapshots A and the backend read address before
+        ; any other helper can alter them.
         jp      x86_resident_shift_byte_cl_dispatch
 
 ; Legacy AL-only D2 handlers remain below for reference.
