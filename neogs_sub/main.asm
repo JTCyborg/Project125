@@ -549,6 +549,13 @@ command_boot_bios:
         ld      (x86_exit_status), a
         jp      main_loop
 .bios_ready:
+        ; Accept the long-running BIOS command, then release CBIT immediately.
+        ; The ATM host uses subsequent CBIT edges to post CMD_HOST_INPUT
+        ; doorbells while x86_real_execute is running. Keeping the original
+        ; CMD_BOOT_BIOS CBIT asserted prevents those later requests from being
+        ; represented as fresh host transactions.
+        xor     a
+        out     (CLRCBIT), a
         ld      hl, bios_boot_message
         call    neo_debug_send_string
         call    bios_rom_reset_state
