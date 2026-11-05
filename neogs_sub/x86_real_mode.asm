@@ -376,10 +376,79 @@ x86_real_fetch_out_of_range:
         jp      x86_real_fetch_out_of_range_resident
 
 x86_real_execute:
-        ; Emit a complete entry record through the resident #EF trace
-        ; helper so it uses the same shared-log path as the gateway markers.
+        ; First-instruction signature: direct #EF writes, no helper, DMA or
+        ; bank gateway. This distinguishes reaching this address from merely
+        ; reaching the CALL site in the resident gateway.
+        ld      a, '['
+        out     (#EF), a
+        ld      a, 'X'
+        out     (#EF), a
+        ld      a, '8'
+        out     (#EF), a
+        ld      a, '6'
+        out     (#EF), a
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'E'
+        out     (#EF), a
+        ld      a, 'N'
+        out     (#EF), a
+        ld      a, 'T'
+        out     (#EF), a
+        ld      a, 'R'
+        out     (#EF), a
+        ld      a, 'Y'
+        out     (#EF), a
+        ld      a, ']'
+        out     (#EF), a
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+
+        ; Keep the existing resident trace call, then mark its return directly.
         ld      hl, x86_dbg_core_enter
         call    neo_trace_ef_string
+        ld      a, '['
+        out     (#EF), a
+        ld      a, 'X'
+        out     (#EF), a
+        ld      a, '8'
+        out     (#EF), a
+        ld      a, '6'
+        out     (#EF), a
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'T'
+        out     (#EF), a
+        ld      a, 'R'
+        out     (#EF), a
+        ld      a, 'A'
+        out     (#EF), a
+        ld      a, 'C'
+        out     (#EF), a
+        ld      a, 'E'
+        out     (#EF), a
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, 'R'
+        out     (#EF), a
+        ld      a, 'E'
+        out     (#EF), a
+        ld      a, 'T'
+        out     (#EF), a
+        ld      a, 'U'
+        out     (#EF), a
+        ld      a, 'R'
+        out     (#EF), a
+        ld      a, 'N'
+        out     (#EF), a
+        ld      a, ']'
+        out     (#EF), a
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
         xor     a
         ld      (x86_trace_fetch_count), a
         ld      (x86_trace_decode_once), a
