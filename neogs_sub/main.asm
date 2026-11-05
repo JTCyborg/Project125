@@ -2018,9 +2018,8 @@ x86_kbd_load_latch:
         ret
 
 x86_kbd_acknowledge:
-        ld      a, (x86_ppi_keyboard_ready)
-        or      a
-        ret     z
+        ; PCem clears PA, shift_full and IRQ1 on every PB7-high write,
+        ; even if no byte is currently latched.
         xor     a
         ld      (x86_ppi_keyboard_ready), a
         ld      (x86_ppi_keyboard_data), a
