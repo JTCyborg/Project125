@@ -282,18 +282,6 @@ p125_trace_port:
         push    bc
         push    hl
         ld      bc, #00EF
-        ld      a, '['
-        out     (c), a
-        ld      a, 'A'
-        out     (c), a
-        ld      a, 'T'
-        out     (c), a
-        ld      a, 'M'
-        out     (c), a
-        ld      a, ']'
-        out     (c), a
-        ld      a, ' '
-        out     (c), a
 .p125_trace_loop:
         ld      a, (hl)
         inc     hl
@@ -398,26 +386,10 @@ p125_log_prefix_if_needed:
         ld      a, (p125_log_line_start)
         or      a
         ret     z
-        push    af
-        push    hl
-        ld      hl, p125_atm_source_prefix
-.p125_atm_prefix_loop:
-        ld      a, (hl)
-        inc     hl
-        or      a
-        jr      z, .p125_atm_prefix_done
-        call    p125_emit_raw_char
-        jr      .p125_atm_prefix_loop
-.p125_atm_prefix_done:
-        pop     hl
-        pop     af
         call    p125_print_timestamp
         xor     a
         ld      (p125_log_line_start), a
         ret
-
-p125_atm_source_prefix:
-        defb    "[ATM] ", 0
 
 p125_print_timestamp:
         ; Do not poll or print an unknown RTC timestamp before the DS12887
@@ -458,37 +430,9 @@ p125_print_timestamp:
         pop     af
         ret
 
-; NeoGS has no RTC. Prefix each complete DBIT/host-stream line so the
-; shared port #EF log keeps its source even when ATM and NeoGS interleave.
+; NeoGS has no RTC: mirror its bytes verbatim, without a timestamp.
 p125_debug_stream_char:
-        push    af
-        push    hl
-        ld      a, (p125_ngs_line_start)
-        or      a
-        jr      z, .p125_ngs_stream_byte
-        xor     a
-        ld      (p125_ngs_line_start), a
-        ld      hl, p125_ngs_source_prefix
-.p125_ngs_prefix_loop:
-        ld      a, (hl)
-        inc     hl
-        or      a
-        jr      z, .p125_ngs_prefix_done
-        call    p125_emit_raw_char
-        jr      .p125_ngs_prefix_loop
-.p125_ngs_prefix_done:
-.p125_ngs_stream_byte:
-        pop     hl
-        pop     af
-        call    p125_emit_raw_char
-        cp      10
-        ret     nz
-        ld      a, 1
-        ld      (p125_ngs_line_start), a
-        ret
-
-p125_ngs_source_prefix:
-        defb    "[NGS] ", 0
+        jp      p125_emit_raw_char
 
 trace_00_entry:               defb "[TRACE 00] Z80 ENTRY", 13, 10, 0
 trace_10_video_init_begin:    defb "[TRACE 10] VIDEO INIT BEGIN", 13, 10, 0
@@ -541,7 +485,6 @@ msg_dma_reverse_failed: defb "[P125] DMA REVERSE SELFTEST FAIL #", 0
 
 P125_OLD_SP: dw 0
 p125_log_line_start: db 1
-p125_ngs_line_start: db 1
 
 ; Project124-derived K512VI1 RTC driver.
         INCLUDE "rtc_driver.asm"
