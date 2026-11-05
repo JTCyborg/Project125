@@ -480,6 +480,8 @@ command_load_bios:
         out     (DMA_LAD), a
         ld      a, #80
         out     (DMA_CST), a
+        ld      hl, x86_host_input_dma_armed_message
+        call    neo_debug_send_string
         xor     a
         out     (CLRCBIT), a
 
@@ -1819,8 +1821,9 @@ x86_host_input_service_poll:
         jr      nz, .kbd_poll_marker_done
         inc     a
         ld      (x86_host_input_poll_seen), a
-        ld      a, 'P'
-        call    neo_send_data_byte
+        ; Host adds [NGS] to each received DBIT line in the shared #EF log.
+        ld      hl, x86_host_input_poll_message
+        call    neo_debug_send_string
 .kbd_poll_marker_done:
 
         ; During the BIOS executor, the boot command has already been
@@ -1832,9 +1835,10 @@ x86_host_input_service_poll:
         bit     B_CBIT, a
         jr      z, .kbd_service_done
 
-        ; Diagnostic acknowledgement: host drains DBIT while waiting READY.
-        ld      a, 'K'
-        call    neo_send_data_byte
+        ; Host drains DBIT while waiting READY. This full line confirms that
+        ; NeoGS observed the BIOS keyboard doorbell (CBIT).
+        ld      hl, x86_host_input_request_message
+        call    neo_debug_send_string
 
         ld      a, C_DMA_ZX
         out     (DMA_MOD), a
@@ -1864,11 +1868,15 @@ x86_host_input_service_poll:
         jr      nz, .kbd_dma_outer
         xor     a
         out     (DMA_CST), a
+        ld      hl, x86_host_input_dma_timeout_message
+        call    neo_debug_send_string
         out     (CLRCBIT), a
         jr      .kbd_service_done
 .kbd_dma_done:
         xor     a
         out     (DMA_CST), a
+        ld      hl, x86_host_input_dma_done_message
+        call    neo_debug_send_string
         out     (CLRCBIT), a
         call    x86_kbd_process_matrix
 .kbd_service_done:
@@ -2167,6 +2175,11 @@ x86_kbd_scancode_table:
 
 x86_kbd_matrix_previous: defs 8, #1F
 x86_host_input_poll_seen: db 0
+x86_host_input_poll_message:       defb "BIOS INPUT POLL ENTER",13,10,0
+x86_host_input_request_message:     defb "BIOS INPUT REQUEST SEEN",13,10,0
+x86_host_input_dma_armed_message:   defb "BIOS INPUT DMA ARMED",13,10,0
+x86_host_input_dma_done_message:    defb "BIOS INPUT DMA END RECEIVED",13,10,0
+x86_host_input_dma_timeout_message: defb "BIOS INPUT DMA WAIT TIMEOUT",13,10,0
 x86_kbd_matrix_index: db 0
 x86_kbd_row_index: db 0
 x86_kbd_new_row: db 0
