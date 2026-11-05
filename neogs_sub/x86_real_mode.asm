@@ -596,7 +596,11 @@ x86_real_dispatch_no_progress:
         ld      (bios_first_opcode), a
         ld      a, 2
         ld      (bios_first_instruction_trace), a
+        ; The BIOS trace routine uses A while formatting CS:IP/opcode.
+        ; Preserve the live opcode returned by x86_real_fetch8 across it.
+        push    af
         call    bios_trace_first_fetch
+        pop     af
 .first_fetch_trace_done:
         call    x86_resident_escape_dispatch
         ret     c
