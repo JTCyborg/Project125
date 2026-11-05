@@ -729,6 +729,10 @@ bios_stop_dump_state:
          call    neo_debug_hex8
          ld      a, (x86_fetch_diag_phys)
          call    neo_debug_hex8
+         ld      hl, bios_stop_fetch_value_label
+         call    neo_debug_send_string
+         ld      a, (x86_fetch_diag_value)
+         call    neo_debug_hex8
         pop     hl
         pop     de
         pop     bc
@@ -755,6 +759,8 @@ bios_stop_shift_mask_label:
         defb    " MASK=", 0
 bios_stop_fetch_label:
         defb    " FCH=", 0
+bios_stop_fetch_value_label:
+        defb    " FVAL=", 0
 
 ; Dump physical page-75 bytes at image offset 1FF0 (guest FFFF0..FFFF4).
 ; This is deliberately performed after DMA is disabled and before validation.
@@ -2315,6 +2321,7 @@ x86_fetch_diag_address:
 
 x86_fetch_diag_read_ok:
         push    af
+        ld      (x86_fetch_diag_value), a
         ld      a, 2
         ld      (x86_fetch_diag_stage), a
         pop     af
@@ -2375,6 +2382,7 @@ x86_shift_diag_mask:  db 0
 ; Last guest instruction-fetch diagnostics (shared resident state).
 x86_fetch_diag_stage: db 0
 x86_fetch_diag_phys:  ds 3, 0
+x86_fetch_diag_value: db 0
 
 neogs_resident_end:
 
