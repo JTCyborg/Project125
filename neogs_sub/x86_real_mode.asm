@@ -296,12 +296,13 @@ x86_real_fetch_out_of_range:
         jp      x86_real_fetch_out_of_range_resident
 
 x86_real_execute:
+        ; Keep the entry marker as the very first executor operation.
+        ld      hl, x86_real_exec_enter_message
+        call    neo_debug_port_string
         xor     a
         ld      (x86_real_unsupported_opcode), a
         ld      (x86_real_dispatch_seen), a
         ld      (x86_real_poll_return_seen), a
-        ld      hl, x86_real_exec_enter_message
-        call    neo_debug_port_string
         ; Emit the exact initial guest CS:IP before the first opcode fetch.
         call    bios_progress_emit
         ld      hl, X86_REAL_STEP_LIMIT
