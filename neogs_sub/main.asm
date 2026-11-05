@@ -1114,6 +1114,13 @@ rom_return_trampoline_end:
         INCLUDE "../shared/video_crc16.asm"
         INCLUDE "bank_gateways.asm"
 
+; The 16-bit ALU and interrupt core are resident, not in the tight bank-68
+; interpreter overlay. They execute while bank 68 is mapped and may call
+; its fetch/next/stack helpers directly. This frees several KiB in overlay68
+; for opcode handlers without introducing extra bank-switch gateways.
+        INCLUDE "x86_interrupt.asm"
+        INCLUDE "x86_real_alu.asm"
+
 ; 8086 register file is resident so BIOS and banked CPU code share one state.
 x86_reg_ax:    dw 0
 x86_reg_cx:    dw 0
@@ -3138,9 +3145,7 @@ neogs_resident_end:
         ORG     $8000
 neogs_overlay68_start:
         INCLUDE "x86_modrm.asm"
-        INCLUDE "x86_interrupt.asm"
         INCLUDE "x86_real_mode.asm"
-        INCLUDE "x86_real_alu.asm"
         INCLUDE "x86_real_alu8.asm"
         INCLUDE "x86_real_mov.asm"
         INCLUDE "x86_io.asm"
