@@ -565,6 +565,10 @@ x86_real_dispatch_no_progress:
         pop     af
         ret
 .fetch_succeeded:
+        ; Preserve the fetched opcode and flags across the one-shot diagnostic.
+        ; The marker uses A as its state variable; it must not replace the
+        ; instruction byte returned by x86_real_fetch8.
+        push    af
         ; This marker proves x86_mem_read8 returned an instruction byte.
         ld      a, (x86_dbg_fetch_ok_once)
         or      a
@@ -578,6 +582,7 @@ x86_real_dispatch_no_progress:
         pop     hl
         pop     af
 .fetch_ok_marked:
+        pop     af
         ; Emit the exact first successfully fetched BIOS opcode before decode.
         ld      a, (bios_first_instruction_trace)
         cp      1
