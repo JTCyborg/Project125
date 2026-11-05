@@ -2040,6 +2040,7 @@ x86_kbd_bios_capture:
         push    de
         push    hl
         ld      a, (x86_kbd_key_code)
+        and     #7F                       ; normalize make/break scan code
         cp      #2A                       ; left Shift
         jr      z, .shift_key
         cp      #1D                       ; Ctrl
@@ -2048,8 +2049,8 @@ x86_kbd_bios_capture:
         or      a
         jr      nz, .done                 ; INT 16h queues make codes only
         ld      a, (bios_keyboard_pending)
-        or      a
-        jr      nz, .done                 ; one pending BIOS key at a time
+        cp      16
+        jr      nc, .done                 ; bounded 16-key BIOS queue
         ld      a, (x86_kbd_key_code)
         cp      #40
         jr      nc, .done
@@ -2072,11 +2073,23 @@ x86_kbd_bios_capture:
         sub     #20
         ld      b, a
 .ascii_ready:
+        ; Append AX-format key word (AH=scan, AL=ASCII) to BIOS queue.
+        ld      a, (bios_keyboard_queue_write)
+        add     a, a
+        ld      e, a
+        ld      d, 0
+        ld      hl, bios_keyboard_queue
+        add     hl, de
         ld      a, (x86_kbd_key_code)
-        ld      h, a
-        ld      l, b
-        ld      (bios_keyboard_word), hl
-        ld      a, 1
+        ld      (hl), a
+        inc     hl
+        ld      (hl), b
+        ld      a, (bios_keyboard_queue_write)
+        inc     a
+        and     #0F
+        ld      (bios_keyboard_queue_write), a
+        ld      a, (bios_keyboard_pending)
+        inc     a
         ld      (bios_keyboard_pending), a
         jr      .done
 .shift_key:
