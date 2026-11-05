@@ -2215,8 +2215,7 @@ x86_resident_group_ff_invalid:
 x86_resident_shift_word_mem_shl_cl:
         ; This BIOS encoding is fixed: D3 B0 disp16 is
         ; SHL word ptr [BX+SI+disp16],CL. Decode this exact form locally.
-        ; Avoid the generic MOV ModR/M decoder here: this handler resides in
-        ; the fixed resident page while the shared decoder is banked.
+        ; Decode locally in the resident page; no banked ModR/M decoder call is needed.
         ld      a, #B0
         ld      (x86_mov_modrm), a
         ld      a, 2
