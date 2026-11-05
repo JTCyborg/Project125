@@ -2032,18 +2032,10 @@ x86_real_shift_word_one:
 x86_real_shift_byte_cl:
         call    x86_real_fetch8
         ret     c
-        ; Snapshot the actual fetch result and physical source immediately.
-        ; These fields are printed by the existing DIN/IP/FA/V stop trace.
-        ld      (x86_shift_dispatch_byte), a
+        ; Preserve the exact ModR/M byte at the overlay boundary. The
+        ; resident selector reloads this byte from shared state rather than
+        ; depending on A surviving a cross-section control transfer.
         ld      (x86_shift_diag_modrm), a
-        ld      hl, (x86_reg_ip)
-        ld      (x86_shift_dispatch_ip), hl
-        ld      hl, (x86_fetch_exact_addr)
-        ld      (x86_shift_dispatch_addr), hl
-        ld      a, (x86_fetch_exact_addr+2)
-        ld      (x86_shift_dispatch_addr+2), a
-        ld      a, (x86_fetch_exact_value)
-        ld      (x86_shift_dispatch_value), a
         ld      a, #D2
         ld      (x86_shift_diag_stage), a
         jp      x86_resident_shift_byte_cl_dispatch
