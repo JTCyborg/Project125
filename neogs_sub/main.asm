@@ -2368,30 +2368,28 @@ x86_fetch_diag_address:
 x86_fetch_diag_read_ok:
         push    af
         ld      (x86_fetch_diag_value), a
-        ; If the previously fetched instruction byte was D3, this byte
-        ; is its ModR/M byte. Preserve it before any later fetch can replace it.
-        ld      a, (x86_fetch_after_d3)
+        ; The D3 handler explicitly arms this before fetching ModR/M.
+        ld      a, (x86_fetch_is_modrm)
         or      a
-        jr      z, .check_d3_opcode
+        jr      z, .fetch_diag_not_modrm
         xor     a
-        ld      (x86_fetch_after_d3), a
+        ld      (x86_fetch_is_modrm), a
         ld      hl, (x86_fetch_diag_phys)
         ld      (x86_fetch_exact_addr), hl
         ld      a, (x86_fetch_diag_phys+2)
         ld      (x86_fetch_exact_addr+2), a
         ld      a, (x86_fetch_diag_value)
         ld      (x86_fetch_exact_value), a
-        jr      .fetch_diag_done
-.check_d3_opcode:
-        ld      a, (x86_fetch_diag_value)
-        cp      #D3
-        jr      nz, .fetch_diag_done
-        ld      a, 1
-        ld      (x86_fetch_after_d3), a
-.fetch_diag_done:
+.fetch_diag_not_modrm:
         ld      a, 2
         ld      (x86_fetch_diag_stage), a
         pop     af
+        ret
+
+; Called only by the D3 shift handler immediately before its ModR/M fetch.
+x86_fetch_arm_modrm:
+        ld      a, 1
+        ld      (x86_fetch_is_modrm), a
         ret
 
 ; Last-resort fetch entry. The normal overlay path checks the optional
@@ -2453,7 +2451,7 @@ x86_fetch_diag_phys:  ds 3, 0
 x86_fetch_diag_value: db 0
 x86_fetch_exact_addr: ds 3, 0
 x86_fetch_exact_value: db 0
-x86_fetch_after_d3: db 0
+x86_fetch_is_modrm: db 0
 x86_mem_last_read_addr: ds 3, 0
 x86_mem_last_read_value: db 0
 
