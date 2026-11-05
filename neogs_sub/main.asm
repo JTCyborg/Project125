@@ -2047,20 +2047,20 @@ x86_kbd_bios_capture:
         jr      z, .control_key
         ld      a, (x86_kbd_new_bit)
         or      a
-        jr      nz, .done                 ; INT 16h queues make codes only
+        jp      nz, .done                 ; INT 16h queues make codes only
         ld      a, (bios_keyboard_pending)
         cp      16
-        jr      nc, .done                 ; bounded 16-key BIOS queue
+        jp      nc, .done                 ; bounded 16-key BIOS queue
         ld      a, (x86_kbd_key_code)
         cp      #40
-        jr      nc, .done
+        jp      nc, .done
         ld      e, a
         ld      d, 0
         ld      hl, x86_kbd_ascii_table
         add     hl, de
         ld      a, (hl)
         or      a
-        jr      z, .done
+        jp      z, .done
         ld      b, a
         ld      a, (bios_keyboard_shift_flags)
         bit     1, a
@@ -2091,7 +2091,7 @@ x86_kbd_bios_capture:
         ld      a, (bios_keyboard_pending)
         inc     a
         ld      (bios_keyboard_pending), a
-        jr      .done
+        jp      .done
 .shift_key:
         ld      a, (bios_keyboard_shift_flags)
         ld      b, a
