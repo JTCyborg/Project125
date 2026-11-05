@@ -1808,9 +1808,8 @@ x86_ppi_write_control:
 X86_KBD_DMA_WAIT EQU #FFFF
 
 x86_host_input_service_poll:
-        ; Asynchronous keyboard service: never use DBIT/GSDAT for diagnostics.
-        ; The host drains that channel while waiting for DMA READY. NGS traces
-        ; use the independent NeoGS debug port #EF.
+        ; The host drains DBIT/GSDAT while waiting for DMA READY and completion.
+        ; Use that same established IPC stream for service diagnostics.
         push    af
         push    bc
         push    de
@@ -1883,7 +1882,7 @@ x86_host_input_service_poll:
         pop     af
         ret
 
-; Nonblocking, out-of-band NeoGS diagnostics. Never touches DBIT/GSDAT.
+; Independent local NeoGS debug-port helper, retained for #EF-only traces.
 neo_debug_port_string:
         ld      a, (hl)
         inc     hl
