@@ -2350,9 +2350,17 @@ x86_resident_shift_word_mem_shl_cl:
 ; D0 group-2 byte dispatch. ModR/M is passed in A from overlay68.
 ; Keep this selector resident so overlay68 does not grow beyond 16 KiB.
 x86_resident_shift_byte_dispatch:
-        cp      #E0                    ; /4 SHL AL,1
+        ; Capture the actual ModR/M byte at the resident boundary. This also
+        ; makes a stale D3 diagnostic distinguishable from a D0 dispatch.
+        ld      (x86_shift_diag_modrm), a
+        ld      a, #D0
+        ld      (x86_shift_diag_stage), a
+        ld      a, (x86_shift_diag_modrm)
+        and     #38
+        ld      (x86_shift_diag_mask), a
+        cp      #20                    ; /4 SHL (D0 E0 for AL)
         jp      z, x86_resident_shift_byte_shl_one
-        cp      #C8                    ; /5 SHR AL,1
+        cp      #28                    ; /5 SHR (D0 C8 for AL)
         jp      z, x86_real_shift_byte_one_shr
         jp      x86_real_shift_byte_one_unsupported
 
