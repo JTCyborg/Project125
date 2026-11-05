@@ -116,7 +116,11 @@ x86_int_enter:
 .int_target_trace_done:
 
         ; 8086 interrupt entry pushes FLAGS, then CS, then return IP.
+        ; PCem's 808x.c pushes FLAGS with the reserved high nibble set.
         ld      de, (x86_reg_flags)
+        ld      a, d
+        or      #F0
+        ld      d, a
         call    x86_int_push_word
         ret     c
         ld      de, (x86_reg_cs)
@@ -148,6 +152,10 @@ x86_iret_return:
 
         call    x86_int_pop_word
         ret     c
+        ; PCem's 808x.c IRET path restores only the defined low 12 FLAGS bits.
+        ld      a, h
+        and     #0F
+        ld      h, a
         ld      (x86_reg_flags), hl
         ; One-shot report of the address restored by IRET.
         ld      a, (trace_iret_once)
@@ -315,7 +323,7 @@ x86_int_self_test:
         ld      (x86_mem_offset), hl
         call    x86_mem_read16
         jp      c, x86_int_test_fail_4
-        ld      de, #0302
+        ld      de, #F302
         or      a
         sbc     hl, de
         jp      nz, x86_int_test_fail_4
