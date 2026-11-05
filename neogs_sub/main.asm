@@ -2258,11 +2258,18 @@ x86_resident_group_ff_invalid:
 
 ; D3 group-2 dispatch. Full r/m16 SHL implementation lives in overlay69.
 x86_resident_shift_word_mem_shl_cl:
+        ld      a, #10
+        ld      (x86_shift_diag_stage), a ; resident D3 dispatcher entered
         ld      b, a
         and     #38
         cp      #30                    ; /6 SHL (SAL)
         ld      a, b
-        jp      z, bank_call_x86_shift_shl_cl
+        jp      nz, .shift_not_shl
+        ld      a, #11
+        ld      (x86_shift_diag_stage), a ; /6 selected; entering bank gateway
+        jp      bank_call_x86_shift_shl_cl
+.shift_not_shl:
+        ld      a, b
         cp      #E8                    ; /5 SHR AX,CL compatibility path
         jp      z, x86_real_shift_word_cl_shr
         jp      x86_real_shift_cl_unsupported
