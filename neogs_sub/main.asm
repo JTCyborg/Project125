@@ -2001,6 +2001,58 @@ x86_string_rep_scas_summary:
         ret
 
 
+; Detect 8086 ESC D8h..DFh before the ordinary opcode decoder.
+; Z=1 means the ESC instruction was consumed; carry reports fetch failure.
+x86_resident_escape_dispatch:
+        cp      #D8
+        ret     c
+        cp      #E0
+        jr      c, .is_escape
+        or      a
+        ret
+.is_escape:
+        call    x86_resident_escape_skip
+        ret     c
+        xor     a
+        ret
+
+; NOP and WAIT are identical no-ops; keep the trampoline resident so the
+; fixed 16 KiB interpreter overlay remains within its hard bank limit.
+x86_resident_nop:
+        jp      x86_real_next
+
+; Skip ModR/M and displacement bytes for ESC. No 8087 is installed.
+x86_resident_escape_skip:
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_resident_escape_modrm), a
+        and     #C0
+        cp      #C0
+        ret     z
+        cp      #40
+        jr      z, .disp8
+        cp      #80
+        jr      z, .disp16
+        ld      a, (x86_resident_escape_modrm)
+        and     7
+        cp      6
+        jr      nz, .done
+.disp16:
+        call    x86_real_fetch8
+        ret     c
+        call    x86_real_fetch8
+        ret     c
+.done:
+        or      a
+        ret
+.disp8:
+        call    x86_real_fetch8
+        ret     c
+        or      a
+        ret
+
+x86_resident_escape_modrm: db 0
+
 neogs_resident_end:
 
 ; Overlay bank 68: complete 8086 interpreter and instruction implementation.

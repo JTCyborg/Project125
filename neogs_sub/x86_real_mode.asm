@@ -331,6 +331,9 @@ x86_real_dispatch_no_progress:
         ld      (x86_io_irq_delivered), a
         call    x86_real_fetch8
         ret     c
+        call    x86_resident_escape_dispatch
+        ret     c
+        jr      z, x86_real_next
 
         ; 8086 segment-override prefixes. Multiple prefixes are accepted;
         ; the last segment prefix before the instruction takes effect.
@@ -649,12 +652,6 @@ x86_real_dispatch_no_progress:
         cp      #CA
         jp      z, x86_real_ret_far_imm
 
-        ; ESC opcodes D8h..DFh are ignored when no 8087 is installed.
-        cp      #D8
-        jr      c, .unsupported_opcode
-        cp      #E0
-        jp      c, x86_real_escape
-.unsupported_opcode:
         ld      (x86_real_unsupported_opcode), a
         ld      a, 2
         ld      (x86_exit_status), a
@@ -693,41 +690,10 @@ x86_real_prefix_rep_set:
         ld      (x86_real_rep_mode), a
         jp      x86_real_dispatch
 
-x86_real_nop:
-        jp      x86_real_next
-
+x86_real_nop EQU x86_resident_nop
 ; D8h..DFh ESC. No 8087 is currently modelled, so the coprocessor
 ; operation is ignored. The instruction stream must still consume the
 ; ModR/M byte and any 8086 effective-address displacement.
-x86_real_escape:
-        call    x86_real_fetch8
-        ret     c
-        ld      (x86_real_escape_modrm), a
-        and     #C0
-        cp      #C0
-        jp      z, x86_real_next       ; mod=11: register operand, no disp
-        cp      #40
-        jp      z, .disp8
-        cp      #80
-        jp      z, .disp16
-        ; mod=00 has a displacement only for r/m=110 (direct [disp16]).
-        ld      a, (x86_real_escape_modrm)
-        and     7
-        cp      6
-        jp      z, .disp16
-        jp      x86_real_next
-.disp8:
-        call    x86_real_fetch8
-        ret     c
-        jp      x86_real_next
-.disp16:
-        call    x86_real_fetch8
-        ret     c
-        call    x86_real_fetch8
-        ret     c
-        jp      x86_real_next
-
-
 ; -------------------------------------------------------------------------
 ; 50-57 PUSH r16 and 58-5F POP r16. Stack accesses use SS:SP through the
 ; physical-memory API. PUSH SP stores the pre-decrement SP value, matching
@@ -1602,8 +1568,7 @@ x86_real_cwd:
         jp      x86_real_next
 
 ; WAIT has no external 8087 device attached; it is a timing-neutral no-op.
-x86_real_wait:
-        jp      x86_real_next
+x86_real_wait EQU x86_resident_nop
 
 ; 9D POPF uses the same SS:SP word stack path as RET/IRET.
 x86_real_popf:
@@ -1812,7 +1777,6 @@ x86_real_imm_low:    db 0
 x86_real_imm_high:   db 0
 x86_real_int_vector: db 0
 x86_real_opcode: db 0
-x86_real_escape_modrm: db 0
 x86_real_imm_byte: db 0
 x86_real_incdec_mode: db 0
 x86_real_old_low: db 0
