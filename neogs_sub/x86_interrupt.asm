@@ -185,10 +185,13 @@ x86_iret_return:
         or      a
         ret
 
-; IN: DE=word. Decrement guest SP by two, then write SS:SP.
+; IN: DE=word. Write to SS:(SP-2), then commit the new SP.
+; On a backend fault, restore the original SP before propagating carry.
+; This follows the checked stack-push contract used by x86_real_stack_push.
 x86_int_push_word:
         ld      (x86_int_word), de
         ld      hl, (x86_reg_sp)
+        ld      (x86_int_old_sp), hl
         dec     hl
         dec     hl
         ld      (x86_reg_sp), hl
@@ -197,7 +200,12 @@ x86_int_push_word:
         ld      (x86_mem_segment), de
         ld      hl, (x86_int_word)
         ld      (x86_mem_word_value), hl
-        jp      x86_mem_write16
+        call    x86_mem_write16
+        ret     nc
+        ld      hl, (x86_int_old_sp)
+        ld      (x86_reg_sp), hl
+        scf
+        ret
 
 ; OUT: HL=word at SS:SP. SP advances only after a successful read.
 x86_int_pop_word:
@@ -393,6 +401,7 @@ x86_int_test_fail:
 
 x86_int_vector:    db 0
 x86_int_word:      dw 0
+x86_int_old_sp:    dw 0
 x86_int_target_ip: dw 0
 x86_int_target_cs: dw 0
 
