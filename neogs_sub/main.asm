@@ -990,7 +990,7 @@ bios_progress_emit:
         push    de
         push    hl
         ld      hl, bios_progress_prefix
-        call    neo_debug_port_string
+        call    neo_debug_send_string
         ld      hl, (x86_reg_cs)
         ld      a, h
         call    neo_debug_port_hex8
@@ -1828,8 +1828,13 @@ x86_host_input_service_poll:
         in      a, (ZXSTAT)
         bit     B_CBIT, a
         jr      z, .kbd_service_done
+        ; The same command latch used by main_loop identifies the request.
+        ; Do not treat an unrelated CBIT transaction as a keyboard DMA frame.
+        in      a, (ZXCMD)
+        cp      CMD_HOST_INPUT
+        jr      nz, .kbd_service_done
         ld      hl, x86_kbd_request_message
-        call    neo_debug_port_string
+        call    neo_debug_send_string
         ; Arm the complete DMA receiver before releasing CBIT to the host.
         ld      a, C_DMA_ZX
         out     (DMA_MOD), a
