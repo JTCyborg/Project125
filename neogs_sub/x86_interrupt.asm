@@ -36,6 +36,28 @@ x86_int_enter:
 .int_trace_done:
         pop     af
         ld      (x86_int_vector), a
+        push    af
+        ld      a, (trace_int_vector_once)
+        or      a
+        jr      nz, .int_vector_printed
+        inc     a
+        ld      (trace_int_vector_once), a
+        push    bc
+        push    de
+        push    hl
+        ld      hl, trace_int_vector_prefix
+        call    neo_debug_send_string
+        ld      a, (x86_int_vector)
+        call    neo_debug_hex8
+        ld      a, 13
+        call    neo_send_data_byte
+        ld      a, 10
+        call    neo_send_data_byte
+        pop     hl
+        pop     de
+        pop     bc
+.int_vector_printed:
+        pop     af
 
         ; IVT entry address = vector * 4, physical segment zero.
         ld      l, a
@@ -377,7 +399,9 @@ x86_int_target_cs: dw 0
 ; One-shot interrupt-path diagnostics.
 trace_int_enter_once: db 0
 trace_int_enter: defb "[X86 INT ENTER]",13,10,0
+trace_int_vector_prefix: defb "[NGS X86] INT VECTOR=",0
 trace_int_target_prefix: defb "[NGS X86] INT TARGET=",0
+trace_int_vector_once: db 0
 trace_iret_prefix: defb "[NGS X86] IRET RESTORED=",0
 trace_int_target_once: db 0
 trace_iret_once: db 0
