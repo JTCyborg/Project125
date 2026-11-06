@@ -163,6 +163,7 @@ x86_ata_identify:
         ld      de,512
         xor     a
 .clear:
+        xor     a
         ld      (hl),a
         inc     hl
         dec     de
