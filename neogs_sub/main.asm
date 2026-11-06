@@ -2196,6 +2196,11 @@ x86_host_video_service:
         or      c
         jr      nz,.video_attr_copy
 
+        ; Verify the completed staging slot before DMA. MPAG #A7 maps the
+        ; 16-KiB frame page 79 at $8000-$BFFF; chars occupy 0000-07CF
+        ; and attributes 07D0-0F9F. Log both ends of each copied region.
+        call    x86_host_video_trace_staging
+
         ; Restore the interpreter overlay before waiting for host DMA.
         ld      a,NGS_FW_BANK68_MPAG
         out     (MPAG),a
@@ -2244,40 +2249,63 @@ x86_host_video_trace_planes:
         push    bc
         push    de
         push    hl
-        ld      a,(x86_host_video_trace_count)
-        cp      3
-        jr      nc,.done
-
-        ; BIOS cursor position is dynamic. Scan the complete 80x25 text
-        ; character plane instead of assuming that the first message starts
-        ; at row 6, column 7.
+        ; Search the complete text plane, but always emit a result. Previously
+        ; an empty/incorrect page returned silently and looked like a missing
+        ; video request, hiding the actual page contents.
         ld      a,83
         rrca
         out     (MPAGEX),a
         ld      hl,#C000
         ld      bc,#07D0
+        xor     a
+        ld      (x86_host_video_trace_found),a
 .scan_text:
         ld      a,(hl)
         cp      #21
         jr      c,.scan_next
         cp      #7F
-        jr      c,.text_found
+        jr      nc,.scan_next
+        ld      (x86_host_video_trace_found_addr),hl
+        ld      a,1
+        ld      (x86_host_video_trace_found),a
+        jr      .text_found
 .scan_next:
         inc     hl
         dec     bc
         ld      a,b
         or      c
         jr      nz,.scan_text
-        jr      .done
-
+        ld      hl,#C000
 .text_found:
         ld      (x86_host_video_trace_found_addr),hl
-        ld      a,(x86_host_video_trace_count)
-        inc     a
-        ld      (x86_host_video_trace_count),a
-
         ld      hl,x86_host_video_trace_text_p0
         call    neo_trace_ef_string
+        ld      a,(x86_host_video_trace_found)
+        or      a
+        jr      nz,.found_marker
+        ld      a,'N'
+        out     (#EF),a
+        ld      a,'O'
+        out     (#EF),a
+        ld      a,'N'
+        out     (#EF),a
+        ld      a,'E'
+        out     (#EF),a
+        jr      .p0_address
+.found_marker:
+        ld      a,'F'
+        out     (#EF),a
+        ld      a,'O'
+        out     (#EF),a
+        ld      a,'U'
+        out     (#EF),a
+        ld      a,'N'
+        out     (#EF),a
+        ld      a,'D'
+        out     (#EF),a
+.p0_address:
+        ld      a,' '
+        out     (#EF),a
         ld      hl,(x86_host_video_trace_found_addr)
         ld      a,h
         call    neo_trace_ef_hex8
@@ -2286,7 +2314,7 @@ x86_host_video_trace_planes:
         ld      a,' '
         out     (#EF),a
         ld      hl,(x86_host_video_trace_found_addr)
-        ld      b,32
+        ld      b,16
 .text_p0:
         ld      a,(hl)
         call    neo_trace_ef_hex8
@@ -2301,11 +2329,11 @@ x86_host_video_trace_planes:
 
         ld      hl,x86_host_video_trace_text_p1
         call    neo_trace_ef_string
-        ld      hl,(x86_host_video_trace_found_addr)
         ld      a,87
         rrca
         out     (MPAGEX),a
-        ld      b,32
+        ld      hl,(x86_host_video_trace_found_addr)
+        ld      b,16
 .text_p1:
         ld      a,(hl)
         call    neo_trace_ef_hex8
@@ -2317,48 +2345,54 @@ x86_host_video_trace_planes:
         out     (#EF),a
         ld      a,10
         out     (#EF),a
-.done:
         pop     hl
         pop     de
         pop     bc
         pop     af
         ret
 
-; A=byte. Preserve the caller's loop counter and AF.
-neo_trace_ef_hex8:
+; The frame slot is physical page 79 (MPAG=#A7), DMA base 13:C000.
+; Verify the staged character and attribute streams after both page copies.
+x86_host_video_trace_staging:
         push    af
         push    bc
-        ld      b,a
-        rrca
-        rrca
-        rrca
-        rrca
-        call    neo_trace_ef_nibble
-        ld      a,b
-        and     #0F
-        call    neo_trace_ef_nibble
+        push    de
+        push    hl
+        ld      hl,x86_host_video_trace_stage_chars
+        call    neo_trace_ef_string
+        ld      hl,#8000
+        ld      b,16
+.stage_chars:
+        ld      a,(hl)
+        call    neo_trace_ef_hex8
+        ld      a,' '
+        out     (#EF),a
+        inc     hl
+        djnz    .stage_chars
+        ld      a,13
+        out     (#EF),a
+        ld      a,10
+        out     (#EF),a
+        ld      hl,x86_host_video_trace_stage_attrs
+        call    neo_trace_ef_string
+        ld      hl,#87D0
+        ld      b,16
+.stage_attrs:
+        ld      a,(hl)
+        call    neo_trace_ef_hex8
+        ld      a,' '
+        out     (#EF),a
+        inc     hl
+        djnz    .stage_attrs
+        ld      a,13
+        out     (#EF),a
+        ld      a,10
+        out     (#EF),a
+        pop     hl
+        pop     de
         pop     bc
         pop     af
         ret
-
-neo_trace_ef_nibble:
-        and     #0F
-        add     a,'0'
-        cp      '9'+1
-        jr      c,.emit
-        add     a,7
-.emit:
-        out     (#EF),a
-        ret
-
-x86_host_video_trace_text_p0:
-        defb "[VGA TEXT P0] ",0
-x86_host_video_trace_text_p1:
-        defb "[VGA TEXT P1] ",0
-x86_host_video_trace_count:
-        db 0
-x86_host_video_trace_found_addr:
-        dw #C000
 
 ; Compare the eight 5-bit rows and enqueue XT make/break scan codes.
 x86_kbd_process_matrix:
