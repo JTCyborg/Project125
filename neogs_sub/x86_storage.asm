@@ -9,22 +9,22 @@ x86_storage_read8:
         ld      de,#03F4
         or      a
         sbc     hl,de
-        jr      z,x86_fdc_read_msr
+        jp      z,x86_fdc_read_msr
         ld      hl,(x86_io_port)
         ld      de,#03F5
         or      a
         sbc     hl,de
-        jr      z,x86_fdc_read_fifo
+        jp      z,x86_fdc_read_fifo
         ld      hl,(x86_io_port)
         ld      de,#03F2
         or      a
         sbc     hl,de
-        jr      z,x86_fdc_read_dor
+        jp      z,x86_fdc_read_dor
         ld      hl,(x86_io_port)
         ld      de,#03F7
         or      a
         sbc     hl,de
-        jr      z,x86_fdc_read_dir
+        jp      z,x86_fdc_read_dir
 
         ld      a,(x86_io_port+1)
         cp      #01
@@ -57,17 +57,17 @@ x86_storage_write8:
         ld      de,#03F2
         or      a
         sbc     hl,de
-        jr      z,x86_fdc_write_dor
+        jp      z,x86_fdc_write_dor
         ld      hl,(x86_io_port)
         ld      de,#03F5
         or      a
         sbc     hl,de
-        jr      z,x86_fdc_write_fifo
+        jp      z,x86_fdc_write_fifo
         ld      hl,(x86_io_port)
         ld      de,#03F7
         or      a
         sbc     hl,de
-        jr      z,x86_fdc_write_ccr
+        jp      z,x86_fdc_write_ccr
 
         ld      a,(x86_io_port+1)
         cp      #01
