@@ -3354,3 +3354,59 @@ x86_f7_handler_read_error: defb " HANDLER READ ERROR",0
 x86_f7_frame_word:         dw 0
 x86_f7_int00_failed:       defb "[NGS X86] INT00 ENTRY FAILED SS:SP=",0
 x86_f7_exception_kind:     db 0
+
+; F6 IMUL flag calculation is kept in Overlay68 to balance the 16 KiB
+; resident/overlay budgets. The resident F6 arithmetic core calls here only
+; while Overlay68 is mapped. Guest register and F6 scratch state remain resident.
+x86_real_f6_imul_update_flags:
+        ; PCem reference semantics: PF/SF are sampled from pre-IMUL AL,
+        ; ZF from the 16-bit result, and CF/OF are set iff AH is nonzero.
+        xor     a
+        ld      (x86_f6_new_flags), a
+        ld      (x86_f6_new_flags+1), a
+        ld      a, (x86_f6_original_al)
+        and     a
+        jp      pe, .imul_pf
+        jr      .imul_zf
+.imul_pf:
+        ld      hl, x86_f6_new_flags
+        set     2, (hl)
+.imul_zf:
+        ld      a, (x86_f6_original_al)
+        bit     7, a
+        jr      z, .imul_sign_ready
+        ld      hl, x86_f6_new_flags
+        set     7, (hl)
+.imul_sign_ready:
+        ld      hl, (x86_reg_ax)
+        ld      a, h
+        or      l
+        jr      nz, .imul_cf
+        ld      hl, x86_f6_new_flags
+        set     6, (hl)
+.imul_cf:
+        ld      a, (x86_reg_ax+1)
+        or      a
+        jr      z, .imul_merge
+        ld      hl, x86_f6_new_flags
+        set     0, (hl)
+        set     3, (hl)
+.imul_merge:
+        ld      hl, (x86_reg_flags)
+        ld      de, #772A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_f6_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        jp      x86_real_next
+
