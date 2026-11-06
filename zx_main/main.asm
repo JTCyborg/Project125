@@ -264,6 +264,15 @@ Init_Z80_System:
         ld      a, 10
         call    p125_emit_char
 
+        call    p125_video_pull_and_present
+        jr      nc,.video_presented
+        ld      hl,msg_video_pull_failed
+        call    p125_trace_port
+        ld      a,(bios_host_transfer_error)
+        call    p125_trace_hex8
+        call    p125_trace_newline
+.video_presented:
+
 p125_halt:
         di
 .p125_halt_loop:
@@ -452,7 +461,7 @@ trace_B0_bios_exec_begin:     defb "[TRACE B0] BIOS EXEC BEGIN", 13, 10, 0
 trace_B1_bios_exec_return:    defb "[TRACE B1] BIOS EXEC/RESULT WAIT RETURNED", 13, 10, 0
 
 msg_p125_start:       defb "[P125] ATM HOST START", 13, 10, 0
-msg_p125_build_id:    defb "[P125] BUILD 20261104-A50 ATM-KBD-DMA", 13, 10, 0
+msg_p125_build_id:    defb "[P125] BUILD 20261106-A52 VGA-TEXT-DMA", 13, 10, 0
 msg_fw_load:          defb "[P125] LOAD NEOGS FIRMWARE", 13, 10, 0
 msg_fw_file_error:    defb "[P125] ERROR: NEOLOAD.C FILE #", 0
 msg_fw_upload_error:  defb "[P125] ERROR: NEOGS FIRMWARE UPLOAD PHASE #", 0
@@ -478,6 +487,7 @@ msg_video_crc_error:  defb "[P125] VIDEO CRC SELFTEST FAILED #", 0
 msg_video_crc_ok:     defb "[P125] VIDEO CRC SELFTEST PASS", 13, 10, 0
 msg_dma_reverse_ok: defb "[P125] DMA REVERSE SELFTEST PASS", 13, 10, 0
 msg_dma_reverse_failed: defb "[P125] DMA REVERSE SELFTEST FAIL #", 0
+msg_video_pull_failed: defb "[P125] VGA TEXT DMA/PRESENTER FAIL #", 13, 10, 0
 
 P125_OLD_SP: dw 0
 p125_log_line_start: db 1

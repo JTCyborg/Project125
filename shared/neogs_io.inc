@@ -101,6 +101,7 @@ CMD_BOOT_BIOS   EQU #0D
 CMD_VIDEO_CRC_TEST EQU #0E
 CMD_DMA_READ_TEST EQU #0F       ; host reads NeoGS RAM through ZX DMA window
 CMD_HOST_INPUT   EQU #10       ; ATM keyboard matrix snapshot via host-to-NeoGS DMA
+CMD_VIDEO_PULL   EQU #11       ; VGA text snapshot via reverse DMA
 
 ; Live keyboard mailbox: physical page 03, WIN1 offset 3000h (logical 7000h).
 NGS_KBD_DMA_HAD  EQU #00

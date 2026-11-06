@@ -14,6 +14,7 @@
 
         INCLUDE "../shared/neogs_io.inc"
         INCLUDE "../shared/video_frame.inc"
+        INCLUDE "../shared/vga_memory.inc"
 
         ORG     $0000
 
@@ -130,6 +131,8 @@ main_loop:
         jp      z, command_video_crc_test
         cp      CMD_DMA_READ_TEST
         jp      z, command_dma_read_test
+        cp      CMD_VIDEO_PULL
+        jp      z, command_video_pull
 
         ; Unknown command: release CBIT so the host cannot deadlock.
         xor     a
@@ -448,6 +451,84 @@ command_dma_read_test:
         xor     a
         ld      (neo_dma_error), a
         out     (CLRCBIT), a
+        jp      main_loop
+
+; CMD_VIDEO_PULL: stage VGA plane 0/1 text bytes in frame slot A, then reverse DMA.
+command_video_pull:
+        ld      a,#A7
+        out     (MPAG),a
+        ld      a,83
+        rrca
+        out     (MPAGEX),a
+        ld      hl,#C000
+        ld      de,#8000
+        ld      bc,#07D0
+.vga_char_copy:
+        ld      a,(hl)
+        ld      (de),a
+        inc     hl
+        inc     hl
+        inc     de
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,.vga_char_copy
+
+        ld      a,87
+        rrca
+        out     (MPAGEX),a
+        ld      hl,#C000
+        ld      de,#87D0
+        ld      bc,#07D0
+.vga_attr_copy:
+        ld      a,(hl)
+        ld      (de),a
+        inc     hl
+        inc     hl
+        inc     de
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,.vga_attr_copy
+        ld      a,NGS_FW_BANK68_MPAG
+        out     (MPAG),a
+        ld      a,C_DMA_ZX
+        out     (DMA_MOD),a
+        ld      a,#13
+        out     (DMA_HAD),a
+        ld      a,#C0
+        out     (DMA_MAD),a
+        xor     a
+        out     (DMA_LAD),a
+        ld      a,#80
+        out     (DMA_CST),a
+        xor     a
+        out     (CLRCBIT),a
+        ld      d,DMA_WAIT_OUTER
+.video_pull_outer:
+        ld      bc,DMA_WAIT_LIMIT
+.video_pull_wait:
+        in      a,(ZXSTAT)
+        bit     B_CBIT,a
+        jr      nz,.video_pull_done
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,.video_pull_wait
+        dec     d
+        jr      nz,.video_pull_outer
+        xor     a
+        out     (DMA_CST),a
+        out     (CLRCBIT),a
+        ld      a,1
+        ld      (neo_dma_error),a
+        jp      main_loop
+.video_pull_done:
+        xor     a
+        out     (DMA_CST),a
+        out     (CLRCBIT),a
+        xor     a
+        ld      (neo_dma_error),a
         jp      main_loop
 
 ; Run a TR-DOS payload through the bounded CS:IP real-mode executor.
@@ -1070,8 +1151,8 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261106-25",13,10
-        defb "[NGS] BASE COMMIT DE35DE9",13,10,0
+        defb "[NGS] BUILD 20261106-29",13,10
+        defb "[NGS] BASE COMMIT 641A2B9",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
 trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
@@ -1234,6 +1315,7 @@ rom_return_trampoline_end:
 
         ; Fixed resident services and shared architectural state.
         INCLUDE "x86_memory.asm"
+        INCLUDE "x86_vga.asm"
         INCLUDE "bios/bios_core.asm"
         INCLUDE "../shared/video_crc16.asm"
         INCLUDE "bank_gateways.asm"
@@ -2624,9 +2706,124 @@ x86_resident_shift_byte_cl_dispatch:
         ld      a, (x86_shift_dispatch_byte)
         and     #38
         ld      (x86_shift_diag_mask), a
+        cp      #00                    ; /0 ROL r/m8,CL
+        jp      z, x86_real_shift_byte_cl_unsupported
         cp      #08                    ; /1 ROR r/m8,CL
         jp      z, x86_resident_shift_byte_ror_cl
+        cp      #20                    ; /4 SHL r/m8,CL
+        jp      z, x86_resident_shift_byte_shl_cl
+        cp      #30                    ; /6 SAL r/m8,CL (same operation as SHL)
+        jp      z, x86_resident_shift_byte_shl_cl
         jp      x86_real_shift_byte_cl_unsupported
+
+; D2 /4 and /6: SHL/SAL r/m8,CL.
+; The 8086 uses the complete CL count. A zero count leaves operand and FLAGS
+; unchanged; counts greater than eight naturally shift the byte to zero.
+x86_resident_shift_byte_shl_cl:
+        ld      a, 1
+        ld      (x86_mov_width), a
+        ld      a, (x86_shift_diag_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        ld      a, (x86_reg_cx)
+        or      a
+        jp      z, x86_real_next
+        ld      (x86_shift_count), a
+        ld      (x86_shift_original_count), a
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      a, l
+        ld      (x86_shift_result), a
+        xor     a
+        ld      (x86_shift_carry), a
+.shl_cl_loop:
+        ld      a, (x86_shift_result)
+        sla     a
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+        ld      a, (x86_shift_count)
+        dec     a
+        ld      (x86_shift_count), a
+        jr      nz, .shl_cl_loop
+
+        ; CF is the last bit shifted out. PF/ZF/SF describe the byte result.
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shl_cl_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.shl_cl_parity:
+        ld      a, (x86_shift_result)
+        and     a
+        jp      pe, .shl_cl_set_pf
+        jr      .shl_cl_zero
+.shl_cl_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.shl_cl_zero:
+        ld      a, (x86_shift_result)
+        or      a
+        jr      nz, .shl_cl_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.shl_cl_sign:
+        ld      a, (x86_shift_result)
+        bit     7, a
+        jr      z, .shl_cl_overflow
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.shl_cl_overflow:
+        ld      a, (x86_shift_original_count)
+        cp      1
+        jr      nz, .shl_cl_merge_preserve_of
+        ld      a, (x86_shift_result)
+        and     #80
+        ld      b, a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shl_cl_overflow_cf_zero
+        ld      a, b
+        xor     #80
+        jr      .shl_cl_overflow_test
+.shl_cl_overflow_cf_zero:
+        ld      a, b
+.shl_cl_overflow_test:
+        or      a
+        jr      z, .shl_cl_merge
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+.shl_cl_merge:
+        ld      de, #F73A              ; clear CF/PF/ZF/SF/OF; preserve AF
+        jr      .shl_cl_merge_apply
+.shl_cl_merge_preserve_of:
+        ld      de, #FF3A              ; preserve undefined OF and AF
+.shl_cl_merge_apply:
+        ld      hl, (x86_reg_flags)
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      h, 0
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
 
 x86_resident_shift_byte_ror_cl:
         ld      a, 1

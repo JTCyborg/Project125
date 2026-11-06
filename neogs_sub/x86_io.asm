@@ -86,6 +86,8 @@ x86_real_io_instruction:
 ; Other PC/XT ports remain open-bus until their devices are implemented.
 
 x86_io_read8:
+        call    x86_vga_io_read8
+        ret     nc
         call    x86_resident_lpt_read_dispatch
         ret     nc
         call    x86_resident_uart_read_dispatch
@@ -178,6 +180,8 @@ x86_io_trace_read8:
         jp      x86_resident_io_trace_read8
 
 x86_io_write8:
+        call    x86_vga_io_write8
+        ret     nc
         call    x86_resident_lpt_write_dispatch
         ret     nc
         call    x86_resident_uart_write_dispatch

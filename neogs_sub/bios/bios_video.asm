@@ -1,305 +1,317 @@
 ; =========================================================================
-; PROJECT 124 — BIOS INT 10h text services, Stage 3A
-;
-; Project text-console profile: 42 columns x 12 rows, 6x8 glyphs.
-; Implemented functions:
-;   AH=00h set mode 03h (project 42x12 text profile)
-;   AH=0Fh get mode (AL=03h, AH=42, BH=0)
-;   AH=02h set cursor (BH=0, DH=row, DL=column)
-;   AH=03h get cursor (DH=row, DL=column)
-;   AH=0Eh teletype output (AL=character, BH=0)
-;
-; INT 10h enters through the normal IVT/stack frame. The BIOS service itself
-; is a firmware trap, then returns through the normal IRET primitive.
-; Host stream protocol over DBIT/GSDAT:
-;   nonzero byte = teletype character
-;   00 00        = clear the lower debug console
-;   00 01 row col= set lower debug console cursor
+; PROJECT 125 — VGA text mode BIOS INT 10h services
+; Mode 03h: 80x25, 16-colour text, B800:0000 character/attribute pairs.
+; Guest VRAM is written through x86_mem_write8 and VGA odd/even logic.
+; ATM presentation is a separate reverse-DMA frame handoff.
 ; =========================================================================
-
-BIOS_VIDEO_COLUMNS EQU 42
-BIOS_VIDEO_ROWS    EQU 12
+BIOS_VIDEO_COLUMNS EQU 80
+BIOS_VIDEO_ROWS    EQU 25
 BIOS_VIDEO_MODE    EQU #03
+BIOS_VIDEO_ATTR    EQU #07
 
 bios_int10_dispatch_impl:
-        ld      a, (trace_int10_once)
-        or      a
-        jr      nz, .int10_trace_done
-        ld      a, 1
-        ld      (trace_int10_once), a
-        ld      hl, trace_int10_entry
-        call    neo_trace_ef_string
-.int10_trace_done:
-        ld      hl, (x86_reg_ax)
-        ld      a, h
+        ld      hl,(x86_reg_ax)
+        ld      a,h
         cp      #00
-        jp      z, bios_int10_set_mode
+        jp      z,bios_int10_set_mode
         cp      #0F
-        jp      z, bios_int10_get_mode
+        jp      z,bios_int10_get_mode
         cp      #02
-        jp      z, bios_int10_set_cursor
+        jp      z,bios_int10_set_cursor
         cp      #03
-        jp      z, bios_int10_get_cursor
+        jp      z,bios_int10_get_cursor
         cp      #0E
-        jp      z, bios_int10_teletype
+        jp      z,bios_int10_teletype
         or      a
         ret
 
-; Install IVT[10h] -> 0000:5200 (firmware service trap).
 bios_int10_install_vector_impl:
-        ld      hl, 0
-        ld      (x86_mem_segment), hl
-        ld      hl, #0040
-        ld      (x86_mem_offset), hl
-        ld      hl, #5200
-        ld      (x86_mem_word_value), hl
+        ld      hl,0
+        ld      (x86_mem_segment),hl
+        ld      hl,#0040
+        ld      (x86_mem_offset),hl
+        ld      hl,#5200
+        ld      (x86_mem_word_value),hl
         call    x86_mem_write16
         ret     c
-        ld      hl, 0
-        ld      (x86_mem_segment), hl
-        ld      hl, #0042
-        ld      (x86_mem_offset), hl
-        ld      hl, 0
-        ld      (x86_mem_word_value), hl
+        ld      hl,0
+        ld      (x86_mem_segment),hl
+        ld      hl,#0042
+        ld      (x86_mem_offset),hl
+        ld      hl,0
+        ld      (x86_mem_word_value),hl
         jp      x86_mem_write16
 
-; AH=00h — only mode 03h is supported by this project console.
-bios_int10_set_mode:
-        ld      a, l
-        cp      BIOS_VIDEO_MODE
-        jr      z, .mode_valid
-        or      a
+bios_video_set_vga_text_state:
+        ld      a,3
+        ld      (x86_vga_seq_regs+2),a
+        ld      a,2
+        ld      (x86_vga_seq_regs+4),a
+        xor     a
+        ld      (x86_vga_gc_regs+4),a
+        ld      a,#10
+        ld      (x86_vga_gc_regs+5),a
+        ld      a,#0E
+        ld      (x86_vga_gc_regs+6),a
+        ld      a,#FF
+        ld      (x86_vga_gc_regs+8),a
         ret
-.mode_valid:
-        ld      hl, #0449
-        ld      a, BIOS_VIDEO_MODE
-        call    bios_video_write_byte
-        ret     c
-        ld      hl, #044A
-        ld      a, BIOS_VIDEO_COLUMNS
-        call    bios_video_write_byte
-        ret     c
-        ld      hl, #044C
-        ld      a, #F0
-        call    bios_video_write_byte
-        ret     c
-        ld      hl, #044D
-        ld      a, #03
-        call    bios_video_write_byte
-        ret     c
-        ld      hl, #0462
-        xor     a
-        call    bios_video_write_byte
-        ret     c
-        ld      hl, #0484
-        ld      a, BIOS_VIDEO_ROWS - 1
-        call    bios_video_write_byte
-        ret     c
-        ld      hl, #0485
-        ld      a, 8
-        call    bios_video_write_byte
-        ret     c
 
+bios_int10_set_mode:
+        ld      a,l
+        cp      BIOS_VIDEO_MODE
+        ret     nz
+        call    bios_video_set_vga_text_state
+        ld      hl,#0449
+        ld      a,BIOS_VIDEO_MODE
+        call    bios_video_write_byte
+        ret     c
+        ld      hl,#044A
+        ld      a,BIOS_VIDEO_COLUMNS
+        call    bios_video_write_byte
+        ret     c
+        ld      hl,#044C
         xor     a
-        ld      (bios_video_col), a
-        ld      (bios_video_row), a
-        ld      hl, #0450
-        ld      de, 0
+        call    bios_video_write_byte
+        ret     c
+        ld      hl,#044D
+        ld      a,#10
+        call    bios_video_write_byte
+        ret     c
+        ld      hl,#0462
+        xor     a
+        call    bios_video_write_byte
+        ret     c
+        ld      hl,#0484
+        ld      a,BIOS_VIDEO_ROWS-1
+        call    bios_video_write_byte
+        ret     c
+        ld      hl,#0485
+        ld      a,16
+        call    bios_video_write_byte
+        ret     c
+        xor     a
+        ld      (bios_video_row),a
+        ld      (bios_video_col),a
+        ld      hl,#0450
+        ld      de,0
         call    bios_video_write_word
         ret     c
-
-        ; Host control frame: 00 00 = clear the 6x8 debug console.
-        xor     a
-        call    bios_video_stream_byte
-        ret     c
-        xor     a
-        jp      bios_video_stream_byte
-
-; AH=0Fh — return current project text mode, width and active page.
-bios_int10_get_mode:
-        ld      hl, #2A03
-        ld      (x86_reg_ax), hl
-        xor     a
-        ld      (x86_reg_bx+1), a
+        call    bios_video_clear_page
         or      a
         ret
 
-; AH=02h — set cursor. This implementation exposes page zero only.
-bios_int10_set_cursor:
-        ld      a, (x86_reg_bx+1)
-        or      a
-        ret     nz
-        ld      hl, (x86_reg_dx)       ; H=DH row, L=DL column
-        ld      a, h
-        cp      BIOS_VIDEO_ROWS
-        jr      c, .row_valid
-        or      a
-        ret
-.row_valid:
-        ld      a, l
+bios_video_clear_page:
+        xor     a
+        ld      (bios_video_row),a
+.clear_row:
+        xor     a
+        ld      (bios_video_col),a
+.clear_cell:
+        ld      a,32
+        ld      (bios_video_char),a
+        ld      a,BIOS_VIDEO_ATTR
+        ld      (bios_video_attr),a
+        call    bios_video_write_cell
+        ld      a,(bios_video_col)
+        inc     a
+        ld      (bios_video_col),a
         cp      BIOS_VIDEO_COLUMNS
-        jr      c, .col_valid
+        jr      c,.clear_cell
+        ld      a,(bios_video_row)
+        inc     a
+        ld      (bios_video_row),a
+        cp      BIOS_VIDEO_ROWS
+        jr      c,.clear_row
+        xor     a
+        ld      (bios_video_row),a
+        ld      (bios_video_col),a
+        ret
+
+bios_int10_get_mode:
+        ld      hl,#5003
+        ld      (x86_reg_ax),hl
+        xor     a
+        ld      (x86_reg_bx+1),a
         or      a
         ret
-.col_valid:
-        ld      a, h
-        ld      (bios_video_row), a
-        ld      a, l
-        ld      (bios_video_col), a
-        call    bios_video_store_cursor
-        ret     c
 
-        ; Host control frame: 00 01 row col.
-        xor     a
-        call    bios_video_stream_byte
-        ret     c
-        ld      a, 1
-        call    bios_video_stream_byte
-        ret     c
-        ld      a, (bios_video_row)
-        call    bios_video_stream_byte
-        ret     c
-        ld      a, (bios_video_col)
-        jp      bios_video_stream_byte
-
-; AH=03h — read page-zero cursor into DH:DL.
-bios_int10_get_cursor:
-        ld      a, (x86_reg_bx+1)
+bios_int10_set_cursor:
+        ld      a,(x86_reg_bx+1)
         or      a
         ret     nz
-        ld      hl, #0450
-        ld      (x86_mem_offset), hl
-        ld      hl, 0
-        ld      (x86_mem_segment), hl
+        ld      hl,(x86_reg_dx)
+        ld      a,h
+        cp      BIOS_VIDEO_ROWS
+        ret     nc
+        ld      a,l
+        cp      BIOS_VIDEO_COLUMNS
+        ret     nc
+        ld      a,h
+        ld      (bios_video_row),a
+        ld      a,l
+        ld      (bios_video_col),a
+        jp      bios_video_store_cursor
+
+bios_int10_get_cursor:
+        ld      a,(x86_reg_bx+1)
+        or      a
+        ret     nz
+        ld      hl,#0450
+        ld      (x86_mem_offset),hl
+        ld      hl,0
+        ld      (x86_mem_segment),hl
         call    x86_mem_read16
         ret     c
-        ld      (x86_reg_dx), hl
+        ld      (x86_reg_dx),hl
         or      a
         ret
 
-; AH=0Eh — teletype output. Every byte is streamed to the host.
 bios_int10_teletype:
-        ld      a, (trace_teletype_once)
-        or      a
-        jr      nz, .teletype_trace_done
-        ld      a, 1
-        ld      (trace_teletype_once), a
-        ld      hl, trace_teletype_entry
-        call    neo_trace_ef_string
-.teletype_trace_done:
-        ld      a, (x86_reg_bx+1)
+        ld      a,(x86_reg_bx+1)
         or      a
         ret     nz
-        ld      a, (x86_reg_ax)
-        ld      (bios_video_char), a
+        ld      a,(x86_reg_ax)
+        ld      (bios_video_char),a
         or      a
-        ret     z                       ; NUL is reserved for stream control frames.
-        cp      128
-        jr      c, .teletype_ascii
-        ld      a, '?'
-        ld      (bios_video_char), a
-.teletype_ascii:
-        ld      a, (bios_video_char)
-        call    bios_video_stream_byte
-        ret     c
-
-        ld      a, (bios_video_char)
+        ret     z
         cp      13
-        jr      z, .carriage_return
+        jr      z,.cr
         cp      10
-        jr      z, .line_feed
+        jr      z,.lf
         cp      8
-        jr      z, .backspace
+        jr      z,.bs
         cp      7
-        jr      z, .cursor_done
+        jr      z,.cursor_done
         cp      32
-        jr      c, .cursor_done
-
-        ld      a, (bios_video_col)
+        jr      c,.cursor_done
+        ld      a,BIOS_VIDEO_ATTR
+        ld      (bios_video_attr),a
+        call    bios_video_write_cell
+        ld      a,(bios_video_col)
         inc     a
-        ld      (bios_video_col), a
+        ld      (bios_video_col),a
         cp      BIOS_VIDEO_COLUMNS
-        jr      c, .cursor_store
+        jr      c,.store
         xor     a
-        ld      (bios_video_col), a
-        jr      .line_feed
-.carriage_return:
+        ld      (bios_video_col),a
+        jr      .lf
+.cr:
         xor     a
-        ld      (bios_video_col), a
-        jr      .cursor_store
-.backspace:
-        ld      a, (bios_video_col)
+        ld      (bios_video_col),a
+        jr      .store
+.bs:
+        ld      a,(bios_video_col)
         or      a
-        jr      z, .cursor_done
+        jr      z,.cursor_done
         dec     a
-        ld      (bios_video_col), a
-        jr      .cursor_store
-.line_feed:
-        ld      a, (bios_video_row)
+        ld      (bios_video_col),a
+        ld      a,32
+        ld      (bios_video_char),a
+        ld      a,BIOS_VIDEO_ATTR
+        ld      (bios_video_attr),a
+        call    bios_video_write_cell
+        jr      .store
+.lf:
+        ld      a,(bios_video_row)
         inc     a
         cp      BIOS_VIDEO_ROWS
-        jr      c, .line_store
-        ld      a, BIOS_VIDEO_ROWS - 1
-.line_store:
-        ld      (bios_video_row), a
-.cursor_store:
+        jr      c,.row_ok
+        ld      a,BIOS_VIDEO_ROWS-1
+.row_ok:
+        ld      (bios_video_row),a
+.store:
         call    bios_video_store_cursor
         ret
 .cursor_done:
         or      a
         ret
 
-; Host-console streaming is diagnostic output, not a CPU execution fault.
-; A DBIT/host timeout must not unwind INT 10h and terminate the guest BIOS.
-; Count transport failures in resident memory so the BIOS stop trace can report
-; whether the host console was back-pressured while POST continued.
-bios_video_stream_byte:
-        call    neo_send_data_byte
-        ret     nc
-        ld      a, (bios_video_stream_errors)
-        cp      #FF
-        jr      z, .stream_counted
+bios_video_write_cell:
+        push    bc
+        push    de
+        push    hl
+        ld      hl,0
+        ld      de,160
+        ld      a,(bios_video_row)
+        ld      b,a
+        ld      a,b
+        or      a
+        jr      z,.row_product_done
+.row_product:
+        add     hl,de
+        djnz    .row_product
+.row_product_done:
+        ld      a,(bios_video_col)
+        add     a,a
+        ld      e,a
+        ld      d,0
+        add     hl,de
+        ld      a,l
+        ld      (x86_mem_addr),a
+        ld      a,h
+        add     a,#80
+        ld      (x86_mem_addr+1),a
+        ld      a,#0B
+        ld      (x86_mem_addr+2),a
+        ld      a,(bios_video_char)
+        ld      (x86_mem_value),a
+        call    x86_mem_write8
+        ld      a,(x86_mem_addr)
         inc     a
-        ld      (bios_video_stream_errors), a
-.stream_counted:
-        or      a                       ; clear carry: keep executing guest BIOS
+        ld      (x86_mem_addr),a
+        jr      nz,.attribute_address_ready
+        ld      a,(x86_mem_addr+1)
+        inc     a
+        ld      (x86_mem_addr+1),a
+.attribute_address_ready:
+        ld      a,(bios_video_attr)
+        ld      (x86_mem_value),a
+        call    x86_mem_write8
+        pop     hl
+        pop     de
+        pop     bc
+        or      a
         ret
 
-; Store project cursor word at BDA 00450h: low=column, high=row.
 bios_video_store_cursor:
-        ld      hl, #0450
-        ld      (x86_mem_offset), hl
-        ld      hl, 0
-        ld      (x86_mem_segment), hl
-        ld      a, (bios_video_col)
-        ld      l, a
-        ld      a, (bios_video_row)
-        ld      h, a
-        ld      (x86_mem_word_value), hl
+        ld      hl,#0450
+        ld      (x86_mem_offset),hl
+        ld      hl,0
+        ld      (x86_mem_segment),hl
+        ld      a,(bios_video_col)
+        ld      l,a
+        ld      a,(bios_video_row)
+        ld      h,a
+        ld      (x86_mem_word_value),hl
         jp      x86_mem_write16
 
-; IN: HL=physical address, A=value.
 bios_video_write_byte:
-        ld      (bios_video_write_value), a
-        ld      (x86_mem_addr), hl
+        ld      (bios_video_write_value),a
+        ld      (x86_mem_addr),hl
         xor     a
-        ld      (x86_mem_addr+2), a
-        ld      a, (bios_video_write_value)
-        ld      (x86_mem_value), a
+        ld      (x86_mem_addr+2),a
+        ld      a,(bios_video_write_value)
+        ld      (x86_mem_value),a
         jp      x86_mem_write8
 
-; IN: HL=physical address, DE=value.
 bios_video_write_word:
-        ld      (x86_mem_offset), hl
-        ld      hl, 0
-        ld      (x86_mem_segment), hl
-        ex      de, hl
-        ld      (x86_mem_word_value), hl
+        ld      (x86_mem_offset),hl
+        ld      hl,0
+        ld      (x86_mem_segment),hl
+        ex      de,hl
+        ld      (x86_mem_word_value),hl
         jp      x86_mem_write16
 
+bios_video_row: db 0
+bios_video_col: db 0
+bios_video_char: db 0
+bios_video_attr: db BIOS_VIDEO_ATTR
+bios_video_write_value: db 0
+
 ; -------------------------------------------------------------------------
-; Stage 3A executable test. Exercises all five INT 10h services, cursor
-; round-trip, 42-column wrap, CR/LF, and the streamed host console path.
+; Stage 3A executable test. Exercises mode 03h, cursor, 80-column wrap,
+; CR/LF, and actual character/attribute reads from B8000h.
 ; Expected final AX=1A10h, DX=020Fh, BDA cursor=020Fh.
 ; -------------------------------------------------------------------------
 bios_int10_video_test_impl:
@@ -360,7 +372,7 @@ bios_int10_video_test_impl:
         jp      c, bios_video_test_fail_3
 
         ld      hl, (x86_reg_ax)
-        ld      de, #2A03
+        ld      de, #5003
         or      a
         sbc     hl, de
         jp      nz, bios_video_test_fail_4
@@ -380,6 +392,22 @@ bios_int10_video_test_impl:
         or      a
         sbc     hl, de
         jp      nz, bios_video_test_fail_6
+
+        ; Verify the actual text cell and attribute via VGA odd/even reads.
+        ld      hl,#8140
+        ld      (x86_mem_addr),hl
+        ld      a,#0B
+        ld      (x86_mem_addr+2),a
+        call    x86_mem_read8
+        cp      'P'
+        jp      nz,bios_video_test_fail_7
+        ld      hl,#8141
+        ld      (x86_mem_addr),hl
+        ld      a,#0B
+        ld      (x86_mem_addr+2),a
+        call    x86_mem_read8
+        cp      BIOS_VIDEO_ATTR
+        jp      nz,bios_video_test_fail_7
 
         ld      hl, #1A10
         ld      (saved_x86_ax), hl
@@ -417,11 +445,6 @@ bios_video_test_fail:
         scf
         ret
 
-bios_video_row: db 0
-bios_video_col: db 0
-bios_video_char: db 0
-bios_video_write_value: db 0
-
 ; Guest program is assembled as a byte stream at physical 0000:5002.
 x86_bios_video_test_image:
         ; AH=00h set mode 03h.
@@ -431,8 +454,8 @@ x86_bios_video_test_image:
         db #B4,#0E,#B0,#58,#CD,#10 ; X — visible cursor-position marker
         ; AH=02h reset cursor to row 0, column 0 before the wrap test.
         db #B8,#00,#02,#BB,#00,#00,#BA,#00,#00,#CD,#10
-        ; 43 printable characters: the 43rd must wrap to row 1, column 1.
-        REPT 43
+        ; 83 printable characters: the 81st must wrap to row 1, column 1.
+        REPT 83
         db #B4,#0E,#B0,#41,#CD,#10
         ENDR
         ; CR then LF; output a 15-character marker on row 2.

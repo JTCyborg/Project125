@@ -491,6 +491,74 @@ p125_screen_write_char:
         pop     af
         ret
 
+; IN: A=character, B=ATM-native attribute, D=row, E=column.
+p125_screen_write_guest_cell:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      (bios_dbg_char),a
+        ld      a,b
+        ld      (bios_dbg_attr),a
+        ld      a,d
+        ld      (bios_dbg_write_row),a
+        ld      a,e
+        ld      (bios_dbg_write_col),a
+        call    p125_screen_map_video_pages
+        ld      a,(bios_dbg_write_row)
+        ld      l,a
+        ld      h,0
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        ld      de,#01C0
+        add     hl,de
+        ld      a,(bios_dbg_write_col)
+        ld      c,a
+        and     1
+        ld      (bios_dbg_parity),a
+        ld      a,c
+        srl     a
+        ld      e,a
+        ld      d,0
+        add     hl,de
+        ld      (bios_dbg_offset),hl
+        ld      hl,(bios_dbg_offset)
+        ld      a,(bios_dbg_parity)
+        or      a
+        jr      nz,.guest_odd
+        ld      de,#4000
+        add     hl,de
+        ld      a,(bios_dbg_char)
+        ld      (hl),a
+        ld      hl,(bios_dbg_offset)
+        ld      de,#E000
+        add     hl,de
+        ld      a,(bios_dbg_attr)
+        ld      (hl),a
+        jr      .guest_done
+.guest_odd:
+        ld      de,#6000
+        add     hl,de
+        ld      a,(bios_dbg_char)
+        ld      (hl),a
+        ld      hl,(bios_dbg_offset)
+        ld      de,#C000
+        add     hl,de
+        inc     hl
+        ld      a,(bios_dbg_attr)
+        ld      (hl),a
+.guest_done:
+        call    p125_screen_restore_host_pages
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
 p125_screen_map_video_pages:
         ld      a, P125_VIDEO_PAGE7
         ld      bc, #7FF7
