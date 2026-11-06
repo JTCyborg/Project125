@@ -133,6 +133,10 @@ main_loop:
         jp      z, command_dma_read_test
         cp      CMD_VIDEO_PULL
         jp      z, command_video_pull
+        cp      CMD_STORAGE_PULL
+        jp      z, command_storage_pull
+        cp      CMD_STORAGE_PUSH
+        jp      z, command_storage_push
 
         ; Unknown command: release CBIT so the host cannot deadlock.
         xor     a
@@ -1974,6 +1978,10 @@ x86_host_input_service_poll:
         in      a, (ZXCMD)
         cp      CMD_VIDEO_PULL
         jp      z, x86_host_video_service
+        cp      CMD_STORAGE_PULL
+        jp      z, x86_host_storage_pull
+        cp      CMD_STORAGE_PUSH
+        jp      z, x86_host_storage_push
         cp      CMD_HOST_INPUT
         ret     nz
 
@@ -2014,6 +2022,135 @@ x86_host_input_service_poll:
         call    x86_kbd_process_matrix
         ret
 
+
+; -------------------------------------------------------------------------
+; ATA bridge services. These handlers run only at x86 instruction boundaries.
+; Pull: reverse DMA descriptor + 512-byte write payload to ATM.
+; Push: receive status + 512-byte result payload from ATM.
+; Both paths use DMA exclusively; no NeoGS physical device I/O exists.
+; -------------------------------------------------------------------------
+x86_host_storage_pull:
+        ; Map physical page 13 into the extended window and stage the packet
+        ; at offset 1000h (D000). Video snapshots use page 13 offset 0000h.
+        ld      a,13
+        rrca
+        out     (MPAGEX),a
+        ld      hl,x86_storage_mailbox
+        ld      de,#D000
+        ld      bc,16
+        ldir
+        ld      a,(x86_storage_request_pending)
+        or      a
+        jr      nz,.pull_copy_data
+        xor     a
+        ld      (#D000),a
+        jr      .pull_arm_dma
+.pull_copy_data:
+        ld      hl,x86_ata_buffer
+        ld      de,#D010
+        ld      bc,512
+        ldir
+.pull_arm_dma:
+        ld      a,C_DMA_ZX
+        out     (DMA_MOD),a
+        ld      a,#13
+        out     (DMA_HAD),a
+        ld      a,#D0
+        out     (DMA_MAD),a
+        xor     a
+        out     (DMA_LAD),a
+        ld      a,#80
+        out     (DMA_CST),a
+        xor     a
+        out     (CLRCBIT),a
+        ld      d,DMA_WAIT_OUTER
+.pull_wait_outer:
+        ld      bc,DMA_WAIT_LIMIT
+.pull_wait:
+        in      a,(ZXSTAT)
+        bit     B_CBIT,a
+        jr      nz,.pull_done
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,.pull_wait
+        dec     d
+        jr      nz,.pull_wait_outer
+        xor     a
+        out     (DMA_CST),a
+        out     (CLRCBIT),a
+        ret
+.pull_done:
+        xor     a
+        out     (DMA_CST),a
+        out     (CLRCBIT),a
+        ret
+
+x86_host_storage_push:
+        ; ATM returns a fixed 513-byte frame at physical page 14:C000.
+        ld      a,14
+        rrca
+        out     (MPAGEX),a
+        ld      a,C_DMA_ZX
+        out     (DMA_MOD),a
+        ld      a,#14
+        out     (DMA_HAD),a
+        ld      a,#C0
+        out     (DMA_MAD),a
+        xor     a
+        out     (DMA_LAD),a
+        ld      a,#80
+        out     (DMA_CST),a
+        xor     a
+        out     (CLRCBIT),a
+        ld      d,DMA_WAIT_OUTER
+.push_wait_outer:
+        ld      bc,DMA_WAIT_LIMIT
+.push_wait:
+        in      a,(ZXSTAT)
+        bit     B_CBIT,a
+        jr      nz,.push_done
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,.push_wait
+        dec     d
+        jr      nz,.push_wait_outer
+        xor     a
+        out     (DMA_CST),a
+        out     (CLRCBIT),a
+        ret
+.push_done:
+        xor     a
+        out     (DMA_CST),a
+        ; Copy completion status; successful READ also copies its sector.
+        ld      a,(#C000)
+        ld      (x86_storage_completion_status),a
+        or      a
+        jr      nz,.push_failed
+        ld      a,(x86_storage_operation)
+        cp      1
+        jr      nz,.push_complete
+        ld      hl,#C001
+        ld      de,x86_ata_buffer
+        ld      bc,512
+        ldir
+.push_complete:
+        xor     a
+        ld      (x86_storage_request_pending),a
+        call    x86_ata_transport_complete
+        xor     a
+        out     (CLRCBIT),a
+        ret
+.push_failed:
+        ld      a,#51
+        ld      (x86_ata_status),a
+        ld      a,#04
+        ld      (x86_ata_error),a
+        xor     a
+        ld      (x86_storage_request_pending),a
+        out     (CLRCBIT),a
+        ret
 
 ; -------------------------------------------------------------------------
 ; Live BIOS text-frame service. The ATM may request a snapshot while the
