@@ -392,14 +392,13 @@ bios_kbd_poll_counter: dw #4000
 bios_video_poll_counter: dw #8000
 bios_storage_poll_counter: dw #2000
 
-; Live variant restores the long-running BIOS command token after the
-; reverse-DMA frame transaction, allowing the instruction-boundary service
-; poll to continue accepting future video and keyboard requests.
+; Live snapshots are serviced inside the running x86 instruction loop.
+; x86_host_video_service closes the reverse-DMA transaction and clears CBIT
+; itself. Do not repost CMD_BOOT_BIOS here: the instruction loop is already
+; active, and that command is not a host-input mailbox event. Leaving it
+; asserted would make the next mailbox poll see a stale, unhandled command.
 p125_video_pull_live_and_present:
-        call    p125_video_pull_and_present
-        ld      a, CMD_BOOT_BIOS
-        out     (GSCOM), a
-        ret
+        jp      p125_video_pull_and_present
 
 ; -------------------------------------------------------------------------
 ; ATM physical keyboard scanner and DMA event transport.
