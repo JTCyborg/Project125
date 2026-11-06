@@ -413,14 +413,21 @@ x86_vga_mem_write8:
         and     1
         ld      b,a
         call    x86_vga_offset_even
+        ; In odd/even text mode CPU A0 selects exactly one plane:
+        ; even addresses use Sequencer Map Mask bit 0 (plane 0),
+        ; odd addresses use bit 1 (plane 1). Do not let the other enabled
+        ; map-mask bit leak into the write; that corrupts both text planes.
         ld      a,(x86_vga_seq_regs+2)
-        and     5
+        and     1
         ld      c,a
         ld      a,b
         or      a
+        jr      z,.odd_even_even
+        ld      a,(x86_vga_seq_regs+2)
+        and     2
+        jr      .odd_even_mask_ready
+.odd_even_even:
         ld      a,c
-        jr      z,.odd_even_mask_ready
-        rlca
 .odd_even_mask_ready:
         ld      (x86_vga_effective_mask),a
         jr      .write_mode_decode
