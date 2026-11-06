@@ -466,15 +466,15 @@ x86_fdc_read_fifo:
         ret
 
 x86_fdc_write_dor:
-        ld      a,(x86_io_value)
-        ld      b,a
         ld      a,(x86_fdc_dor)
-        ld      (x86_fdc_dor),b
-        bit     2,b
+        ld      b,a
+        ld      a,(x86_io_value)
+        ld      (x86_fdc_dor),a
+        bit     2,a
         jr      z,.reset_asserted
         ; A low-to-high RESET transition completes the controller reset.
         ; The 765 reports reset completion through IRQ6 and Sense Interrupt.
-        bit     2,a
+        bit     2,b
         jr      nz,.done
         ld      a,#C0                  ; reset interrupt, drive 0
         ld      (x86_fdc_pending_st0),a
