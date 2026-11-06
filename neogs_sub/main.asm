@@ -4389,12 +4389,14 @@ x86_real_group_f6:
         and     #38
         cp      #28
         jp      z, x86_real_f6_imul
+        cp      #30
+        jp      z, x86_real_f6_div
         ld      a, (x86_f6_modrm)
         cp      #D0
         jp      z, x86_real_f6_not_al
         ld      a, (x86_f6_modrm)
         and     #38
-        jp      nz, x86_real_group_f6_unsupported ; /1-/7 except /2 AL special and /5
+        jp      nz, x86_real_group_f6_unsupported ; unsupported Group-3 byte suboperations
 
         ld      a, (x86_f6_modrm)
         and     #C0
@@ -4429,21 +4431,8 @@ x86_real_f6_test_immediate:
 ; magnitudes, followed by two's-complement correction. This is independent
 ; of the Z80 host's physical ports and uses only the x86 register/memory model.
 x86_real_f6_imul:
-        ld      a, (x86_f6_modrm)
-        and     #C0
-        cp      #C0
-        jr      z, .imul_register
-        ld      a, (x86_f6_modrm)
-        call    x86_real_mov_decode_modrm
+        call    x86_real_f6_read_operand
         ret     c
-        call    x86_real_alu8_read_memory
-        ret     c
-        jr      .imul_operand_ready
-.imul_register:
-        ld      a, (x86_f6_modrm)
-        and     7
-        call    x86_alu8_read_reg
-.imul_operand_ready:
         ld      (x86_f6_operand), a
         ld      a, (x86_reg_ax)
         ld      (x86_f6_original_al), a
@@ -4520,19 +4509,6 @@ neogs_resident_end:
 ; in one physical bank while executing. WIN2 is mapped at logical $8000.
         ORG     $8000
 neogs_overlay68_start:
-; Temporary bank-window probe: this code must execute from physical page 68.
-neogs_overlay68_probe:
-        ; A complete CR/LF record is visible in the shared log. A lone 'P'
-        ; was not a reliable probe because the log reader may discard
-        ; unterminated single-character output.
-        push    hl
-        ld      hl, trace_overlay68_probe
-        call    neo_trace_ef_string
-        pop     hl
-        ret
-
-trace_overlay68_probe:
-        defb "[NGS BANK68 PROBE]",13,10,0
         INCLUDE "x86_modrm.asm"
         INCLUDE "x86_real_mode.asm"
         INCLUDE "x86_real_alu8.asm"
