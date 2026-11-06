@@ -896,6 +896,15 @@ bios_stop_dump_state:
          call    neo_debug_send_string
          ld      a, (x86_f7_diag_value)
          call    neo_debug_hex8
+         ; FE group state is independent of the legacy shift ModR/M fields.
+         ld      hl, bios_stop_fe_modrm_label
+         call    neo_debug_send_string
+         ld      a, (x86_incdec8_modrm)
+         call    neo_debug_hex8
+         ld      hl, bios_stop_fe_mode_label
+         call    neo_debug_send_string
+         ld      a, (x86_incdec8_mode)
+         call    neo_debug_hex8
         pop     hl
         pop     de
         pop     bc
@@ -942,6 +951,10 @@ bios_stop_f7_addr_label:
         defb    " F7ADR=", 0
 bios_stop_f7_value_label:
         defb    " F7BYTE=", 0
+bios_stop_fe_modrm_label:
+        defb    " FE_MODRM=", 0
+bios_stop_fe_mode_label:
+        defb    " FE_MODE=", 0
 
 ; Dump physical page-75 bytes at image offset 1FF0 (guest FFFF0..FFFF4).
 ; This is deliberately performed after DMA is disabled and before validation.
