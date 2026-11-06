@@ -96,6 +96,8 @@ x86_io_read8:
         ret     nc
         call    x86_resident_uart_read_dispatch
         ret     nc
+        call    x86_storage_read8
+        ret     nc
         ; IBM PC/XT gameport (joystick adapter) at 0201h.
         ; With no joystick attached all four axis inputs and button inputs
         ; are inactive/high. Keep the read visible in the existing unmapped
@@ -189,6 +191,8 @@ x86_io_write8:
         call    x86_resident_lpt_write_dispatch
         ret     nc
         call    x86_resident_uart_write_dispatch
+        ret     nc
+        call    x86_storage_write8
         ret     nc
         ; The PC/XT gameport is triggered by reads; writes are ignored by
         ; the no-adapter model. Do not forward this guest port to NeoGS I/O.
@@ -629,6 +633,20 @@ x86_io_trace_guest_pending:defb " VALUE=--",0
 ; PB (61h) resets to 40h. PC (62h) reports 640KB as 12h, multiplexed
 ; by PB2 into the high/low memory-size nibble. No cassette is attached.
 x86_io_read16:
+        ; ATA data port is a 16-bit PIO register: both lanes read successive
+        ; bytes from the same task-file address.
+        ld      hl,(x86_io_port)
+        ld      de,#01F0
+        or      a
+        sbc     hl,de
+        jr      nz,.read16_non_ata
+        call    x86_storage_read8
+        ld      b,a
+        call    x86_storage_read8
+        ld      h,a
+        ld      l,b
+        ret
+.read16_non_ata:
         ld      hl, (x86_io_port)
         ld      de, #00E0
         or      a
@@ -648,6 +666,19 @@ x86_io_read16:
         ret
 
 x86_io_write16:
+        ; ATA data port is a 16-bit PIO register: write low then high byte.
+        ld      hl,(x86_io_port)
+        ld      de,#01F0
+        or      a
+        sbc     hl,de
+        jr      nz,.write16_non_ata
+        ld      a,(x86_io_value)
+        call    x86_storage_write8
+        ld      a,(x86_io_value+1)
+        ld      (x86_io_value),a
+        call    x86_storage_write8
+        ret
+.write16_non_ata:
         ld      hl, (x86_io_port)
         ld      de, #00E0
         or      a
