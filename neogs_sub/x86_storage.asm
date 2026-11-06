@@ -105,6 +105,13 @@ x86_ata_read_status:
         or      a
         ret
 x86_ata_read_data:
+        ld      a,(x86_ata_status)
+        bit     3,a
+        jr      nz,.data_ready
+        ld      a,#FF
+        or      a
+        ret
+.data_ready:
         ld      hl,(x86_ata_buffer_index)
         ld      de,x86_ata_buffer
         add     hl,de
@@ -112,6 +119,7 @@ x86_ata_read_data:
         call    x86_ata_advance_index
         or      a
         ret
+
 x86_ata_write_data:
         ld      a,(x86_ata_status)
         bit     3,a
@@ -124,6 +132,9 @@ x86_ata_write_data:
         call    x86_ata_advance_index
         or      a
         ret
+
+; A sector is always staged locally. READ queues a one-sector ATM request
+; immediately; WRITE first accepts 512 guest bytes and queues them afterwards.
 x86_ata_advance_index:
         ld      hl,(x86_ata_buffer_index)
         inc     hl
@@ -133,9 +144,28 @@ x86_ata_advance_index:
         sbc     hl,de
         ret     c
         xor     a
-        ld      (x86_ata_status),a
         ld      (x86_ata_buffer_index),a
         ld      (x86_ata_buffer_index+1),a
+        ld      a,(x86_storage_operation)
+        cp      1
+        jr      z,.read_sector_consumed
+        cp      2
+        jr      z,.write_sector_ready
+        ret
+.read_sector_consumed:
+        call    x86_ata_decrement_remaining
+        jr      z,.transfer_finished
+        call    x86_ata_increment_lba
+        ld      a,1
+        call    x86_ata_queue_request
+        ret
+.write_sector_ready:
+        ld      a,2
+        call    x86_ata_queue_request
+        ret
+.transfer_finished:
+        ld      a,#50
+        ld      (x86_ata_status),a
         ret
 
 x86_ata_command:
@@ -147,6 +177,7 @@ x86_ata_command:
         ld      (x86_ata_error),a
         ld      (x86_ata_buffer_index),a
         ld      (x86_ata_buffer_index+1),a
+        ld      (x86_storage_request_pending),a
         ld      a,(x86_ata_command_reg)
         cp      #EC
         jr      z,x86_ata_identify
@@ -163,7 +194,6 @@ x86_ata_identify:
         ld      de,512
         xor     a
 .clear:
-        xor     a
         ld      (hl),a
         inc     hl
         dec     de
@@ -176,32 +206,122 @@ x86_ata_identify:
         ld      (hl),#00
         inc     hl
         ld      (hl),#02
+        xor     a
+        ld      (x86_ata_buffer_index),a
+        ld      (x86_ata_buffer_index+1),a
         ld      a,#58
         ld      (x86_ata_status),a
         or      a
         ret
 
-x86_ata_read_sectors:
-        ld      a,1
-        jr      x86_ata_submit_request
-x86_ata_write_sectors:
-        ld      a,2
-        jr      x86_ata_submit_request
-x86_ata_flush:
-        ld      a,3
-x86_ata_submit_request:
-        ld      (x86_storage_operation),a
-        call    x86_storage_build_mailbox
-        ld      a,(x86_storage_transport_online)
+x86_ata_prepare_transfer:
+        ; ATA count zero encodes 256 sectors.
+        ld      a,(x86_ata_taskfile+2)
         or      a
-        jr      nz,.pending
-        jr      x86_ata_abort
-.pending:
-        ; ATM completes asynchronously and writes status/data into the slot.
-        ; Do not block the Z80 interpreter while waiting for DMA completion.
-        ld      a,#80
+        jr      nz,.count_nonzero
+        ld      hl,#0100
+        jr      .count_saved
+.count_nonzero:
+        ld      l,a
+        ld      h,0
+.count_saved:
+        ld      (x86_ata_sectors_remaining),hl
+        ld      hl,x86_ata_taskfile+3
+        ld      de,x86_ata_current_lba
+        ld      bc,4
+        ldir
+        ret
+
+x86_ata_read_sectors:
+        call    x86_ata_prepare_transfer
+        ld      a,1
+        call    x86_ata_queue_request
+        ret
+
+x86_ata_write_sectors:
+        call    x86_ata_prepare_transfer
+        ld      a,2
+        ld      (x86_storage_operation),a
+        xor     a
+        ld      (x86_ata_buffer_index),a
+        ld      (x86_ata_buffer_index+1),a
+        ld      a,#58                   ; DRDY | DSC | DRQ
         ld      (x86_ata_status),a
         or      a
+        ret
+
+x86_ata_flush:
+        ld      a,3
+        call    x86_ata_queue_request
+        ret
+
+x86_ata_queue_request:
+        ld      (x86_storage_operation),a
+        call    x86_storage_build_mailbox
+        ld      a,1
+        ld      (x86_storage_request_pending),a
+        ld      a,#80
+        ld      (x86_ata_status),a
+        ret
+
+x86_ata_decrement_remaining:
+        ld      hl,(x86_ata_sectors_remaining)
+        dec     hl
+        ld      (x86_ata_sectors_remaining),hl
+        ld      a,h
+        or      l
+        ret
+
+x86_ata_increment_lba:
+        ld      hl,x86_ata_current_lba
+        inc     (hl)
+        ret     nz
+        inc     hl
+        inc     (hl)
+        ret     nz
+        inc     hl
+        inc     (hl)
+        ret     nz
+        inc     hl
+        ld      a,(hl)
+        inc     a
+        and     #0F
+        ld      (hl),a
+        ret
+
+; Called by the DMA completion service after status/data have arrived.
+x86_ata_transport_complete:
+        ld      a,(x86_storage_completion_status)
+        or      a
+        jr      nz,x86_ata_abort
+        ld      a,(x86_storage_operation)
+        cp      1
+        jr      z,.read_ready
+        cp      2
+        jr      z,.write_done
+        ld      a,#50
+        ld      (x86_ata_status),a
+        ret
+.read_ready:
+        xor     a
+        ld      (x86_ata_buffer_index),a
+        ld      (x86_ata_buffer_index+1),a
+        ld      a,#58
+        ld      (x86_ata_status),a
+        ret
+.write_done:
+        call    x86_ata_decrement_remaining
+        jr      z,.all_done
+        call    x86_ata_increment_lba
+        xor     a
+        ld      (x86_ata_buffer_index),a
+        ld      (x86_ata_buffer_index+1),a
+        ld      a,#58
+        ld      (x86_ata_status),a
+        ret
+.all_done:
+        ld      a,#50
+        ld      (x86_ata_status),a
         ret
 
 x86_ata_abort:
@@ -213,7 +333,7 @@ x86_ata_abort:
         ret
 
 ; Stable 16-byte bridge request:
-; A5 signature, op, device, sequence, LBA[3:0], count, flags, status, reserved.
+; A5, op, device, sequence, LBA[3:0], count=1, flags, status, reserved.
 x86_storage_build_mailbox:
         ld      hl,x86_storage_mailbox
         ld      (hl),#A5
@@ -221,7 +341,11 @@ x86_storage_build_mailbox:
         ld      a,(x86_storage_operation)
         ld      (hl),a
         inc     hl
-        xor     a
+        ld      a,(x86_ata_taskfile+6)
+        and     #10
+        rrca
+        rrca
+        rrca
         ld      (hl),a
         inc     hl
         ld      a,(x86_storage_sequence)
@@ -229,22 +353,15 @@ x86_storage_build_mailbox:
         ld      (x86_storage_sequence),a
         ld      (hl),a
         inc     hl
-        ld      a,(x86_ata_taskfile+3)
+        ld      de,x86_ata_current_lba
+        ld      b,4
+.lba_copy:
+        ld      a,(de)
         ld      (hl),a
+        inc     de
         inc     hl
-        ld      a,(x86_ata_taskfile+4)
-        ld      (hl),a
-        inc     hl
-        ld      a,(x86_ata_taskfile+5)
-        ld      (hl),a
-        inc     hl
-        ld      a,(x86_ata_taskfile+6)
-        and     #0F
-        ld      (hl),a
-        inc     hl
-        ; Preserve ATA sector-count byte: zero encodes 256 sectors.
-        ld      a,(x86_ata_taskfile+2)
-        ld      (hl),a
+        djnz    .lba_copy
+        ld      (hl),1
         inc     hl
         xor     a
         ld      (hl),a
@@ -487,10 +604,13 @@ x86_ata_status:         db #50
 x86_ata_error:          db 0
 x86_ata_command_reg:    db 0
 x86_ata_buffer_index:   dw 0
+x86_ata_sectors_remaining: dw 0
+x86_ata_current_lba:   defs 4,0
 x86_ata_buffer:         defs 512,0
-x86_storage_transport_online: db 0
 x86_storage_operation:  db 0
 x86_storage_sequence:   db 0
+x86_storage_request_pending: db 0
+x86_storage_completion_status: db 0
 x86_storage_mailbox:    defs 16,0
 
 x86_fdc_dor:            db #0C
