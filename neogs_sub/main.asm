@@ -3650,7 +3650,7 @@ x86_stack_transition_trace:
         ; Keep only the first 96 records from each BIOS execution.
         ld      a, (x86_stack_trace_count)
         cp      96
-        jr      nc, .done
+        jp      nc, .done
         inc     a
         ld      (x86_stack_trace_count), a
         ld      a, (x86_stack_trace_kind)
