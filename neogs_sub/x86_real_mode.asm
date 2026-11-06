@@ -3434,3 +3434,79 @@ x86_real_group_f6_unsupported:
         scf
         ret
 
+; Shared F6 r/m8 operand fetch. Resident F6 handlers call into Overlay68
+; while bank 68 is selected; return A=operand and Carry on a memory fault.
+x86_real_f6_read_operand:
+        ld      a, (x86_f6_modrm)
+        and     #C0
+        cp      #C0
+        jr      z, .register
+        ld      a, (x86_f6_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        jp      x86_real_alu8_read_memory
+.register:
+        ld      a, (x86_f6_modrm)
+        and     7
+        jp      x86_alu8_read_reg
+
+; F6 /6 DIV r/m8: unsigned AX / operand -> AL=quotient, AH=remainder.
+; PCem truncates the quotient to AL and raises INT 0 only for divisor zero.
+; Reuse the resident F7 16-bit scratch words for a 16-step restoring divide.
+x86_real_f6_div:
+        call    x86_real_f6_read_operand
+        ret     c
+        ld      (x86_f7_divisor), a
+        xor     a
+        ld      (x86_f7_divisor+1), a
+        ld      a, (x86_f7_divisor)
+        or      a
+        jr      z, .divide_zero
+
+        ld      hl, (x86_reg_ax)
+        ld      (x86_f7_quotient), hl
+        ld      hl, 0
+        ld      (x86_f7_remainder), hl
+        ld      a, 16
+        ld      (x86_f7_count), a
+
+.div_loop:
+        ; Shift the next dividend bit into the partial remainder.
+        ld      hl, (x86_f7_quotient)
+        add     hl, hl
+        ld      (x86_f7_quotient), hl
+        ld      hl, (x86_f7_remainder)
+        adc     hl, hl
+        ld      (x86_f7_remainder), hl
+
+        ; Subtract the 8-bit divisor when remainder >= divisor.
+        ld      de, (x86_f7_divisor)
+        or      a
+        sbc     hl, de
+        jr      c, .div_no_subtract
+        ld      (x86_f7_remainder), hl
+        ld      hl, (x86_f7_quotient)
+        set     0, l
+        ld      (x86_f7_quotient), hl
+.div_no_subtract:
+        ld      a, (x86_f7_count)
+        dec     a
+        ld      (x86_f7_count), a
+        jr      nz, .div_loop
+
+        ; The 16-bit quotient is truncated to AL, matching PCem's 808x.c.
+        ld      hl, (x86_f7_quotient)
+        ld      a, l
+        ld      (x86_reg_ax), a
+        ld      hl, (x86_f7_remainder)
+        ld      a, l
+        ld      (x86_reg_ax+1), a
+        jp      x86_real_next
+
+.divide_zero:
+        ; 8086 divide error: push FLAGS, CS, return IP and enter vector 0.
+        xor     a
+        call    x86_int_enter
+        ret     c
+        jp      x86_real_next
+
