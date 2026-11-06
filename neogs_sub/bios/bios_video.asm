@@ -268,11 +268,17 @@ bios_int10_scroll_common:
         jr      .down_copy
 .down_clear_start:
         ld      a,(bios_scroll_top)
+        ld      b,a
+        ld      a,(bios_scroll_remaining)
+        add     a,b
+        dec     a
+        ld      (bios_scroll_clear_limit),a
+        ld      a,(bios_scroll_top)
         ld      (bios_scroll_row),a
 .clear_rows:
         ld      a,(bios_scroll_row)
         ld      b,a
-        ld      a,(bios_scroll_bottom)
+        ld      a,(bios_scroll_clear_limit)
         cp      b
         jr      c,.scroll_done
         call    bios_scroll_clear_row
@@ -281,6 +287,8 @@ bios_int10_scroll_common:
         ld      (bios_scroll_row),a
         jr      .clear_rows
 .clear_all:
+        ld      a,(bios_scroll_bottom)
+        ld      (bios_scroll_clear_limit),a
         ld      a,(bios_scroll_top)
         ld      (bios_scroll_row),a
         jr      .clear_rows
@@ -388,6 +396,7 @@ bios_scroll_cell_address:
 
 bios_scroll_top:        db 0
 bios_scroll_bottom:     db 0
+bios_scroll_clear_limit: db 0
 bios_scroll_left:       db 0
 bios_scroll_right:      db 0
 bios_scroll_lines:      db 0
