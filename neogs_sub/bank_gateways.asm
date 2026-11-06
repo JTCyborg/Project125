@@ -34,9 +34,6 @@ bank_call_x86_real_execute:
         ; Read the actual bytes visible through WIN2 after selecting page 68.
         ; This runs in resident bank code, before CALL into any overlay symbol.
         call    bank_trace_overlay68_window
-        call    neogs_overlay68_probe
-        ld      hl, trace_gate_probe_return
-        call    neo_trace_ef_string
         ld      hl, trace_gate_call
         call    neo_trace_ef_string
         ; Report the assembler-resolved entry address and bytes at that exact
@@ -79,7 +76,6 @@ bank_call_x86_real_execute:
 
 trace_gate_enter:     defb "[GATE ENTER]",13,10,0
 trace_gate_mapped:    defb "[GATE BANK68]",13,10,0
-trace_gate_probe_return: defb "[GATE PROBE RET]",13,10,0
 trace_gate_call:      defb "[GATE X86 CALL]",13,10,0
 trace_x86_target:     defb "[GATE X86 TARGET] ",0
 trace_gate_after_call: defb "[GATE X86 RET]",13,10,0
