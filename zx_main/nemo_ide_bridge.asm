@@ -107,7 +107,7 @@ atm_nemo_ide_execute:
         jr      .failed
 .write:
         call    atm_nemo_ide_select_and_issue
-        ret     c
+        jr      c,.failed
         call    atm_nemo_ide_wait_drq
         jr      c,.failed
         ld      ix,ATM_STORAGE_PACKET+16
@@ -160,6 +160,14 @@ atm_nemo_ide_select_and_issue:
         out     (c),a
         ld      a,(ATM_STORAGE_PACKET+7)
         and     #0F
+        ld      b,a
+        ld      a,(ATM_STORAGE_PACKET+2)
+        and     1
+        rrca
+        rrca
+        rrca
+        rrca
+        or      b
         or      #E0
         ld      bc,#00D0
         out     (c),a
@@ -175,7 +183,13 @@ atm_nemo_ide_select_and_issue:
         ret
 
 atm_nemo_ide_select_drive:
-        ld      a,#E0
+        ld      a,(ATM_STORAGE_PACKET+2)
+        and     1
+        rrca
+        rrca
+        rrca
+        rrca
+        or      #E0
         ld      bc,#00D0
         out     (c),a
         ; Bounded wait for BUSY=0 and DRDY=1.
