@@ -153,7 +153,6 @@ neogs_bios_boot_and_wait:
         ld      hl, #8000
         ld      (bios_video_poll_counter), hl
         jr      .bios_boot_outer
-        ld      (bios_boot_timeout_outer), hl
 .bios_boot_outer:
         ld      bc, BIOS_HOST_WAIT_LIMIT
 .bios_boot_inner:
