@@ -230,6 +230,9 @@ x86_ata_prepare_transfer:
         ld      de,x86_ata_current_lba
         ld      bc,4
         ldir
+        ld      a,(x86_ata_current_lba+3)
+        and     #0F
+        ld      (x86_ata_current_lba+3),a
         ret
 
 x86_ata_read_sectors:
@@ -343,6 +346,7 @@ x86_storage_build_mailbox:
         inc     hl
         ld      a,(x86_ata_taskfile+6)
         and     #10
+        rrca
         rrca
         rrca
         rrca
