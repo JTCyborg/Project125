@@ -3410,3 +3410,27 @@ x86_real_f6_imul_update_flags:
         ld      (x86_reg_flags), hl
         jp      x86_real_next
 
+; F6 tail handlers and scratch data are also banked with the F6 flag helper.
+; The resident dispatcher reaches these only while Overlay68 is selected.
+x86_real_f6_not_al:
+        ld      a, (x86_reg_ax)
+        cpl
+        ld      (x86_reg_ax), a
+        jp      x86_real_next
+
+x86_f6_modrm: db 0
+x86_f6_operand: db 0
+x86_f6_multiplicand: db 0
+x86_f6_original_al: db 0
+x86_f6_sign: db 0
+x86_f6_product: dw 0
+x86_f6_new_flags: dw 0
+
+x86_real_group_f6_unsupported:
+        ld      a, #F6
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
