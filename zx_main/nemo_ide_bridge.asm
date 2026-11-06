@@ -81,6 +81,8 @@ atm_nemo_ide_execute:
         jr      z,.write
         cp      3
         jr      z,.flush
+        cp      4
+        jr      z,.identify
         jr      .failed
 .read:
         call    atm_nemo_ide_select_and_issue
@@ -125,6 +127,32 @@ atm_nemo_ide_execute:
         ld      a,d
         or      e
         jr      nz,.write_word
+        call    atm_nemo_ide_wait_complete
+        ret     nc
+        jr      .failed
+.identify:
+        call    atm_nemo_ide_select_drive
+        jr      c,.failed
+        ld      a,#EC
+        ld      bc,#00F0
+        out     (c),a
+        call    atm_nemo_ide_wait_drq
+        jr      c,.failed
+        ld      ix,ATM_STORAGE_RESULT+1
+        ld      de,256
+.identify_word:
+        ld      bc,#0010
+        in      a,(c)
+        ld      (ix+0),a
+        inc     ix
+        ld      bc,#0011
+        in      a,(c)
+        ld      (ix+0),a
+        inc     ix
+        dec     de
+        ld      a,d
+        or      e
+        jr      nz,.identify_word
         call    atm_nemo_ide_wait_complete
         ret     nc
         jr      .failed
