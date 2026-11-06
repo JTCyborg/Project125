@@ -306,6 +306,8 @@ x86_vga_mem_read8:
         and     2
         or      b
         ld      (x86_vga_read_plane),a
+        ; Normalize the plane offset before loading any of the four latches.
+        call    x86_vga_offset_even
         jr      .read_latches
 .read_plane_normal:
         ld      a,(x86_vga_gc_regs+4)
@@ -335,7 +337,7 @@ x86_vga_mem_read8:
         ld      a,(x86_vga_gc_regs+5)
         and     #10
         jr      z,.read_mode0_latch
-        call    x86_vga_offset_even
+        ; x86_vga_offset was normalized before the latch fetch above.
         ld      a,(x86_vga_read_plane)
         call    x86_vga_map_plane
         ld      a,(hl)
