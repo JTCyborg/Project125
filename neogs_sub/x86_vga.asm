@@ -237,15 +237,16 @@ x86_vga_decode_aperture:
         jr      z,.no
         jr      .offset_32_b800
 .b000:
+        ; B0000h has middle byte 00h; this is already the aperture offset.
         ld      a,(x86_mem_addr+1)
         bit     7,a
         jr      nz,.no
         ld      a,(x86_mem_addr+1)
-        sub     #B0
         jr      .store_offset_hi
 .offset_32_b800:
+        ; B8000h starts at middle byte 80h, not B8h.
         ld      a,(x86_mem_addr+1)
-        sub     #B8
+        sub     #80
         jr      .store_offset_hi
 .a000:
         ld      a,(x86_vga_gc_regs+6)
@@ -255,10 +256,10 @@ x86_vga_decode_aperture:
         cp      #0C
         jr      z,.no
 .offset_full:
-        ; 128 KiB A0000h-BFFFFh and 64 KiB A0000h-AFFFFh are
-        ; relative to A0000h, not the raw physical high byte.
+        ; The 20-bit physical address is stored as low/middle/high bytes.
+        ; A0000h has middle byte 00h, so its aperture offset high byte is
+        ; already zero-based. Do not subtract A0h here.
         ld      a,(x86_mem_addr+1)
-        sub     #A0
 .store_offset_hi:
         ld      (x86_vga_offset+1),a
         ld      a,(x86_mem_addr)
