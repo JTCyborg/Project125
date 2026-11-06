@@ -2708,42 +2708,30 @@ x86_real_shift_cl_unsupported:
         scf
         ret
 
-; F6 /0 TEST r/m8,imm8 and F6 D0 NOT AL.
-; BIOS paths observed here use direct [disp16] and register-direct operands.
+; F6 group: TEST /0,/1 and NOT AL (/2) plus signed IMUL /5.
+; IMUL accepts every 8086 ModR/M effective-address form and segment override.
 x86_real_group_f6:
         call    x86_real_fetch8
         ret     c
         ld      (x86_f6_modrm), a
+        and     #38
+        cp      #28
+        jp      z, x86_real_f6_imul
+        ld      a, (x86_f6_modrm)
         cp      #D0
         jp      z, x86_real_f6_not_al
         ld      a, (x86_f6_modrm)
         and     #38
-        jp      nz, x86_real_group_f6_unsupported ; only /0 TEST is implemented
+        jp      nz, x86_real_group_f6_unsupported ; /1-/7 except /2 AL special and /5
 
         ld      a, (x86_f6_modrm)
         and     #C0
         cp      #C0
         jp      z, x86_real_f6_test_register
-        or      a
-        jp      nz, x86_real_group_f6_unsupported
         ld      a, (x86_f6_modrm)
-        and     7
-        cp      6
-        jp      nz, x86_real_group_f6_unsupported
-        call    x86_real_mov_fetch16
+        call    x86_real_mov_decode_modrm
         ret     c
-        ld      (x86_mem_offset), hl
-        ld      (x86_mem_offset_work), hl
-        ld      hl, (x86_reg_ds)
-        ld      a, (x86_real_seg_override_active)
-        or      a
-        jr      z, .f6_segment_ready
-        ld      hl, (x86_real_seg_override)
-.f6_segment_ready:
-        ld      (x86_mem_segment), hl
-        call    x86_mem_calc_phys
-        ; Detailed F6 effective-address trace disabled.
-        call    x86_mem_read8
+        call    x86_real_alu8_read_memory
         ret     c
         ld      (x86_f6_operand), a
         jp      x86_real_f6_test_immediate
@@ -2764,6 +2752,137 @@ x86_real_f6_test_immediate:
         call    x86_real_test8_update_flags
         jp      x86_real_next
 
+; F6 /5 IMUL r/m8: signed AL * signed operand -> AX.
+; The multiply is implemented as an eight-step unsigned shift/add on
+; magnitudes, followed by two's-complement correction. This is independent
+; of the Z80 host's physical ports and uses only the x86 register/memory model.
+x86_real_f6_imul:
+        ld      a, (x86_f6_modrm)
+        and     #C0
+        cp      #C0
+        jr      z, .imul_register
+        ld      a, (x86_f6_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_alu8_read_memory
+        ret     c
+        jr      .imul_operand_ready
+.imul_register:
+        ld      a, (x86_f6_modrm)
+        and     7
+        call    x86_alu8_read_reg
+.imul_operand_ready:
+        ld      (x86_f6_operand), a
+        ld      a, (x86_reg_ax)
+        ld      (x86_f6_original_al), a
+        ld      (x86_f6_multiplicand), a
+        xor     a
+        ld      (x86_f6_sign), a
+
+        ; Convert signed AL to an unsigned magnitude.
+        ld      a, (x86_f6_multiplicand)
+        bit     7, a
+        jr      z, .imul_multiplicand_positive
+        ld      a, 1
+        ld      (x86_f6_sign), a
+        ld      a, (x86_f6_multiplicand)
+        neg
+        ld      (x86_f6_multiplicand), a
+.imul_multiplicand_positive:
+        ld      a, (x86_f6_operand)
+        bit     7, a
+        jr      z, .imul_operand_positive
+        ld      a, (x86_f6_sign)
+        xor     1
+        ld      (x86_f6_sign), a
+        ld      a, (x86_f6_operand)
+        neg
+        ld      (x86_f6_operand), a
+.imul_operand_positive:
+        ld      a, (x86_f6_multiplicand)
+        ld      l, a
+        ld      h, 0
+        ld      de, 0
+        ld      a, (x86_f6_operand)
+        ld      b, 8
+.imul_loop:
+        srl     a
+        jr      nc, .imul_no_add
+        add     hl, de
+        ex      de, hl
+        add     hl, de
+        ex      de, hl
+.imul_no_add:
+        ; DE is the accumulated product; HL is the shifted multiplicand.
+        add     hl, hl
+        djnz    .imul_loop
+        ; Product is in DE. Negate it when operand signs differ.
+        ld      a, (x86_f6_sign)
+        or      a
+        jr      z, .imul_store
+        ex      de, hl
+        xor     a
+        sub     l
+        ld      l, a
+        ld      a, 0
+        sbc     a, h
+        ld      h, a
+        ex      de, hl
+.imul_store:
+        ld      (x86_f6_product), de
+        ld      hl, (x86_reg_ax)
+        ld      a, (x86_f6_product)
+        ld      l, a
+        ld      a, (x86_f6_product+1)
+        ld      h, a
+        ld      (x86_reg_ax), hl
+
+        ; PCem reference semantics: PF/SF are sampled from pre-IMUL AL,
+        ; ZF from the 16-bit result, and CF/OF are set iff AH is nonzero.
+        xor     a
+        ld      (x86_f6_new_flags), a
+        ld      (x86_f6_new_flags+1), a
+        ; Parity/sign must use the original AL, not its magnitude.
+        ld      a, (x86_f6_original_al)
+        and     a
+        jp      pe, .imul_pf
+        jr      .imul_zf
+.imul_pf:
+        ld      hl, x86_f6_new_flags
+        set     2, (hl)
+.imul_zf:
+        ld      hl, (x86_reg_ax)
+        ld      a, h
+        or      l
+        jr      nz, .imul_cf
+        ld      hl, x86_f6_new_flags
+        set     6, (hl)
+.imul_cf:
+        ld      a, (x86_reg_ax+1)
+        or      a
+        jr      z, .imul_merge
+        ld      hl, x86_f6_new_flags
+        set     0, (hl)
+        set     3, (hl)
+.imul_merge:
+        ld      hl, (x86_reg_flags)
+        ld      de, #772A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_f6_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        jp      x86_real_next
+
 x86_real_f6_not_al:
         ld      a, (x86_reg_ax)
         cpl
@@ -2772,6 +2891,11 @@ x86_real_f6_not_al:
 
 x86_f6_modrm: db 0
 x86_f6_operand: db 0
+x86_f6_multiplicand: db 0
+x86_f6_original_al: db 0
+x86_f6_sign: db 0
+x86_f6_product: dw 0
+x86_f6_new_flags: dw 0
 
 x86_real_group_f6_unsupported:
         ld      a, #F6
