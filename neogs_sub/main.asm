@@ -1149,8 +1149,8 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261106-47",13,10
-        defb "[NGS] BASE COMMIT 31CBF4D",13,10,0
+        defb "[NGS] BUILD 20261106-48",13,10
+        defb "[NGS] BASE COMMIT D1-GROUP2",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
 trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
@@ -2890,6 +2890,7 @@ x86_resident_group_ff_invalid:
 x86_resident_shift_word_shr_one:
         ld      a, 0                       ; word operand
         ld      (x86_mov_width), a
+        ld      a, (x86_shift_diag_modrm)
         call    x86_real_mov_decode_modrm
         ret     c
         call    x86_real_mov_read_rm
@@ -3654,6 +3655,250 @@ x86_resident_shift_byte_shl_one:
         ld      l, a
         ld      (x86_reg_ax), hl
         jp      x86_real_next
+
+; D1 group-2 word dispatcher. A contains the fetched ModR/M byte.
+x86_resident_shift_word_dispatch_one:
+        ld      (x86_shift_diag_modrm), a
+        and     #38
+        cp      #00
+        jp      z, x86_resident_shift_word_rol_one
+        cp      #08
+        jp      z, x86_resident_shift_word_ror_one
+        cp      #10
+        jp      z, x86_resident_shift_word_rcl_one
+        cp      #18
+        jp      z, x86_resident_shift_word_rcr_one
+        cp      #20
+        jp      z, x86_resident_shift_word_shl_one
+        cp      #30
+        jp      z, x86_resident_shift_word_shl_one ; SAL alias
+        cp      #28
+        jp      z, x86_resident_shift_word_shr_one
+        jp      x86_resident_shift_word_sar_one
+
+; Mode 0=ROL, 1=ROR, 2=RCL, 3=RCR. Rotate flags match PCem: CF and OF only.
+x86_resident_shift_word_rotate_one:
+        xor     a
+        ld      (x86_mov_width), a
+        ld      a, (x86_shift_diag_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_shift_original), hl
+        ld      a, (x86_shift_rotate_mode)
+        cp      1
+        jr      z, .rotate_right
+        cp      3
+        jr      z, .rotate_right
+        ; ROL/RCL: old bit 15 becomes CF.
+        ld      a, h
+        rlca
+        and     1
+        ld      (x86_shift_carry), a
+        ld      hl, (x86_shift_original)
+        add     hl, hl
+        ld      a, (x86_shift_rotate_mode)
+        cp      2
+        jr      nz, .left_rol
+        ld      a, (x86_reg_flags)
+        and     1
+        jr      .left_inject
+.left_rol:
+        ld      a, (x86_shift_carry)
+.left_inject:
+        or      l
+        ld      l, a
+        ld      (x86_shift_result), hl
+        jr      .rotate_flags
+.rotate_right:
+        ; ROR/RCR: old bit 0 becomes CF.
+        ld      hl, (x86_shift_original)
+        ld      a, l
+        and     1
+        ld      (x86_shift_carry), a
+        srl     h
+        rr      l
+        ld      a, (x86_shift_rotate_mode)
+        cp      3
+        jr      nz, .right_ror
+        ld      a, (x86_reg_flags)
+        and     1
+        jr      .right_inject
+.right_ror:
+        ld      a, (x86_shift_carry)
+.right_inject:
+        or      a
+        jr      z, .right_done
+        set     7, h
+.right_done:
+        ld      (x86_shift_result), hl
+.rotate_flags:
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .rotate_cf_done
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.rotate_cf_done:
+        ld      a, (x86_shift_rotate_mode)
+        cp      1
+        jr      z, .rotate_right_of
+        cp      3
+        jr      z, .rotate_right_of
+        ; ROL/RCL: OF = CF XOR result bit 15.
+        ld      hl, (x86_shift_result)
+        bit     7, h
+        ld      a, 0
+        jr      z, .left_sign_ready
+        inc     a
+.left_sign_ready:
+        ld      b, a
+        ld      a, (x86_shift_carry)
+        xor     b
+        jr      .rotate_of_result
+.rotate_right_of:
+        ; ROR/RCR: OF = result bit 15 XOR result bit 14.
+        ld      hl, (x86_shift_result)
+        ld      a, h
+        and     #C0
+        cp      #40
+        jr      z, .rotate_set_of
+        cp      #80
+        jr      nz, .rotate_write_flags
+.rotate_set_of:
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+        jr      .rotate_write_flags
+.rotate_of_result:
+        or      a
+        jr      z, .rotate_write_flags
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+.rotate_write_flags:
+        ; Preserve all flags except CF and OF.
+        ld      hl, (x86_reg_flags)
+        ld      de, #F7FE
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        ld      hl, (x86_shift_result)
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+x86_resident_shift_word_rol_one:
+        xor     a
+        ld      (x86_shift_rotate_mode), a
+        jp      x86_resident_shift_word_rotate_one
+x86_resident_shift_word_ror_one:
+        ld      a, 1
+        ld      (x86_shift_rotate_mode), a
+        jp      x86_resident_shift_word_rotate_one
+x86_resident_shift_word_rcl_one:
+        ld      a, 2
+        ld      (x86_shift_rotate_mode), a
+        jp      x86_resident_shift_word_rotate_one
+x86_resident_shift_word_rcr_one:
+        ld      a, 3
+        ld      (x86_shift_rotate_mode), a
+        jp      x86_resident_shift_word_rotate_one
+
+; D1 /4 and /6: SHL/SAL r/m16,1.
+x86_resident_shift_word_shl_one:
+        xor     a
+        ld      (x86_mov_width), a
+        ld      a, (x86_shift_diag_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_shift_original), hl
+        add     hl, hl
+        ld      (x86_shift_result), hl
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, #10
+        ld      (x86_shift_new_flags), a ; PCem sets AF
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shl_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.shl_parity:
+        ld      hl, (x86_shift_result)
+        ld      a, l
+        and     a
+        jp      pe, .shl_pf
+        jr      .shl_zero
+.shl_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.shl_zero:
+        ld      hl, (x86_shift_result)
+        ld      a, h
+        or      l
+        jr      nz, .shl_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.shl_sign:
+        ld      hl, (x86_shift_result)
+        bit     7, h
+        jr      z, .shl_overflow
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.shl_overflow:
+        ld      hl, (x86_shift_result)
+        bit     7, h
+        ld      a, 0
+        jr      z, .shl_sign_ready
+        inc     a
+.shl_sign_ready:
+        ld      b, a
+        ld      a, (x86_shift_carry)
+        xor     b
+        or      a
+        jr      z, .shl_merge
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+.shl_merge:
+        ld      hl, (x86_reg_flags)
+        ld      de, #F72A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        ld      hl, (x86_shift_result)
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+x86_shift_rotate_mode: db 0
 
 ; Resident helpers keep the overlay68 fetch path within its 16 KiB bank.
 x86_fetch_diag_begin:
