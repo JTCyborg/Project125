@@ -573,7 +573,7 @@ bios_video_trace_write_cell:
         push    hl
         ld      a,(bios_video_trace_write_count)
         cp      8
-        jr      nc,.no_trace
+        jp      nc,.no_trace
         inc     a
         ld      (bios_video_trace_write_count),a
 
