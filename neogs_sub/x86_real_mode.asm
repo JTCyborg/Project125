@@ -2782,13 +2782,13 @@ x86_real_group_f6_unsupported:
 ; CF and all control/reserved bits are preserved as required by 8086.
 x86_real_incdec_r8:
         ld      (x86_real_opcode), a
+        ; FE has a ModR/M byte for both register and memory operands.
+        ; Fetch it exactly once; the EA decoder consumes only displacement.
         call    x86_real_fetch8
         ret     c
         ld      (x86_incdec8_modrm), a
-        and     #C0
-        cp      #C0
-        jp      nz, x86_real_incdec_r8_unsupported
-        ld      a, (x86_incdec8_modrm)
+
+        ; Only /0 INC r/m8 and /1 DEC r/m8 are defined for opcode FE.
         and     #38
         cp      #00
         jr      z, .incdec8_inc
@@ -2796,15 +2796,33 @@ x86_real_incdec_r8:
         jp      nz, x86_real_incdec_r8_unsupported
         ld      a, 1
         ld      (x86_incdec8_mode), a
-        jr      .incdec8_select_reg
+        jr      .incdec8_select_operand
 .incdec8_inc:
         xor     a
         ld      (x86_incdec8_mode), a
-.incdec8_select_reg:
+
+.incdec8_select_operand:
+        ld      a, (x86_incdec8_modrm)
+        and     #C0
+        cp      #C0
+        jr      z, .incdec8_register
+
+        ; Decode all 8086 memory EA forms, including disp8/disp16,
+        ; BP=>SS default, and the active segment override.
+        ld      a, (x86_incdec8_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_alu8_read_memory
+        ret     c
+        jr      .incdec8_operand_ready
+
+.incdec8_register:
         ld      a, (x86_incdec8_modrm)
         and     7
         ld      (x86_incdec8_reg), a
         call    x86_alu8_read_reg
+
+.incdec8_operand_ready:
         ld      (x86_incdec8_old), a
         ld      a, (x86_incdec8_mode)
         or      a
@@ -2817,8 +2835,19 @@ x86_real_incdec_r8:
 .incdec8_store:
         ld      (x86_incdec8_result), a
         call    x86_real_incdec_r8_flags
+
+        ; Memory destinations reuse the same EA selected for the read.
+        ld      a, (x86_incdec8_modrm)
+        and     #C0
+        cp      #C0
+        jr      z, .incdec8_write_register
+        ld      a, (x86_incdec8_result)
+        call    x86_real_alu8_write_memory
+        ret     c
+        jp      x86_real_next
+
+.incdec8_write_register:
         ; The shared byte-register writer consumes x86_alu8_result.
-        ; Store the INC/DEC result there before selecting the destination.
         ld      a, (x86_incdec8_result)
         ld      (x86_alu8_result), a
         ld      a, (x86_incdec8_reg)
