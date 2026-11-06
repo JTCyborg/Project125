@@ -573,7 +573,7 @@ bios_video_trace_write_cell:
         push    hl
         ld      a,(bios_video_trace_write_count)
         cp      8
-        jr      nc,.done
+        jr      nc,.no_trace
         inc     a
         ld      (bios_video_trace_write_count),a
 
@@ -642,6 +642,7 @@ bios_video_trace_write_cell:
         ld      (x86_mem_addr),hl
         ld      a,(bios_video_trace_saved_addr+2)
         ld      (x86_mem_addr+2),a
+.no_trace:
         pop     hl
         pop     de
         pop     bc
