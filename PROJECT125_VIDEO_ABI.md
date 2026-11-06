@@ -97,8 +97,8 @@ The first ATM text presentation path is separate from the graphics descriptor ab
 
 - Guest mode: VGA mode 03h, 80 columns × 25 rows, 16-colour text.
 - Guest aperture: B8000h-BFFFFh; character bytes are plane 0 and attribute bytes are plane 1.
-- VGA Sequencer chain-2/odd-even addressing is used: CPU even addresses select plane 0, odd addresses select plane 1, with the plane offset equal to CPU aperture offset rounded down to an even byte, matching PCem's chain-2 decoder.
-- NeoGS gathers every second byte from plane 0 and then plane 1 (2,000 bytes per plane) into the first 4,000 bytes of reserved frame slot A (physical page 79).
+- VGA Sequencer chain-2/odd-even addressing is used: CPU even addresses select plane 0, odd addresses select plane 1, and the plane byte offset is the CPU aperture offset shifted right by one bit (A0 is consumed as the plane selector), matching VGA chain-2 odd/even decoding.
+- NeoGS gathers 2,000 consecutive bytes from plane 0 and then 2,000 consecutive bytes from plane 1 into the first 4,000 bytes of reserved frame slot A (physical page 79).
 - CMD_VIDEO_PULL arms the existing NeoGS-to-ATM ZX DMA direction. ATM discards the documented pipeline byte, reads exactly 4,000 bytes to host staging RAM, then sends the FFh end marker.
 - ATM converts each VGA attribute into the native ATM text attribute layout and writes all 2,000 cells through the existing 80×25 presenter memory mapping.
 
