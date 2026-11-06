@@ -2283,6 +2283,30 @@ x86_host_video_trace_planes:
         out     (#EF),a
         ld      a,10
         out     (#EF),a
+
+        ; BIOS cursor in the captured run is row 6, column 7.
+        ; VGA text guest addresses B83CE/B83CF map to plane offset 01E7.
+        ; Read the actual cell from each plane, not only the screen origin.
+        ld      hl,x86_host_video_trace_cell
+        call    neo_trace_ef_string
+        ld      a,83
+        rrca
+        out     (MPAGEX),a
+        ld      hl,#C1E7
+        ld      a,(hl)
+        call    neo_trace_ef_hex8
+        ld      a,' '
+        out     (#EF),a
+        ld      a,87
+        rrca
+        out     (MPAGEX),a
+        ld      hl,#C1E7
+        ld      a,(hl)
+        call    neo_trace_ef_hex8
+        ld      a,13
+        out     (#EF),a
+        ld      a,10
+        out     (#EF),a
 .done:
         pop     hl
         pop     de
@@ -2321,6 +2345,8 @@ x86_host_video_trace_p0:
         defb "[VGA P0] ",0
 x86_host_video_trace_p1:
         defb "[VGA P1] ",0
+x86_host_video_trace_cell:
+        defb "[VGA CELL] ",0
 x86_host_video_trace_count:
         db 0
 
