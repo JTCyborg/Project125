@@ -1071,8 +1071,8 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261106-25",13,10
-        defb "[NGS] BASE COMMIT DE35DE9",13,10,0
+        defb "[NGS] BUILD 20261106-26",13,10
+        defb "[NGS] BASE COMMIT 83EF143",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
 trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
@@ -1235,6 +1235,7 @@ rom_return_trampoline_end:
 
         ; Fixed resident services and shared architectural state.
         INCLUDE "x86_memory.asm"
+        INCLUDE "x86_vga.asm"
         INCLUDE "bios/bios_core.asm"
         INCLUDE "../shared/video_crc16.asm"
         INCLUDE "bank_gateways.asm"

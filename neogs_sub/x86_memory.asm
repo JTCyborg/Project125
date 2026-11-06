@@ -99,6 +99,8 @@ x86_mem_map_addr:
 
 ; Read one byte. IN x86_mem_addr[0..2]. OUT A=byte, carry on invalid address.
 x86_mem_read8:
+        call    x86_vga_mem_read8
+        ret     nc
         call    x86_mem_map_addr
         ret     c
         ld      a, (hl)
@@ -201,6 +203,8 @@ x86_mem_write8:
         or      a
         ret
 .write_allowed:
+        call    x86_vga_mem_write8
+        ret     nc
         call    x86_mem_map_addr
         ret     c
         ; Trace writes to the BIOS error byte candidate at physical 003F95h.
