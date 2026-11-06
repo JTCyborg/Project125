@@ -78,7 +78,7 @@ x86_storage_write8:
         cp      #F8
         jr      nc,.unhandled
         cp      #F7
-        jr      z,x86_ata_command
+        jp      z,x86_ata_command
         cp      #F0
         jr      z,x86_ata_write_data
         sub     #F0
@@ -187,7 +187,7 @@ x86_ata_command:
         jr      z,x86_ata_write_sectors
         cp      #E7
         jr      z,x86_ata_flush
-        jr      x86_ata_abort
+        jp      x86_ata_abort
 
 x86_ata_identify:
         ld      hl,x86_ata_buffer
