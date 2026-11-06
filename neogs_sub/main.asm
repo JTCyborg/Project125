@@ -2037,7 +2037,6 @@ x86_host_video_service:
         ld      a,(hl)
         ld      (de),a
         inc     hl
-        inc     hl
         inc     de
         dec     bc
         ld      a,b
@@ -2053,7 +2052,6 @@ x86_host_video_service:
 .video_attr_copy:
         ld      a,(hl)
         ld      (de),a
-        inc     hl
         inc     hl
         inc     de
         dec     bc
