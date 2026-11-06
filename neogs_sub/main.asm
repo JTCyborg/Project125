@@ -1149,8 +1149,8 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261106-46",13,10
-        defb "[NGS] BASE COMMIT 226BC91",13,10,0
+        defb "[NGS] BUILD 20261106-47",13,10
+        defb "[NGS] BASE COMMIT 31CBF4D",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
 trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
