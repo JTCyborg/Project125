@@ -129,7 +129,6 @@ p125_video_map_vga_attribute:
 p125_video_present_text:
         ld      hl,#C000
         ld      de,#C7D0
-        ld      (p125_video_attr_ptr),de
         xor     a
         ld      (p125_video_row),a
         ld      (p125_video_col),a
@@ -137,12 +136,8 @@ p125_video_present_text:
 .row:
         ld      c,80
 .cell:
-        ; D/E are reused below for screen coordinates, so keep the source
-        ; attribute cursor in memory across every call to the screen writer.
-        ld      de,(p125_video_attr_ptr)
         ld      a,(de)
         inc     de
-        ld      (p125_video_attr_ptr),de
         call    p125_video_map_vga_attribute
         push    bc
         ld      b,a
@@ -173,4 +168,3 @@ p125_video_present_text:
 
 p125_video_row: db 0
 p125_video_col: db 0
-p125_video_attr_ptr: dw 0

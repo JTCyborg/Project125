@@ -2778,76 +2778,52 @@ x86_real_group_f6_unsupported:
         scf
         ret
 
-; FE /0,/1 byte INC/DEC. Register-direct and memory operands share the
-; same byte result/FLAGS logic. CF and all non-status FLAGS are preserved.
+; FE /0,/1 register-direct byte INC/DEC. Only status FLAGS are updated;
+; CF and all control/reserved bits are preserved as required by 8086.
 x86_real_incdec_r8:
         ld      (x86_real_opcode), a
         call    x86_real_fetch8
         ret     c
         ld      (x86_incdec8_modrm), a
+        and     #C0
+        cp      #C0
+        jp      nz, x86_real_incdec_r8_unsupported
+        ld      a, (x86_incdec8_modrm)
         and     #38
         cp      #00
-        jr      z, .incdec8_inc_select
+        jr      z, .incdec8_inc
         cp      #08
         jp      nz, x86_real_incdec_r8_unsupported
         ld      a, 1
         ld      (x86_incdec8_mode), a
-        jr      .incdec8_operand_select
-.incdec8_inc_select:
+        jr      .incdec8_select_reg
+.incdec8_inc:
         xor     a
         ld      (x86_incdec8_mode), a
-.incdec8_operand_select:
-        ld      a, (x86_incdec8_modrm)
-        and     #C0
-        cp      #C0
-        jr      z, .incdec8_register
-
-        ; Memory form: FE /0 or /1. Decode the full 8086 EA (including
-        ; BP=>SS and displacement), then use the common checked byte access.
-        ld      a, 1
-        ld      (x86_mov_width), a
-        ld      a, (x86_incdec8_modrm)
-        call    x86_real_mov_decode_modrm
-        ret     c
-        call    x86_real_mov_read_rm
-        ret     c
-        ld      a, l
-        ld      (x86_incdec8_old), a
-        call    x86_incdec8_calculate
-        call    x86_real_incdec_r8_flags
-        ld      a, (x86_incdec8_result)
-        ld      l, a
-        ld      h, 0
-        ld      (x86_mov_value), hl
-        jp      x86_real_mov_write_rm
-
-.incdec8_register:
+.incdec8_select_reg:
         ld      a, (x86_incdec8_modrm)
         and     7
         ld      (x86_incdec8_reg), a
         call    x86_alu8_read_reg
         ld      (x86_incdec8_old), a
-        call    x86_incdec8_calculate
+        ld      a, (x86_incdec8_mode)
+        or      a
+        ld      a, (x86_incdec8_old)
+        jr      nz, .incdec8_do_dec
+        inc     a
+        jr      .incdec8_store
+.incdec8_do_dec:
+        dec     a
+.incdec8_store:
+        ld      (x86_incdec8_result), a
         call    x86_real_incdec_r8_flags
         ; The shared byte-register writer consumes x86_alu8_result.
+        ; Store the INC/DEC result there before selecting the destination.
         ld      a, (x86_incdec8_result)
         ld      (x86_alu8_result), a
         ld      a, (x86_incdec8_reg)
         call    x86_alu8_write_reg
         jp      x86_real_next
-
-x86_incdec8_calculate:
-        ld      a, (x86_incdec8_mode)
-        or      a
-        ld      a, (x86_incdec8_old)
-        jr      nz, .do_dec
-        inc     a
-        jr      .store
-.do_dec:
-        dec     a
-.store:
-        ld      (x86_incdec8_result), a
-        ret
 
 x86_real_incdec_r8_flags:
         xor     a
