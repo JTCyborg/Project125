@@ -3097,6 +3097,8 @@ x86_resident_shift_byte_cl_dispatch:
         jp      z, x86_resident_shift_byte_shr_cl
         cp      #30                    ; /6 SAL r/m8,CL (same operation as SHL)
         jp      z, x86_resident_shift_byte_shl_cl
+        cp      #38                    ; /7 SAR r/m8,CL
+        jp      z, x86_resident_shift_byte_sar_cl
         jp      x86_real_shift_byte_cl_unsupported
 
 ; D2 /4 and /6: SHL/SAL r/m8,CL.
@@ -3202,6 +3204,92 @@ x86_resident_shift_byte_shl_cl:
         ld      l, a
         ld      (x86_reg_flags), hl
 
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      h, 0
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+; D2 /7: SAR r/m8,CL. Arithmetic right shift, including memory operands.
+; The 8086 uses the complete CL count; the sign bit is replicated each step.
+; PCem 808x.c sets CF/PF/AF/ZF/SF and leaves OF unchanged for this form.
+x86_resident_shift_byte_sar_cl:
+        ld      a, 1
+        ld      (x86_mov_width), a
+        ld      a, (x86_shift_diag_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        ld      a, (x86_reg_cx)
+        or      a
+        jp      z, x86_real_next
+        ld      (x86_shift_count), a
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      a, l
+        ld      (x86_shift_result), a
+        xor     a
+        ld      (x86_shift_carry), a
+.sar_cl_loop:
+        ld      a, (x86_shift_result)
+        sra     a
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+        ld      a, (x86_shift_count)
+        dec     a
+        ld      (x86_shift_count), a
+        jr      nz, .sar_cl_loop
+
+        ; CF is the last bit shifted out; PF/ZF/SF describe the result.
+        ; AF is set as in the PCem 808x implementation; OF is preserved.
+        xor     a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, #10
+        ld      (x86_shift_new_flags), a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .sar_cl_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.sar_cl_parity:
+        ld      a, (x86_shift_result)
+        and     a
+        jp      pe, .sar_cl_set_pf
+        jr      .sar_cl_zero
+.sar_cl_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.sar_cl_zero:
+        ld      a, (x86_shift_result)
+        or      a
+        jr      nz, .sar_cl_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.sar_cl_sign:
+        ld      a, (x86_shift_result)
+        bit     7, a
+        jr      z, .sar_cl_merge
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.sar_cl_merge:
+        ; Clear CF/PF/ZF/SF, preserve OF and the other status/control bits.
+        ld      hl, (x86_reg_flags)
+        ld      de, #FF3A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
         ld      a, (x86_shift_result)
         ld      l, a
         ld      h, 0
