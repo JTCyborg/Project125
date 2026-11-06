@@ -10,6 +10,8 @@ BIOS_VIDEO_MODE    EQU #03
 BIOS_VIDEO_ATTR    EQU #07
 
 bios_int10_dispatch_impl:
+        ; Trace the guest BIOS video request before changing any registers.
+        call    bios_video_trace_int10
         ld      hl,(x86_reg_ax)
         ld      a,h
         cp      #00
@@ -487,3 +489,101 @@ trace_int10_once: db 0
 trace_teletype_once: db 0
 trace_int10_entry: defb "[BIOS INT10]",13,10,0
 trace_teletype_entry: defb "[BIOS TTY]",13,10,0
+
+
+; -------------------------------------------------------------------------
+; BIOS video request trace.
+; Direct #EF output is intentionally independent of DMA/DBIT. It records
+; every INT 10h call's complete input register image, then stops after 48
+; records so a BIOS teletype loop cannot flood the host debug console.
+; This is diagnostic only: it does not alter guest x86 registers or flags.
+; -------------------------------------------------------------------------
+bios_video_trace_int10:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      a,(bios_video_trace_count)
+        cp      48
+        jp      nc,.done
+        inc     a
+        ld      (bios_video_trace_count),a
+        ld      hl,bios_video_trace_prefix
+        call    bios_video_trace_string
+        ld      hl,(x86_reg_ax)
+        call    bios_video_trace_hex16
+        ld      a,' '
+        out     (#EF),a
+        ld      hl,(x86_reg_bx)
+        call    bios_video_trace_hex16
+        ld      a,' '
+        out     (#EF),a
+        ld      hl,(x86_reg_cx)
+        call    bios_video_trace_hex16
+        ld      a,' '
+        out     (#EF),a
+        ld      hl,(x86_reg_dx)
+        call    bios_video_trace_hex16
+        ld      a,' '
+        out     (#EF),a
+        ld      hl,(x86_reg_cs)
+        call    bios_video_trace_hex16
+        ld      a,':'
+        out     (#EF),a
+        ld      hl,(x86_reg_ip)
+        call    bios_video_trace_hex16
+        ld      a,13
+        out     (#EF),a
+        ld      a,10
+        out     (#EF),a
+.done:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+bios_video_trace_string:
+        ld      a,(hl)
+        inc     hl
+        or      a
+        ret     z
+        out     (#EF),a
+        jr      bios_video_trace_string
+
+bios_video_trace_hex16:
+        ld      a,h
+        call    bios_video_trace_hex8
+        ld      a,l
+        jp      bios_video_trace_hex8
+
+bios_video_trace_hex8:
+        push    af
+        push    bc
+        ld      b,a
+        rrca
+        rrca
+        rrca
+        rrca
+        call    bios_video_trace_nibble
+        ld      a,b
+        and     #0F
+        call    bios_video_trace_nibble
+        pop     bc
+        pop     af
+        ret
+
+bios_video_trace_nibble:
+        and     #0F
+        add     a,'0'
+        cp      '9'+1
+        jr      c,.emit
+        add     a,7
+.emit:
+        out     (#EF),a
+        ret
+
+bios_video_trace_prefix:
+        defb "[BIOS INT10] AX BX CX DX CS:IP=",0
+bios_video_trace_count:
+        db 0
