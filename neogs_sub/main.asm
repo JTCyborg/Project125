@@ -1149,7 +1149,7 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261106-42",13,10
+        defb "[NGS] BUILD 20261106-43",13,10
         defb "[NGS] BASE COMMIT 226BC91",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
@@ -1324,6 +1324,7 @@ rom_return_trampoline_end:
 ; for opcode handlers without introducing extra bank-switch gateways.
         INCLUDE "x86_interrupt.asm"
         INCLUDE "x86_real_alu.asm"
+        INCLUDE "x86_storage.asm"
 
 ; 8086 register file is resident so BIOS and banked CPU code share one state.
 x86_reg_ax:    dw 0
