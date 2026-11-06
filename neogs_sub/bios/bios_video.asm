@@ -186,14 +186,14 @@ bios_int10_scroll_common:
         ld      (bios_scroll_height),a
         ld      a,(bios_scroll_lines)
         or      a
-        jr      z,.clear_all
+        jp      z,.clear_all
         ld      b,a
         ld      a,(bios_scroll_height)
         cp      b
         jr      nc,.count_valid
         ld      a,b
         ld      (bios_scroll_lines),a
-        jr      .clear_all
+        jp      .clear_all
 .count_valid:
         ld      a,(bios_scroll_lines)
         ld      (bios_scroll_remaining),a
