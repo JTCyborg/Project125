@@ -409,7 +409,11 @@ x86_real_fetch_out_of_range:
 x86_real_execute:
         xor     a
         ld      (x86_io_trace_count), a
+        ld      (x86_io_guest_trace_count), a
         ld      (x86_hlt_trace_count), a
+        ld      (x86_post_int10_trace_active), a
+        ld      (x86_post_int10_trace_started), a
+        ld      (x86_post_int10_trace_count), a
         ; One concise marker proves control reached the actual x86 interpreter.
         ld      hl, x86_dbg_core_enter
         call    neo_trace_ef_string
@@ -489,6 +493,8 @@ x86_real_dispatch_no_progress:
         ; state checks. Reading bios_first_instruction_trace below uses A and
         ; must not replace the opcode that the decoder will receive.
         ld      (x86_fetch_opcode_saved), a
+        ; Trace the first 64 instructions after the first INT 10h IRET.
+        call    x86_post_int10_instruction_trace
         ; Emit the exact first successfully fetched BIOS opcode before decode.
         ld      a, (bios_first_instruction_trace)
         cp      1
@@ -1657,6 +1663,15 @@ x86_real_int10_service:
         ret     c
         call    x86_iret_return
         ret     c
+        ; Arm one bounded instruction trace after the first BIOS INT 10h IRET.
+        ; This captures the guest path that follows the video service return.
+        ld      a, (x86_post_int10_trace_started)
+        or      a
+        jr      nz, .post_trace_already_started
+        inc     a
+        ld      (x86_post_int10_trace_started), a
+        ld      (x86_post_int10_trace_active), a
+.post_trace_already_started:
         jp      x86_real_next
 
 ; BIOS keyboard INT 16h is trapped in the same way as INT 10h. The service
@@ -1994,6 +2009,84 @@ x86_real_hlt_trace:
         pop     bc
         pop     af
         ret
+
+; Bounded trace of guest instructions immediately following the first
+; BIOS INT 10h return. The opcode has already been fetched, so report IP-1.
+; Preserve AF/BC/DE/HL and do not modify the guest register image.
+x86_post_int10_instruction_trace:
+        ld      a, (x86_post_int10_trace_active)
+        or      a
+        ret     z
+        ld      a, (x86_post_int10_trace_count)
+        cp      64
+        jr      c, .trace_record
+        xor     a
+        ld      (x86_post_int10_trace_active), a
+        ret
+.trace_record:
+        inc     a
+        ld      (x86_post_int10_trace_count), a
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_post_int10_trace_prefix
+        call    x86_trace_puts
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        dec     hl
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      a, ' '
+        out     (#EF), a
+        ld      a, (x86_fetch_opcode_saved)
+        call    x86_trace_hex8
+        ld      hl, x86_post_int10_trace_ax
+        call    x86_trace_puts
+        ld      hl, (x86_reg_ax)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      hl, x86_post_int10_trace_cx
+        call    x86_trace_puts
+        ld      hl, (x86_reg_cx)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      hl, x86_post_int10_trace_flags
+        call    x86_trace_puts
+        ld      hl, (x86_reg_flags)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_post_int10_trace_prefix: defb "[X86 POST10] ",0
+x86_post_int10_trace_ax:     defb " AX=",0
+x86_post_int10_trace_cx:     defb " CX=",0
+x86_post_int10_trace_flags:  defb " FL=",0
+x86_post_int10_trace_active: db 0
+x86_post_int10_trace_started: db 0
+x86_post_int10_trace_count:  db 0
 
 x86_hlt_trace_prefix: defb "[X86 HLT] CS:IP=",0
 x86_hlt_trace_flags:  defb " FLAGS=",0
