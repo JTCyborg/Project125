@@ -4377,6 +4377,142 @@ x86_f7_remainder:          dw 0
 x86_f7_remainder_carry:    db 0
 x86_f7_count:              db 0
 
+; F6 Group-3 byte handler is resident to preserve the 16 KiB overlay68 limit.
+; The operand decoder and memory helpers remain in overlay68 and are callable
+; because WIN2 stays mapped while the interpreter dispatches this handler.
+; F6 group: TEST /0,/1 and NOT AL (/2) plus signed IMUL /5.
+; IMUL accepts every 8086 ModR/M effective-address form and segment override.
+x86_real_group_f6:
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_f6_modrm), a
+        and     #38
+        cp      #28
+        jp      z, x86_real_f6_imul
+        ld      a, (x86_f6_modrm)
+        cp      #D0
+        jp      z, x86_real_f6_not_al
+        ld      a, (x86_f6_modrm)
+        and     #38
+        jp      nz, x86_real_group_f6_unsupported ; /1-/7 except /2 AL special and /5
+
+        ld      a, (x86_f6_modrm)
+        and     #C0
+        cp      #C0
+        jp      z, x86_real_f6_test_register
+        ld      a, (x86_f6_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_alu8_read_memory
+        ret     c
+        ld      (x86_f6_operand), a
+        jp      x86_real_f6_test_immediate
+
+x86_real_f6_test_register:
+        ld      a, (x86_f6_modrm)
+        and     7
+        call    x86_alu8_read_reg
+        ld      (x86_f6_operand), a
+
+x86_real_f6_test_immediate:
+        call    x86_real_fetch8
+        ret     c
+        ld      b, a
+        ld      a, (x86_f6_operand)
+        and     b
+        ld      (x86_shift_result), a
+        call    x86_real_test8_update_flags
+        jp      x86_real_next
+
+; F6 /5 IMUL r/m8: signed AL * signed operand -> AX.
+; The multiply is implemented as an eight-step unsigned shift/add on
+; magnitudes, followed by two's-complement correction. This is independent
+; of the Z80 host's physical ports and uses only the x86 register/memory model.
+x86_real_f6_imul:
+        ld      a, (x86_f6_modrm)
+        and     #C0
+        cp      #C0
+        jr      z, .imul_register
+        ld      a, (x86_f6_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_alu8_read_memory
+        ret     c
+        jr      .imul_operand_ready
+.imul_register:
+        ld      a, (x86_f6_modrm)
+        and     7
+        call    x86_alu8_read_reg
+.imul_operand_ready:
+        ld      (x86_f6_operand), a
+        ld      a, (x86_reg_ax)
+        ld      (x86_f6_original_al), a
+        ld      (x86_f6_multiplicand), a
+        xor     a
+        ld      (x86_f6_sign), a
+
+        ; Convert signed AL to an unsigned magnitude.
+        ld      a, (x86_f6_multiplicand)
+        bit     7, a
+        jr      z, .imul_multiplicand_positive
+        ld      a, 1
+        ld      (x86_f6_sign), a
+        ld      a, (x86_f6_multiplicand)
+        neg
+        ld      (x86_f6_multiplicand), a
+.imul_multiplicand_positive:
+        ld      a, (x86_f6_operand)
+        bit     7, a
+        jr      z, .imul_operand_positive
+        ld      a, (x86_f6_sign)
+        xor     1
+        ld      (x86_f6_sign), a
+        ld      a, (x86_f6_operand)
+        neg
+        ld      (x86_f6_operand), a
+.imul_operand_positive:
+        ld      a, (x86_f6_multiplicand)
+        ld      l, a
+        ld      h, 0
+        ld      de, 0
+        ld      a, (x86_f6_operand)
+        ld      b, 8
+.imul_loop:
+        srl     a
+        jr      nc, .imul_no_add
+        ex      de, hl
+        add     hl, de
+        ex      de, hl
+.imul_no_add:
+        ; DE is the accumulated product; HL is the shifted multiplicand.
+        add     hl, hl
+        djnz    .imul_loop
+        ; Product is in DE. Negate it when operand signs differ.
+        ld      a, (x86_f6_sign)
+        or      a
+        jr      z, .imul_store
+        ex      de, hl
+        xor     a
+        sub     l
+        ld      l, a
+        ld      a, 0
+        sbc     a, h
+        ld      h, a
+        ex      de, hl
+.imul_store:
+        ld      (x86_f6_product), de
+        ld      hl, (x86_reg_ax)
+        ld      a, (x86_f6_product)
+        ld      l, a
+        ld      a, (x86_f6_product+1)
+        ld      h, a
+        ld      (x86_reg_ax), hl
+
+        jp      x86_real_f6_imul_update_flags
+
+
+
+
 neogs_resident_end:
 
 ; Overlay bank 68: complete 8086 interpreter and instruction implementation.
