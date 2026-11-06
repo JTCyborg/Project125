@@ -14,6 +14,8 @@
         DEVICE ZXSPECTRUM128
         INCLUDE "main.asm"
 
+        DISPLAY "RESIDENT_END=", /H, neogs_resident_end
+        DISPLAY "RESIDENT_OVERFLOW=", /D, neogs_resident_end - $4000
         ASSERT neogs_resident_end > 0
         ASSERT neogs_resident_end <= $4000
         ASSERT neogs_overlay68_end > neogs_overlay68_start

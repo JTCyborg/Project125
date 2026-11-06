@@ -1149,8 +1149,8 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261106-46",13,10
-        defb "[NGS] BASE COMMIT 226BC91",13,10,0
+        defb "[NGS] BUILD 20261106-48",13,10
+        defb "[NGS] BASE COMMIT D1-GROUP2",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
 trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
@@ -2890,6 +2890,7 @@ x86_resident_group_ff_invalid:
 x86_resident_shift_word_shr_one:
         ld      a, 0                       ; word operand
         ld      (x86_mov_width), a
+        ld      a, (x86_shift_diag_modrm)
         call    x86_real_mov_decode_modrm
         ret     c
         call    x86_real_mov_read_rm
@@ -2963,6 +2964,75 @@ x86_resident_shift_word_shr_one:
         ld      (x86_mov_value), hl
         jp      x86_real_mov_write_rm
 
+; D1 /7: SAR r/m16,1. Arithmetic right shift preserves the sign bit.
+; PCem sets CF/PF/AF/ZF/SF, clears OF, and preserves other FLAGS.
+x86_resident_shift_word_sar_one:
+        xor     a
+        ld      (x86_mov_width), a
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_shift_original), hl
+        ld      a, l
+        and     #01
+        ld      (x86_shift_carry), a
+        sra     h
+        rr      l
+        ld      (x86_shift_result), hl
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .sar_word_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.sar_word_parity:
+        ld      hl, (x86_shift_result)
+        ld      a, l
+        and     a
+        jp      pe, .sar_word_set_pf
+        jr      .sar_word_zero
+.sar_word_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.sar_word_zero:
+        ld      hl, (x86_shift_result)
+        ld      a, h
+        or      l
+        jr      nz, .sar_word_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.sar_word_sign:
+        ld      hl, (x86_shift_result)
+        bit     7, h
+        jr      z, .sar_word_af
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.sar_word_af:
+        ld      hl, x86_shift_new_flags
+        set     4, (hl)
+        ld      hl, (x86_reg_flags)
+        ld      de, #F72A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        ld      hl, (x86_shift_result)
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
 ; D3 group-2 dispatch. Full r/m16 SHL implementation lives in overlay69.
 x86_resident_shift_word_mem_shl_cl:
         ld      b, a                       ; preserve the complete ModR/M byte
@@ -3027,6 +3097,8 @@ x86_resident_shift_byte_cl_dispatch:
         jp      z, x86_resident_shift_byte_shr_cl
         cp      #30                    ; /6 SAL r/m8,CL (same operation as SHL)
         jp      z, x86_resident_shift_byte_shl_cl
+        cp      #38                    ; /7 SAR r/m8,CL
+        jp      z, bank_call_x86_shift_sar_byte_cl
         jp      x86_real_shift_byte_cl_unsupported
 
 ; D2 /4 and /6: SHL/SAL r/m8,CL.
@@ -3138,6 +3210,7 @@ x86_resident_shift_byte_shl_cl:
         ld      (x86_mov_value), hl
         jp      x86_real_mov_write_rm
 
+; D2 /7 SAR is implemented in overlay69 to keep the fixed resident image <= 16 KiB.
 ; D2 /5: SHR r/m8,CL. Operates on the same decoded byte memory/register
 ; operand path as SHL; the full 8086 CL count is used without an 80186 mask.
 x86_resident_shift_byte_shr_cl:
@@ -3586,6 +3659,250 @@ x86_resident_shift_byte_shl_one:
         ld      (x86_reg_ax), hl
         jp      x86_real_next
 
+; D1 group-2 word dispatcher. A contains the fetched ModR/M byte.
+x86_resident_shift_word_dispatch_one:
+        ld      (x86_shift_diag_modrm), a
+        and     #38
+        cp      #00
+        jp      z, x86_resident_shift_word_rol_one
+        cp      #08
+        jp      z, x86_resident_shift_word_ror_one
+        cp      #10
+        jp      z, x86_resident_shift_word_rcl_one
+        cp      #18
+        jp      z, x86_resident_shift_word_rcr_one
+        cp      #20
+        jp      z, x86_resident_shift_word_shl_one
+        cp      #30
+        jp      z, x86_resident_shift_word_shl_one ; SAL alias
+        cp      #28
+        jp      z, x86_resident_shift_word_shr_one
+        jp      x86_resident_shift_word_sar_one
+
+; Mode 0=ROL, 1=ROR, 2=RCL, 3=RCR. Rotate flags match PCem: CF and OF only.
+x86_resident_shift_word_rotate_one:
+        xor     a
+        ld      (x86_mov_width), a
+        ld      a, (x86_shift_diag_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_shift_original), hl
+        ld      a, (x86_shift_rotate_mode)
+        cp      1
+        jr      z, .rotate_right
+        cp      3
+        jr      z, .rotate_right
+        ; ROL/RCL: old bit 15 becomes CF.
+        ld      a, h
+        rlca
+        and     1
+        ld      (x86_shift_carry), a
+        ld      hl, (x86_shift_original)
+        add     hl, hl
+        ld      a, (x86_shift_rotate_mode)
+        cp      2
+        jr      nz, .left_rol
+        ld      a, (x86_reg_flags)
+        and     1
+        jr      .left_inject
+.left_rol:
+        ld      a, (x86_shift_carry)
+.left_inject:
+        or      l
+        ld      l, a
+        ld      (x86_shift_result), hl
+        jr      .rotate_flags
+.rotate_right:
+        ; ROR/RCR: old bit 0 becomes CF.
+        ld      hl, (x86_shift_original)
+        ld      a, l
+        and     1
+        ld      (x86_shift_carry), a
+        srl     h
+        rr      l
+        ld      a, (x86_shift_rotate_mode)
+        cp      3
+        jr      nz, .right_ror
+        ld      a, (x86_reg_flags)
+        and     1
+        jr      .right_inject
+.right_ror:
+        ld      a, (x86_shift_carry)
+.right_inject:
+        or      a
+        jr      z, .right_done
+        set     7, h
+.right_done:
+        ld      (x86_shift_result), hl
+.rotate_flags:
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .rotate_cf_done
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.rotate_cf_done:
+        ld      a, (x86_shift_rotate_mode)
+        cp      1
+        jr      z, .rotate_right_of
+        cp      3
+        jr      z, .rotate_right_of
+        ; ROL/RCL: OF = CF XOR result bit 15.
+        ld      hl, (x86_shift_result)
+        bit     7, h
+        ld      a, 0
+        jr      z, .left_sign_ready
+        inc     a
+.left_sign_ready:
+        ld      b, a
+        ld      a, (x86_shift_carry)
+        xor     b
+        jr      .rotate_of_result
+.rotate_right_of:
+        ; ROR/RCR: OF = result bit 15 XOR result bit 14.
+        ld      hl, (x86_shift_result)
+        ld      a, h
+        and     #C0
+        cp      #40
+        jr      z, .rotate_set_of
+        cp      #80
+        jr      nz, .rotate_write_flags
+.rotate_set_of:
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+        jr      .rotate_write_flags
+.rotate_of_result:
+        or      a
+        jr      z, .rotate_write_flags
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+.rotate_write_flags:
+        ; Preserve all flags except CF and OF.
+        ld      hl, (x86_reg_flags)
+        ld      de, #F7FE
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        ld      hl, (x86_shift_result)
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+x86_resident_shift_word_rol_one:
+        xor     a
+        ld      (x86_shift_rotate_mode), a
+        jp      x86_resident_shift_word_rotate_one
+x86_resident_shift_word_ror_one:
+        ld      a, 1
+        ld      (x86_shift_rotate_mode), a
+        jp      x86_resident_shift_word_rotate_one
+x86_resident_shift_word_rcl_one:
+        ld      a, 2
+        ld      (x86_shift_rotate_mode), a
+        jp      x86_resident_shift_word_rotate_one
+x86_resident_shift_word_rcr_one:
+        ld      a, 3
+        ld      (x86_shift_rotate_mode), a
+        jp      x86_resident_shift_word_rotate_one
+
+; D1 /4 and /6: SHL/SAL r/m16,1.
+x86_resident_shift_word_shl_one:
+        xor     a
+        ld      (x86_mov_width), a
+        ld      a, (x86_shift_diag_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_shift_original), hl
+        add     hl, hl
+        ld      (x86_shift_result), hl
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, #10
+        ld      (x86_shift_new_flags), a ; PCem sets AF
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shl_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.shl_parity:
+        ld      hl, (x86_shift_result)
+        ld      a, l
+        and     a
+        jp      pe, .shl_pf
+        jr      .shl_zero
+.shl_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.shl_zero:
+        ld      hl, (x86_shift_result)
+        ld      a, h
+        or      l
+        jr      nz, .shl_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.shl_sign:
+        ld      hl, (x86_shift_result)
+        bit     7, h
+        jr      z, .shl_overflow
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.shl_overflow:
+        ld      hl, (x86_shift_result)
+        bit     7, h
+        ld      a, 0
+        jr      z, .shl_sign_ready
+        inc     a
+.shl_sign_ready:
+        ld      b, a
+        ld      a, (x86_shift_carry)
+        xor     b
+        or      a
+        jr      z, .shl_merge
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+.shl_merge:
+        ld      hl, (x86_reg_flags)
+        ld      de, #F72A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        ld      hl, (x86_shift_result)
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+x86_shift_rotate_mode: db 0
+
 ; Resident helpers keep the overlay68 fetch path within its 16 KiB bank.
 x86_fetch_diag_begin:
         xor     a
@@ -3723,27 +4040,120 @@ x86_real_group_f7:
         ld      (x86_shift_diag_mask), a
         ld      a, #F1
         ld      (x86_shift_diag_stage), a
+        ; Decode the Group-3 extension from ModR/M.reg. PCem's reference
+        ; implementation uses fetchea/geteaw/seteaw for every r/m16 form;
+        ; use the same complete ModR/M effective-address path here.
         ld      a, (x86_f7_modrm)
-        cp      #D0
-        jp      z, x86_real_f7_not_ax
-
         and     #38
+        cp      #00
+        jp      z, x86_real_f7_test_word
+        cp      #08
+        jp      z, x86_real_f7_test_word
+        cp      #10
+        jp      z, x86_real_f7_not_word
         cp      #30
         jp      nz, x86_real_group_f7_unsupported
         ld      a, #F6
         ld      (x86_shift_diag_stage), a
         jp      x86_real_f7_div_word
 
-x86_real_f7_not_ax:
-        ld      hl, (x86_reg_ax)
+; F7 /0 and /1: TEST r/m16, imm16 (8086 treats both encodings as TEST).
+; Operand decoding uses the shared ModR/M/EA implementation. CF and OF are
+; cleared, SF/ZF/PF come from the AND result, AF is undefined and preserved.
+x86_real_f7_test_word:
+        xor     a
+        ld      (x86_mov_width), a
+        ld      a, (x86_f7_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_f7_test_operand), hl
+
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_f7_test_immediate), a
+        call    x86_real_fetch8
+        ret     c
+        ld      h, a
+        ld      a, (x86_f7_test_immediate)
+        ld      l, a
+        ld      (x86_f7_test_immediate), hl
+
+        ld      hl, (x86_f7_test_operand)
+        ld      de, (x86_f7_test_immediate)
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      (x86_f7_test_result), hl
+
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ; PF is even parity of the low result byte.
+        ld      a, l
+        and     a
+        jp      pe, .test_pf
+        jr      .test_zero
+.test_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.test_zero:
+        ld      hl, (x86_f7_test_result)
+        ld      a, h
+        or      l
+        jr      nz, .test_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.test_sign:
+        ld      hl, (x86_f7_test_result)
+        bit     7, h
+        jr      z, .test_merge
+        ld      hl, x86_shift_new_flags+1
+        set     7, (hl)
+.test_merge:
+        ; Same architectural flag mask as TEST r/m8,imm8.
+        ld      hl, (x86_reg_flags)
+        ld      de, #F73A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        jp      x86_real_next
+
+
+; F7 /2: NOT r/m16. Supports all eight registers and every 8086 memory
+; addressing form, including BP=>SS and an active segment override.
+; NOT does not modify any 8086 status or control flag.
+x86_real_f7_not_word:
+        ld      a, 0
+        ld      (x86_mov_width), a       ; word operand
+        ld      a, (x86_f7_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_mov_read_rm
+        ret     c
         ld      a, l
         cpl
         ld      l, a
         ld      a, h
         cpl
         ld      h, a
-        ld      (x86_reg_ax), hl
-        jp      x86_real_next
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
 
 ; F7 /6: DIV r/m16.
 ; The ModR/M decoder supplies the complete 8086 effective address and
@@ -3947,262 +4357,7 @@ x86_f7_int00_frame_trace:
         pop     af
         ret
 
-; Trace explicit SP register writes unconditionally (kind=2). Ordinary
-; PUSH/POP and interrupt stack traffic (kind=0) are traced unconditionally;
-; SS changes use kind=1.
-; x86_stack_trace_kind: 0=stack traffic, 1=SS transition, 2=explicit SP write.
-x86_stack_transition_trace:
-        push    af
-        push    bc
-        push    de
-        push    hl
-        ; #EF is a slow host-visible diagnostic port. Unbounded PUSH/POP
-        ; tracing throttles guest execution enough to distort PIT/IRQ timing.
-        ; Keep only the first 96 records from each BIOS execution.
-        ld      a, (x86_stack_trace_count)
-        cp      96
-        jp      nc, .done
-        inc     a
-        ld      (x86_stack_trace_count), a
-        ld      a, (x86_stack_trace_kind)
-        cp      2
-        jp      z, .trace_sp_register
-        or      a
-        jp      nz, .trace_ss
-        jp      .trace_sp
-.trace_sp:
-        ld      hl, x86_stack_trace_sp_prefix
-        call    x86_f7_trace_string
-        jp      .trace_sp_fields
-.trace_sp_register:
-        ld      hl, x86_stack_trace_sp_reg_prefix
-        call    x86_f7_trace_string
-.trace_sp_fields:
-        call    x86_stack_trace_print_cs_ip
-        ld      hl, x86_stack_trace_ss_label
-        call    x86_f7_trace_string
-        ld      hl, (x86_reg_ss)
-        call    x86_f7_trace_hex16
-        ld      hl, x86_stack_trace_sp_old_label
-        call    x86_f7_trace_string
-        ld      hl, (x86_stack_trace_old)
-        call    x86_f7_trace_hex16
-        ld      a, '>'
-        out     (#EF), a
-        ld      hl, (x86_stack_trace_new)
-        call    x86_f7_trace_hex16
-        jp      .line_end
-.trace_ss:
-        ld      hl, (x86_stack_trace_old)
-        ld      a, h
-        cp      #E0
-        jp      nc, .trace_ss_print
-        ld      hl, (x86_stack_trace_new)
-        ld      a, h
-        cp      #E0
-        jp      c, .done
-.trace_ss_print:
-        ld      hl, x86_stack_trace_ss_prefix
-        call    x86_f7_trace_string
-        call    x86_stack_trace_print_cs_ip
-        ld      hl, x86_stack_trace_ss_old_label
-        call    x86_f7_trace_string
-        ld      hl, (x86_stack_trace_old)
-        call    x86_f7_trace_hex16
-        ld      a, '>'
-        out     (#EF), a
-        ld      hl, (x86_stack_trace_new)
-        call    x86_f7_trace_hex16
-        ld      hl, x86_stack_trace_sp_label
-        call    x86_f7_trace_string
-        ld      hl, (x86_reg_sp)
-        call    x86_f7_trace_hex16
-.line_end:
-        ld      a, 13
-        out     (#EF), a
-        ld      a, 10
-        out     (#EF), a
-.done:
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
-        ret
-; POP SP uses a direct register-file write and therefore does not pass
-; through x86_alu_write_reg16. Show all three values before that write.
-; The caller has already performed the architectural stack read/increment.
-x86_trace_pop_sp:
-        push    af
-        push    bc
-        push    de
-        push    hl
-        ld      hl, x86_trace_pop_sp_prefix
-        call    x86_f7_trace_string
-        ld      hl, (x86_reg_cs)
-        call    x86_f7_trace_hex16
-        ld      a, ':'
-        out     (#EF), a
-        ld      hl, (x86_reg_ip)
-        dec     hl
-        call    x86_f7_trace_hex16
-        ld      hl, x86_trace_pop_sp_ss
-        call    x86_f7_trace_string
-        ld      hl, (x86_reg_ss)
-        call    x86_f7_trace_hex16
-        ld      hl, x86_trace_pop_sp_values
-        call    x86_f7_trace_string
-        ld      hl, (x86_real_old_sp)
-        call    x86_f7_trace_hex16
-        ld      a, '>'
-        out     (#EF), a
-        ld      hl, (x86_reg_sp)
-        call    x86_f7_trace_hex16
-        ld      a, '>'
-        out     (#EF), a
-        ld      hl, (x86_real_stack_value)
-        call    x86_f7_trace_hex16
-        ld      a, 13
-        out     (#EF), a
-        ld      a, 10
-        out     (#EF), a
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
-        ret
 
-x86_trace_pop_sp_prefix: defb "[NGS X86] POP SP CS:IP=",0
-x86_trace_pop_sp_ss:     defb " SS=",0
-x86_trace_pop_sp_values: defb " SP(before>after-pop>loaded)=",0
-
-x86_stack_trace_print_cs_ip:
-        ld      hl, (x86_reg_cs)
-        call    x86_f7_trace_hex16
-        ld      a, ':'
-        out     (#EF), a
-        ld      hl, (x86_reg_ip)
-        call    x86_f7_trace_hex16
-        ret
-x86_stack_trace_kind:  db 0
-x86_stack_trace_count: db 0
-x86_stack_trace_old:   dw 0
-x86_stack_trace_new:  dw 0
-x86_stack_trace_sp_prefix:    defb "[NGS X86] STACK SP CS:IP=",0
-x86_stack_trace_sp_reg_prefix: defb "[NGS X86] STACK SP-REG CS:IP=",0
-x86_stack_trace_ss_prefix:    defb "[NGS X86] STACK SS CS:IP=",0
-x86_stack_trace_ss_label:     defb " SS=",0
-x86_stack_trace_sp_old_label: defb " SP=",0
-x86_stack_trace_ss_old_label: defb " SS=",0
-x86_stack_trace_sp_label:     defb " SP=",0
-
-; All routines below write directly to #EF. The caller's guest register
-; image is read-only; Z80 registers are preserved by the top-level tracer.
-x86_f7_exception_trace:
-        push    af
-        push    bc
-        push    de
-        push    hl
-        ld      a, (x86_f7_exception_kind)
-        or      a
-        ld      hl, x86_f7_trace_div_zero
-        jr      z, .reason_ready
-        ld      hl, x86_f7_trace_div_overflow
-.reason_ready:
-        call    x86_f7_trace_string
-        ld      hl, (x86_reg_cs)
-        call    x86_f7_trace_hex16
-        ld      a, ':'
-        out     (#EF), a
-        ld      hl, (x86_reg_ip)
-        call    x86_f7_trace_hex16
-        ld      hl, x86_f7_trace_ax
-        call    x86_f7_trace_string
-        ld      hl, (x86_reg_ax)
-        call    x86_f7_trace_hex16
-        ld      hl, x86_f7_trace_dx
-        call    x86_f7_trace_string
-        ld      hl, (x86_reg_dx)
-        call    x86_f7_trace_hex16
-        ld      hl, x86_f7_trace_divisor
-        call    x86_f7_trace_string
-        ld      hl, (x86_f7_divisor)
-        call    x86_f7_trace_hex16
-        ld      hl, x86_f7_trace_sssp
-        call    x86_f7_trace_string
-        ld      hl, (x86_reg_ss)
-        call    x86_f7_trace_hex16
-        ld      a, ':'
-        out     (#EF), a
-        ld      hl, (x86_reg_sp)
-        call    x86_f7_trace_hex16
-        ld      a, 13
-        out     (#EF), a
-        ld      a, 10
-        out     (#EF), a
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
-        ret
-
-; HL -> zero-terminated string.
-x86_f7_trace_string:
-        ld      a, (hl)
-        inc     hl
-        or      a
-        ret     z
-        out     (#EF), a
-        jr      x86_f7_trace_string
-
-; HL=word, printed most-significant byte first.
-x86_f7_trace_hex16:
-        ld      a, h
-        call    x86_f7_trace_hex8
-        ld      a, l
-        jp      x86_f7_trace_hex8
-
-; A=byte, printed as two hexadecimal digits.
-x86_f7_trace_hex8:
-        push    af
-        push    bc
-        ld      b, a
-        rrca
-        rrca
-        rrca
-        rrca
-        call    x86_f7_trace_hex_nibble
-        ld      a, b
-        and     #0F
-        call    x86_f7_trace_hex_nibble
-        pop     bc
-        pop     af
-        ret
-
-; A=low nibble.
-x86_f7_trace_hex_nibble:
-        and     #0F
-        add     a, '0'
-        cp      '9'+1
-        jr      c, .emit
-        add     a, 7
-.emit:
-        out     (#EF), a
-        ret
-
-x86_f7_trace_div_zero:     defb "[NGS X86] DIV0 CS:IP=",0
-x86_f7_trace_div_overflow: defb "[NGS X86] DIV OVERFLOW CS:IP=",0
-x86_f7_trace_ax:           defb " AX=",0
-x86_f7_trace_dx:           defb " DX=",0
-x86_f7_trace_divisor:      defb " DIVISOR=",0
-x86_f7_trace_sssp:         defb " SS:SP=",0
-x86_f7_int00_entered:      defb "[NGS X86] INT00 ENTRY OK",13,10,0
-x86_f7_frame_prefix:       defb "[NGS X86] INT00 FRAME IP/CS/FLAGS=",0
-x86_f7_handler_prefix:     defb " HANDLER[0000:0000]=",0
-x86_f7_frame_read_error:   defb " FRAME READ ERROR",0
-x86_f7_handler_read_error: defb " HANDLER READ ERROR",0
-x86_f7_frame_word:         dw 0
-x86_f7_int00_failed:       defb "[NGS X86] INT00 ENTRY FAILED SS:SP=",0
-x86_f7_exception_kind:     db 0
 
 x86_real_group_f7_unsupported:
         ld      a, #F7
@@ -4212,6 +4367,9 @@ x86_real_group_f7_unsupported:
         scf
         ret
 
+x86_f7_test_operand:      dw 0
+x86_f7_test_immediate:    dw 0
+x86_f7_test_result:       dw 0
 x86_f7_modrm:              db 0
 x86_f7_divisor:            dw 0
 x86_f7_quotient:           dw 0
