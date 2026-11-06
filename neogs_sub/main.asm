@@ -14,6 +14,7 @@
 
         INCLUDE "../shared/neogs_io.inc"
         INCLUDE "../shared/video_frame.inc"
+        INCLUDE "../shared/vga_memory.inc"
 
         ORG     $0000
 

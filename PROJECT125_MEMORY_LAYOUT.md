@@ -168,9 +168,9 @@ For the currently selected Project124 Turbo XT BIOS candidate, the 8-KiB image i
 
 ### 10.3 Physical RAM capacity gate
 
-The complete allocation through page 82 requires at least 83 unique physical 16-KiB pages in the board's RAM map (pages are numbered from zero). This is 1,359,872 bytes of addressable physical RAM. A 2-MiB NeoGS board with 128 unique pages satisfies the numerical requirement; the actual board must still be probed for aliases/mirroring and write/read integrity before these pages are accepted.
+The complete allocation through page 98 requires at least 99 unique physical 16-KiB pages in the board's RAM map (pages are numbered from zero). This is 1,622,016 bytes of addressable physical RAM. A 2-MiB NeoGS board with 128 unique pages satisfies the numerical requirement; the actual board must still be probed for aliases/mirroring and write/read integrity before these pages are accepted.
 
-If fewer than 83 unique pages are verified, Project125 must report a memory-budget failure and must not silently overlap firmware, BIOS backing, guest RAM, video buffers, stack or DMA. The 128-KiB firmware, 64-KiB BIOS backing and 64-KiB video reservations are architectural requirements; any alternative physical placement requires an explicit revised map and tests.
+If fewer than 99 unique pages are verified, Project125 must report a memory-budget failure and must not silently overlap firmware, BIOS backing, guest RAM, VGA VRAM, frame buffers, stack or DMA. The 128-KiB firmware, 64-KiB BIOS backing, 256-KiB VGA VRAM and 64-KiB frame-buffer reservations are architectural requirements; any alternative physical placement requires an explicit revised map and tests.
 
 ### 10.4 Loader and runtime invariants
 
@@ -224,22 +224,23 @@ The buffers are reserved permanently and are excluded from firmware, BIOS, x86 g
 
 ### 11.4 Bank mapping and DMA constraints
 
-Pages 79-82 are physical backing pages, not permanently visible Z80 addresses. The page manager may map them through a window only when that mapping cannot evict currently executing code, stack or interrupt handlers. If WIN2 is used, overlay code must enter through a resident bank-call gateway and must not continue executing from the bank being replaced. WIN3 remains under the x86 guest-memory backend unless a separately validated arbitration protocol temporarily grants it.
+Pages 79-82 and 83-98 are physical backing pages, not permanently visible Z80 addresses. The page manager may map them through a window only when that mapping cannot evict currently executing code, stack or interrupt handlers. If WIN2 is used, overlay code must enter through a resident bank-call gateway and must not continue executing from the bank being replaced. WIN3 remains under the x86 guest-memory backend unless a separately validated arbitration protocol temporarily grants it.
 
 Do not assume ATM transport DMA can directly address these pages. Before enabling zero-copy transfer, prove physical page visibility, address encoding, alignment and DMA completion semantics on hardware. Until then, copy/stream through the established bounded transport path. Video DMA must not reuse the Project124 WIN1 DMA frame (#5000-#7FFF) while it is owned by another transfer.
 
 ### 11.5 Updated physical RAM capacity gate
 
-The highest reserved page is now page 82. Project125 therefore requires at least **83 unique physical 16-KiB pages** (83 × 16,384 = 1,359,872 bytes) with no aliasing for the complete reference allocation:
+The highest reserved page is now page 98. Project125 therefore requires at least **99 unique physical 16-KiB pages** (99 × 16,384 = 1,622,016 bytes) with no aliasing for the complete reference allocation:
 - page 0 resident firmware;
 - pages 4-67 x86 guest RAM;
 - pages 68-74 firmware overlays;
 - pages 75-78 BIOS backing;
-- pages 79-82 video frame buffers.
+- pages 79-82 ATM video frame buffers;
+- pages 83-98 VGA guest video memory (256 KiB: four 64-KiB planes).
 
-A nominal 2-MiB NeoGS board has 128 pages and satisfies the numerical budget, subject to physical probing and alias/write-read tests. A board that cannot prove 83 unique pages must fail memory initialization rather than overlap any reservation.
+A nominal 2-MiB NeoGS board has 128 pages and satisfies the numerical budget, subject to physical probing and alias/write-read tests. A board that cannot prove 99 unique pages must fail memory initialization rather than overlap any reservation.
 
-These 64 KiB are a fixed video transfer-buffer reservation, not the ATM's own physical video RAM and not additional guest x86 RAM. They provide two complete frame slots for NeoGS-to-ATM graphics presentation.
+The 64-KiB frame-buffer area is the fixed double-buffered video transfer reservation, not the ATM's own physical video RAM and not guest VGA memory. The separate 256-KiB pages 83-98 reservation is the VGA adapter's backing store.
 
 
 ## 12. Implemented firmware profile A — 48 KiB total
@@ -307,3 +308,21 @@ powershell -ExecutionPolicy Bypass -File tools/build_project125.ps1
 The build assembles the resident segment, both overlays and V1 bootstrap; packages the P125 manifest and CRCs; assembles the ATM host/TR-DOS image; and finalizes the NEOFW.C directory length.
 
 The GitHub Actions build for this profile completed successfully: all NeoGS and host assembly passes, package generation, three-page TR-DOS staging, and directory-length finalization passed. This is a source/build verification only. It does not replace hardware validation of physical page mapping, CRC receive behavior, bank-call execution, TR-DOS loading or BIOS runtime.
+
+## 13. Fixed physical reservation — guest VGA memory
+
+Project125 reserves 256 KiB of NeoGS physical RAM for the emulated VGA adapter. This is separate from the two 32-KiB ATM frame slots (pages 79-82).
+
+| Physical NeoGS page(s) | Capacity | VGA plane | Purpose |
+|---|---:|---|---|
+| Pages 83-86 | 64 KiB | Plane 0 | VGA plane backing |
+| Pages 87-90 | 64 KiB | Plane 1 | VGA plane backing |
+| Pages 91-94 | 64 KiB | Plane 2 | VGA plane backing |
+| Pages 95-98 | 64 KiB | Plane 3 | VGA plane backing |
+| **Pages 83-98** | **256 KiB** | **4 × 64 KiB** | **Guest VGA video memory** |
+
+The physical page range is reserved now and excluded from x86 guest general RAM, firmware, BIOS backing, ATM frame buffers, DMA scratch and any future allocator. Each plane is four contiguous 16-KiB physical pages. These pages are backing storage only; they are not permanently mapped into a Z80 logical window.
+
+The guest VGA aperture A0000h-BFFFFh is a 128-KiB CPU-visible aperture. It must not be implemented as a flat direct mapping to the 256-KiB backing store. VGA Sequencer Map Mask, Graphics Controller Read Map Select, read/write modes, latches, set/reset, rotate, logical operations and bit masks determine plane access. The VGA memory backend must translate aperture accesses into the four plane stores. The 256-KiB allocation does not itself claim that this register/plane logic or VGA rendering is implemented.
+
+The existing frame buffers A/B remain the presentation handoff to ATM. The VGA backend renders or converts the selected guest mode into one of those 32-KiB slots; the transport retains its existing ownership/ACK rules.
