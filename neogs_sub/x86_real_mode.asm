@@ -2392,8 +2392,13 @@ x86_real_shift_word_one:
         jr      z, .shift_word_shl_ax
         ld      b, a
         and     #38
-        cp      #28                    ; /5 SHR r/m16,1 (PCem 808x.c)
+        cp      #28                    ; /5 SHR r/m16,1
+        jr      z, .shift_word_shr
+        cp      #38                    ; /7 SAR r/m16,1
         jp      nz, x86_real_shift_unsupported
+        ld      a, b
+        jp      x86_resident_shift_word_sar_one
+.shift_word_shr:
         ld      a, b
         jp      x86_resident_shift_word_shr_one
 
