@@ -32,9 +32,6 @@ x86_real_io_instruction:
 
 .port_ready:
         ld      (x86_io_port), hl
-        ; Capture every guest port transaction before the device model runs.
-        ; The direct #EF trace is bounded to the first 64 BIOS I/O operations.
-        call    x86_io_trace_guest_event
 
         ; Opcode bit 1: 0=IN, 1=OUT. Opcode bit 0: 0=byte, 1=word.
         ld      a, (x86_io_opcode)
@@ -46,6 +43,7 @@ x86_real_io_instruction:
         jr      nz, .input_word
 
 .input_byte:
+        call    x86_io_trace_guest_event
         call    x86_io_read8
         ld      (x86_alu8_result), a
         xor     a                       ; AL register index
@@ -53,6 +51,7 @@ x86_real_io_instruction:
         jp      x86_real_next
 
 .input_word:
+        call    x86_io_trace_guest_event
         call    x86_io_read16
         xor     a                       ; AX register index
         call    x86_alu_write_reg16
@@ -67,6 +66,7 @@ x86_real_io_instruction:
         xor     a                       ; AL register index
         call    x86_alu8_read_reg
         ld      (x86_io_value), a
+        call    x86_io_trace_guest_event
         call    x86_io_write8
         jp      x86_real_next
 
@@ -74,6 +74,7 @@ x86_real_io_instruction:
         xor     a                       ; AX register index
         call    x86_alu_read_reg16
         ld      (x86_io_value), hl
+        call    x86_io_trace_guest_event
         call    x86_io_write16
         jp      x86_real_next
 
