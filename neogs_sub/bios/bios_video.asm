@@ -22,6 +22,10 @@ bios_int10_dispatch_impl:
         jp      z,bios_int10_set_cursor
         cp      #03
         jp      z,bios_int10_get_cursor
+        cp      #06
+        jp      z,bios_int10_scroll_up
+        cp      #07
+        jp      z,bios_int10_scroll_down
         cp      #0E
         jp      z,bios_int10_teletype
         or      a
@@ -129,6 +133,282 @@ bios_video_clear_page:
         ld      (bios_video_row),a
         ld      (bios_video_col),a
         ret
+
+; INT 10h AH=06h/07h — scroll or clear a selected text window.
+; AL=lines (0=clear), BH=fill attribute, CH/CL=top-left, DH/DL=bottom-right.
+; BIOS cursor state is deliberately left unchanged.
+bios_int10_scroll_up:
+        xor     a
+        ld      (bios_scroll_direction),a
+        jr      bios_int10_scroll_common
+bios_int10_scroll_down:
+        ld      a,1
+        ld      (bios_scroll_direction),a
+bios_int10_scroll_common:
+        ld      a,(x86_reg_cx+1)
+        cp      BIOS_VIDEO_ROWS
+        ret     nc
+        ld      (bios_scroll_top),a
+        ld      a,(x86_reg_cx)
+        cp      BIOS_VIDEO_COLUMNS
+        ret     nc
+        ld      (bios_scroll_left),a
+        ld      a,(x86_reg_dx+1)
+        cp      BIOS_VIDEO_ROWS
+        ret     nc
+        ld      (bios_scroll_bottom),a
+        ld      a,(x86_reg_dx)
+        cp      BIOS_VIDEO_COLUMNS
+        ret     nc
+        ld      (bios_scroll_right),a
+        ld      a,(bios_scroll_top)
+        ld      b,a
+        ld      a,(bios_scroll_bottom)
+        cp      b
+        ret     c
+        ld      a,(bios_scroll_left)
+        ld      b,a
+        ld      a,(bios_scroll_right)
+        cp      b
+        ret     c
+
+        ld      a,(x86_reg_ax)
+        ld      (bios_scroll_lines),a
+        ld      a,(x86_reg_bx+1)
+        ld      (bios_scroll_attr),a
+        ld      a,(bios_scroll_bottom)
+        ld      b,a
+        ld      a,(bios_scroll_top)
+        ld      c,a
+        ld      a,b
+        sub     c
+        inc     a
+        ld      (bios_scroll_height),a
+        ld      a,(bios_scroll_lines)
+        or      a
+        jp      z,.clear_all
+        ld      b,a
+        ld      a,(bios_scroll_height)
+        cp      b
+        jr      nc,.count_valid
+        ld      a,b
+        ld      (bios_scroll_lines),a
+        jp      .clear_all
+.count_valid:
+        ld      a,(bios_scroll_lines)
+        ld      (bios_scroll_remaining),a
+        ld      a,(bios_scroll_direction)
+        or      a
+        jr      nz,.down_start
+
+        ; Upward copy: source row = destination row + line count.
+        ld      a,(bios_scroll_top)
+        ld      (bios_scroll_row),a
+.up_copy:
+        ld      a,(bios_scroll_bottom)
+        ld      b,a
+        ld      a,(bios_scroll_remaining)
+        ld      c,a
+        ld      a,b
+        sub     c
+        ld      b,a
+        ld      a,(bios_scroll_row)
+        cp      b
+        jr      c,.up_copy_row
+        jr      z,.up_copy_row
+        jr      .up_clear_start
+.up_copy_row:
+        ld      a,(bios_scroll_row)
+        ld      b,a
+        ld      a,(bios_scroll_remaining)
+        add     a,b
+        ld      (bios_scroll_source_row),a
+        call    bios_scroll_copy_row
+        ld      a,(bios_scroll_row)
+        inc     a
+        ld      (bios_scroll_row),a
+        jr      .up_copy
+.up_clear_start:
+        ld      a,(bios_scroll_bottom)
+        ld      b,a
+        ld      a,(bios_scroll_remaining)
+        ld      c,a
+        ld      a,b
+        sub     c
+        inc     a
+        ld      (bios_scroll_row),a
+        jr      .clear_rows
+
+.down_start:
+        ; Downward copy runs bottom-up to protect source cells.
+        ld      a,(bios_scroll_bottom)
+        ld      (bios_scroll_row),a
+.down_copy:
+        ld      a,(bios_scroll_top)
+        ld      b,a
+        ld      a,(bios_scroll_remaining)
+        add     a,b
+        ld      b,a
+        ld      a,(bios_scroll_row)
+        cp      b
+        jr      nc,.down_copy_row
+        jr      .down_clear_start
+.down_copy_row:
+        ld      a,(bios_scroll_row)
+        ld      b,a
+        ld      a,(bios_scroll_remaining)
+        ld      c,a
+        ld      a,b
+        sub     c
+        ld      (bios_scroll_source_row),a
+        call    bios_scroll_copy_row
+        ld      a,(bios_scroll_row)
+        dec     a
+        ld      (bios_scroll_row),a
+        jr      .down_copy
+.down_clear_start:
+        ld      a,(bios_scroll_top)
+        ld      b,a
+        ld      a,(bios_scroll_remaining)
+        add     a,b
+        dec     a
+        ld      (bios_scroll_clear_limit),a
+        ld      a,(bios_scroll_top)
+        ld      (bios_scroll_row),a
+.clear_rows:
+        ld      a,(bios_scroll_row)
+        ld      b,a
+        ld      a,(bios_scroll_clear_limit)
+        cp      b
+        jr      c,.scroll_done
+        call    bios_scroll_clear_row
+        ld      a,(bios_scroll_row)
+        inc     a
+        ld      (bios_scroll_row),a
+        jr      .clear_rows
+.clear_all:
+        ld      a,(bios_scroll_bottom)
+        ld      (bios_scroll_clear_limit),a
+        ld      a,(bios_scroll_top)
+        ld      (bios_scroll_row),a
+        jr      .clear_rows
+.scroll_done:
+        or      a
+        ret
+
+; Copy all character/attribute cells in the selected row.
+bios_scroll_copy_row:
+        ld      a,(bios_scroll_left)
+        ld      (bios_scroll_col),a
+.copy_cell:
+        ld      a,(bios_scroll_source_row)
+        ld      c,a
+        ld      a,(bios_scroll_col)
+        ld      b,a
+        call    bios_scroll_cell_address
+        call    x86_mem_read8
+        ld      (bios_scroll_char),a
+        ld      hl,(x86_mem_addr)
+        inc     hl
+        ld      (x86_mem_addr),hl
+        call    x86_mem_read8
+        ld      (bios_scroll_cell_attr),a
+
+        ld      a,(bios_scroll_row)
+        ld      c,a
+        ld      a,(bios_scroll_col)
+        ld      b,a
+        call    bios_scroll_cell_address
+        ld      a,(bios_scroll_char)
+        ld      (x86_mem_value),a
+        call    x86_mem_write8
+        ld      hl,(x86_mem_addr)
+        inc     hl
+        ld      (x86_mem_addr),hl
+        ld      a,(bios_scroll_cell_attr)
+        ld      (x86_mem_value),a
+        call    x86_mem_write8
+        ld      a,(bios_scroll_col)
+        ld      b,a
+        ld      a,(bios_scroll_right)
+        cp      b
+        ret     z
+        ld      a,b
+        inc     a
+        ld      (bios_scroll_col),a
+        jr      .copy_cell
+
+; Clear the selected columns in the current row.
+bios_scroll_clear_row:
+        ld      a,(bios_scroll_left)
+        ld      (bios_scroll_col),a
+.clear_cell:
+        ld      a,(bios_scroll_row)
+        ld      c,a
+        ld      a,(bios_scroll_col)
+        ld      b,a
+        call    bios_scroll_cell_address
+        ld      a,32
+        ld      (x86_mem_value),a
+        call    x86_mem_write8
+        ld      hl,(x86_mem_addr)
+        inc     hl
+        ld      (x86_mem_addr),hl
+        ld      a,(bios_scroll_attr)
+        ld      (x86_mem_value),a
+        call    x86_mem_write8
+        ld      a,(bios_scroll_col)
+        ld      b,a
+        ld      a,(bios_scroll_right)
+        cp      b
+        ret     z
+        ld      a,b
+        inc     a
+        ld      (bios_scroll_col),a
+        jr      .clear_cell
+
+; IN C=row, B=column. Return physical B8000h cell address.
+bios_scroll_cell_address:
+        ld      a,c
+        ld      de,160
+        ld      hl,0
+        or      a
+        jr      z,.row_done
+        ld      c,a
+.row_mul:
+        add     hl,de
+        dec     c
+        jr      nz,.row_mul
+.row_done:
+        ld      a,b
+        add     a,a
+        ld      e,a
+        ld      d,0
+        add     hl,de
+        ld      a,l
+        ld      (x86_mem_addr),a
+        ld      a,h
+        add     a,#80
+        ld      (x86_mem_addr+1),a
+        ld      a,#0B
+        ld      (x86_mem_addr+2),a
+        ret
+
+bios_scroll_top:        db 0
+bios_scroll_bottom:     db 0
+bios_scroll_clear_limit: db 0
+bios_scroll_left:       db 0
+bios_scroll_right:      db 0
+bios_scroll_lines:      db 0
+bios_scroll_remaining: db 0
+bios_scroll_height:     db 0
+bios_scroll_direction: db 0
+bios_scroll_row:        db 0
+bios_scroll_source_row: db 0
+bios_scroll_col:        db 0
+bios_scroll_attr:       db BIOS_VIDEO_ATTR
+bios_scroll_char:       db 0
+bios_scroll_cell_attr:  db 0
 
 bios_int10_get_mode:
         ld      hl,#5003
