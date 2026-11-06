@@ -80,15 +80,15 @@ atm_nemo_ide_execute:
         cp      2
         jr      z,.write
         cp      3
-        jr      z,.flush
+        jp      z,.flush
         cp      4
-        jr      z,.identify
-        jr      .failed
+        jp      z,.identify
+        jp      .failed
 .read:
         call    atm_nemo_ide_select_and_issue
-        jr      c,.failed
+        jp      c,.failed
         call    atm_nemo_ide_wait_drq
-        jr      c,.failed
+        jp      c,.failed
         ld      ix,ATM_STORAGE_RESULT+1
         ld      de,256
 .read_word:
@@ -106,12 +106,12 @@ atm_nemo_ide_execute:
         jr      nz,.read_word
         call    atm_nemo_ide_wait_complete
         ret     nc
-        jr      .failed
+        jp      .failed
 .write:
         call    atm_nemo_ide_select_and_issue
-        jr      c,.failed
+        jp      c,.failed
         call    atm_nemo_ide_wait_drq
-        jr      c,.failed
+        jp      c,.failed
         ld      ix,ATM_STORAGE_PACKET+16
         ld      de,256
 .write_word:
@@ -129,15 +129,15 @@ atm_nemo_ide_execute:
         jr      nz,.write_word
         call    atm_nemo_ide_wait_complete
         ret     nc
-        jr      .failed
+        jp      .failed
 .identify:
         call    atm_nemo_ide_select_drive
-        jr      c,.failed
+        jp      c,.failed
         ld      a,#EC
         ld      bc,#00F0
         out     (c),a
         call    atm_nemo_ide_wait_drq
-        jr      c,.failed
+        jp      c,.failed
         ld      ix,ATM_STORAGE_RESULT+1
         ld      de,256
 .identify_word:
@@ -155,10 +155,10 @@ atm_nemo_ide_execute:
         jr      nz,.identify_word
         call    atm_nemo_ide_wait_complete
         ret     nc
-        jr      .failed
+        jp      .failed
 .flush:
         call    atm_nemo_ide_select_drive
-        jr      c,.failed
+        jp      c,.failed
         ld      a,#E7
         ld      bc,#00F0
         out     (c),a
