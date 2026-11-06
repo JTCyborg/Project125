@@ -499,6 +499,7 @@ p125_log_line_start: db 1
 ; Host-side modules: firmware bootstrap, BIOS DMA transport and TR-DOS reader.
         INCLUDE "neogs_driver.asm"
         INCLUDE "bios_transfer.asm"
+        INCLUDE "nemo_ide_bridge.asm"
         INCLUDE "bios_file_loader.asm"
         INCLUDE "video_transfer.asm"
 
