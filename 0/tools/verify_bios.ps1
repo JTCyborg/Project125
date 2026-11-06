@@ -10,10 +10,10 @@ if ($image.Length -ne 8192) {
     Write-Error ("Unexpected BIOS size: {0}; expected 8192 bytes" -f $image.Length)
     exit 1
 }
-$expectedHeader = [System.Text.Encoding]::ASCII.GetBytes("BIOS V1.11.")
+$expectedHeader = [System.Text.Encoding]::ASCII.GetBytes("  Generic Turbo XT Bios 1987" + [char]13 + [char]10 + "  ")
 for ($i = 0; $i -lt $expectedHeader.Length; $i++) {
     if ($image[$i] -ne $expectedHeader[$i]) {
-        Write-Error ("BIOS V1.11 marker mismatch at offset {0:X4}" -f $i)
+        Write-Error ("BIOS header mismatch at offset {0:X4}" -f $i)
         exit 1
     }
 }
@@ -27,7 +27,7 @@ for ($i = 0; $i -lt $expectedVector.Length; $i++) {
 }
 $sha = (Get-FileHash -LiteralPath $biosPath -Algorithm SHA256).Hash.ToLowerInvariant()
 Write-Host "BIOS image: 8192 bytes"
-Write-Host "Identification: BIOS V1.11. Copyright 1986,87 Central Point Software, Inc."
+Write-Host "Header: Generic Turbo XT Bios 1987"
 Write-Host "Reset vector: FFFF0 = EA 5B E0 00 F0"
 Write-Host "Reset target: F000:E05B -> FE05B"
 Write-Host ("SHA-256: {0}" -f $sha)

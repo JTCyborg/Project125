@@ -695,6 +695,8 @@ x86_real_dispatch_no_progress:
         jp      z, x86_real_mov_segment
         cp      #8D
         jp      z, x86_real_lea
+        cp      #C4
+        jp      z, x86_real_les
         cp      #8E
         jp      z, x86_real_mov_segment
         cp      #C6

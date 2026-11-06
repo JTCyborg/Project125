@@ -1,30 +1,24 @@
 # Project125 BIOS image manifest
 
-## Active BIOS
+## Selected candidate
 
-- Source: `JTCyborg/Project125/bios/27c64d.bin`, branch `main`
-- Active disk image: `bios/BIOS.BIN` (copied byte-for-byte from the source blob)
-- Identification: `BIOS V1.11. Copyright 1986,87 Central Point Software, Inc.`
-- Date string in ROM: `07/30/87`
-- Image size: 8192 bytes (8 KiB), consistent with a 2764 EPROM image
-- Git blob SHA-1: `ebeaaaded91f9d930b1daf65e48b7ab757b9b42f`
-- Project mapping: guest physical `FE000h..FFFFFh`, NeoGS physical page 75, offset `0000h..1FFFh`
+- Source: JTCyborg/Project124/bios/BIOS.BIN, branch main
+- BIOS identification string: Generic Turbo XT Bios 1987
+- Image size: 8192 bytes (8 KiB)
+- Project125 file: bios/BIOS.BIN
+- Git blob SHA-1 (source and copied blob): 31f690cc497a4ce6bc31798abfc2402e0efb988c
+- SHA-256: calculated by tools/verify_bios.ps1 during local build and printed to the build log; not yet recorded here.
 
-## Binary compatibility checks
+## Binary checks already performed
 
-- Bytes 0..10 are ASCII `BIOS V1.11.`
-- Bytes at image offset `1FF0h` are `EA 5B E0 00 F0`.
-- Reset vector at guest physical `FFFF0h` is therefore `JMP F000:E05B`.
-- The far-jump target resolves to guest physical `FE05Bh`, inside the mapped 8 KiB image.
-- The ROM is 8192 bytes, so the existing 32-sector TR-DOS loader and page-75 mapping do not need resizing.
-- The BIOS runtime validator now checks the new ROM marker byte `42h` ('B') and all five reset-vector bytes.
-- The build now runs `tools/verify_bios.ps1` before assembly; it validates the full 11-byte ID marker and reset vector.
+- Bytes 0..31 contain the ASCII identification/header string:
+  "  Generic Turbo XT Bios 1987" followed by CR/LF and two spaces.
+- Image offset 0x1FF0 contains the reset-vector instruction:
+  EA 5B E0 00 F0
+- This is a far jump JMP F000:E05B.
+- With an 8 KiB ROM mapped at guest physical FE000h..FFFFFh, the reset vector at FFFF0h resolves to image offset 1FF0h, and the far-jump target resolves to FE05Bh, inside the mapped image.
 
-## Rollback image
-
-The previous Generic Turbo XT BIOS is retained as `bios/BIOS_GENERIC.BIN` (8 KiB, original blob SHA-1 `31f690cc497a4ce6bc31798abfc2402e0efb988c`). The disk builder intentionally uses only `bios/BIOS.BIN`.
-
-## Mapping descriptor
+## Initial mapping descriptor
 
 | Field | Value |
 |---|---|
@@ -35,9 +29,11 @@ The previous Generic Turbo XT BIOS is retained as `bios/BIOS_GENERIC.BIN` (8 KiB
 | 8086 reset CS:IP | FFFF:0000 |
 | Reset far-jump target | F000:E05B |
 | Resolved target physical address | FE05Bh |
-| Backing reservation | NeoGS page 75, first 8 KiB |
+| Backing reservation | NeoGS page 75, first 8 KiB (DMA loader target implemented; hardware validation pending) |
 | Access | guest read/execute; guest writes rejected |
 
-## Compatibility status
+The 8086 architectural reset state is CS:IP=FFFF:0000, which generates physical FFFF0h. The ROM reset-vector instruction then performs JMP F000:E05B. The guest ROM base and entry calculation are derived from this image's size and reset-vector bytes. They are not universal constants for other BIOS images.
 
-The binary structure, size, identification marker, and reset-vector mapping are verified. The BIOS has **not yet been proven to complete POST** in Project125. Its video, keyboard, timer/PIC, DMA, serial/parallel, and floppy expectations still need runtime validation against the current emulated hardware models. This build is the first integration test, not a claim of full IBM PC/XT hardware compatibility.
+## Important status
+
+The file has been copied byte-for-byte into Project125 and the image structure/reset vector have been inspected. NeoGS DMA receive, page-75 ROM overlay, write protection and the 8086 reset command are implemented in source. They have not yet passed an assembler build or emulator/real-hardware runtime test. Full-image CRC validation remains pending. See PROJECT125_SCENARIO.md.

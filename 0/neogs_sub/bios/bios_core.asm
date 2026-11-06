@@ -41,15 +41,9 @@ BIOS_ROM_BACKING_PAGE     EQU 75
 
 ; Initialize the architectural 8086 reset state after page 75 has been loaded.
 ; 8086 reset starts at FFFF:0000 (physical FFFF0h), not F000:FFF0.
-; The selected Central Point BIOS V1.11 reset vector jumps to F000:E05B.
+; The BIOS reset-vector instruction then far-jumps to F000:E05B.
 bios_rom_reset_state:
         call    x86_mem_init
-        call    x86_fetch_diag_begin
-        ; A cold PC/XT reset must not inherit random bytes from backing RAM.
-        ; In particular, BIOS error flags at 0040:0015 must start at zero,
-        ; otherwise the ROM reports a spurious System error #FF.
-        call    bios_clear_ivt_bda
-        or      a
         ld      hl, 0
         ld      (x86_reg_ax), hl
         ld      (x86_reg_bx), hl
@@ -68,29 +62,23 @@ bios_rom_reset_state:
         ld      (x86_reg_cs), hl
         ld      hl, #0002
         ld      (x86_reg_flags), hl
-        ; The ATM host keyboard is not wired into the guest PC/XT yet.
-        ; Queue one deterministic Enter key so BIOS setup/menu waits can
-        ; complete instead of polling an absent 8255/keyboard controller.
-        ld      a, 1
-        ld      (bios_keyboard_pending), a
         xor     a
-        ld      (bios_video_stream_errors), a
         ld      (x86_real_bounds_enable), a
         ld      (x86_exit_status), a
         ret
 
-; Validate the Central Point BIOS V1.11 marker and the five reset-vector bytes.
+; Validate the ROM header and the five bytes at the reset vector after DMA.
 ; This is a structural check; full-image CRC is a separate transport task.
 bios_rom_validate:
         call    x86_mem_init
 
         ; Identify the exact byte that fails validation. The low byte of
         ; saved_x86_ax becomes B110..B115 on failure:
-        ; B110=BIOS marker, B111..B115=reset-vector bytes FFF0..FFF4.
+        ; B110=header, B111..B115=reset-vector bytes FFF0..FFF4.
         ld      a, 0
         ld      (bios_rom_check_id), a
         ld      hl, #E000
-        ld      a, #42
+        ld      a, #20
         call    bios_rom_expect_byte
         ret     c
         ld      a, 1
@@ -440,71 +428,3 @@ bios_work_value:      db 0
 
         ASSERT BIOS_IVT_BASE + BIOS_IVT_SIZE = BIOS_BDA_BASE
         ASSERT BIOS_BDA_BASE + BIOS_BDA_SIZE = BIOS_LOW_MEMORY_END
-
-
-; -------------------------------------------------------------------------
-; BIOS INT 16h keyboard services.
-; The physical Spectrum/ATM keyboard bridge is not implemented yet. During
-; BIOS startup, expose one synthetic Enter key (scan 1Ch, ASCII 0Dh).
-; AH=00/10 read it; AH=01/11 report it without consuming it. Once consumed,
-; a blocking read returns NUL rather than hanging the entire NeoGS command.
-; AH=02 returns zero keyboard shift flags.
-; -------------------------------------------------------------------------
-bios_int16_dispatch:
-        ld      a, (x86_reg_ax+1)
-        cp      #00
-        jr      z, bios_int16_read_key
-        cp      #10
-        jr      z, bios_int16_read_key
-        cp      #01
-        jr      z, bios_int16_check_key
-        cp      #11
-        jr      z, bios_int16_check_key
-        cp      #02
-        jr      z, bios_int16_shift_flags
-        ; Unsupported INT 16h functions return a neutral result.
-        xor     a
-        ld      (x86_reg_ax), a
-        or      a
-        ret
-
-bios_int16_read_key:
-        ld      a, (bios_keyboard_pending)
-        or      a
-        jr      z, bios_int16_no_key
-        xor     a
-        ld      (bios_keyboard_pending), a
-        ld      hl, #1C0D
-        ld      (x86_reg_ax), hl
-        or      a
-        ret
-bios_int16_no_key:
-        ld      hl, 0
-        ld      (x86_reg_ax), hl
-        or      a
-        ret
-
-bios_int16_check_key:
-        ld      a, (bios_keyboard_pending)
-        or      a
-        jr      z, bios_int16_no_pending
-        ld      hl, #1C0D
-        ld      (x86_reg_ax), hl
-        ld      hl, x86_reg_flags
-        res     6, (hl)              ; ZF=0: key available
-        or      a
-        ret
-bios_int16_no_pending:
-        ld      hl, x86_reg_flags
-        set     6, (hl)              ; ZF=1: no key available
-        or      a
-        ret
-
-bios_int16_shift_flags:
-        xor     a
-        ld      (x86_reg_ax), a      ; AL=0; preserve AH=02
-        or      a
-        ret
-
-bios_keyboard_pending:
-        db      0

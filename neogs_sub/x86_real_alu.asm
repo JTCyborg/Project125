@@ -37,12 +37,10 @@ x86_real_alu_accumulator_immediate:
 ; -------------------------------------------------------------------------
 x86_real_group1_word_immediate:
         ld      (x86_real_opcode), a
-        ; The Group-1 dispatch enters with IP still at the opcode byte on
-        ; this BIOS path. Advance once so the following fetch reads ModR/M.
-        ; This matches the verified D2/F7 fetch alignment correction.
-        ld      hl, (x86_reg_ip)
-        inc     hl
-        ld      (x86_reg_ip), hl
+        ; x86_real_dispatch has already fetched the opcode through
+        ; x86_real_fetch8, which advances IP to the ModR/M byte. Fetch it
+        ; directly; an extra increment would skip ModR/M and decode the
+        ; immediate byte as the addressing mode.
         call    x86_real_fetch8
         ret     c
         ld      (x86_group1_word_modrm), a

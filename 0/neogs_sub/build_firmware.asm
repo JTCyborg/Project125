@@ -1,40 +1,32 @@
 ; =========================================================================
-; PROJECT125 — build resident firmware, two bank overlays and V1 bootstrap.
+; Build Project125 NeoGS firmware from the repository root:
+;   sjasmplus neogs_sub/build_firmware.asm
 ;
-; Output sections:
-;   neogs_resident.bin  WIN0 / physical page 0, max 16 KiB
-;   neogs_overlay68.bin WIN2 / physical page 68, max 16 KiB
-;   neogs_overlay69.bin WIN2 / physical page 69, max 16 KiB
-;   neogs_bootstrap.bin loaded by stock GS105a ROM at $4000
-;
-; The Spectrum packer combines the three firmware sections into one
-; NEOFW.C file with a P125 length-framed manifest. The V1 #14/#13 transport
-; and DBIT byte stream remain unchanged.
+; neogs_code.bin       custom firmware, loaded at logical RAM address $0000
+; neogs_bootstrap.bin  intermediate bootstrap; PowerShell packer creates neoprog.C chunks
 ; =========================================================================
         DEVICE ZXSPECTRUM128
         INCLUDE "main.asm"
 
-        ASSERT neogs_resident_end > 0
-        ASSERT neogs_resident_end <= $4000
-        ASSERT neogs_overlay68_end > neogs_overlay68_start
-        DISPLAY "OVERLAY68_SIZE=", /D, neogs_overlay68_end - neogs_overlay68_start
-        ASSERT neogs_overlay68_end - neogs_overlay68_start <= $4000
-        ASSERT neogs_overlay69_end > neogs_overlay69_start
-        ASSERT neogs_overlay69_end - neogs_overlay69_start <= $4000
+; Resident firmware occupies WIN0. WIN2 is being reserved for banked
+; firmware overlays; the resident Z80 stack is in WIN1/page #03 at $4FFE.
+; WIN3 remains the independently switched x86 physical-memory window.
+        ASSERT neogs_firmware_end <= $4000
+        SAVEBIN "neogs_code.bin", 0, neogs_firmware_end
+        SAVEBIN "build/neogs_code.bin", 0, neogs_firmware_end
 
-        SAVEBIN "neogs_resident.bin", 0, neogs_resident_end
-        SAVEBIN "build/neogs_resident.bin", 0, neogs_resident_end
-        SAVEBIN "neogs_overlay68.bin", neogs_overlay68_start, neogs_overlay68_end - neogs_overlay68_start
-        SAVEBIN "build/neogs_overlay68.bin", neogs_overlay68_start, neogs_overlay68_end - neogs_overlay68_start
-        SAVEBIN "neogs_overlay69.bin", neogs_overlay69_start, neogs_overlay69_end - neogs_overlay69_start
-        SAVEBIN "build/neogs_overlay69.bin", neogs_overlay69_start, neogs_overlay69_end - neogs_overlay69_start
-
-; GS105a #14 loads the first-stage V1 bootstrap at fixed RAM $4000.
+; GS105a #14 writes the executable bootstrap into fixed RAM $4000-$7FFF.
         ORG     $4000
         INCLUDE "bootstrap.asm"
         ASSERT neogs_bootstrap_start = $4000
         ASSERT neogs_bootstrap_end <= $7FFF
+; The host streams NEOLOAD.C sector-by-sector through GS105a #14.
+; Bootstrap is installed at $4000 and must end before the stage-1 scratch
+; region at $4800. The supported maximum is therefore 2048 bytes.
         ASSERT neogs_bootstrap_end - neogs_bootstrap_start <= $0800
         ASSERT neogs_bootstrap_end <= $4800
         SAVEBIN "neogs_bootstrap.bin", neogs_bootstrap_start, neogs_bootstrap_end - neogs_bootstrap_start
         SAVEBIN "build/neogs_bootstrap.bin", neogs_bootstrap_start, neogs_bootstrap_end - neogs_bootstrap_start
+
+; tools/pack_neogs_project125.ps1 packages these binaries into a segmented
+; neoprog.C file; zx_main/main.asm exports it to the TR-DOS disk image.

@@ -9,172 +9,6 @@
 ; PUSHF 9C is included to make guest FLAGS assertions observable.
 ; =========================================================================
 
-; ADD AX,imm16 (05). Uses the same arithmetic/FLAGS engine as ModR/M ADD.
-x86_real_alu_accumulator_immediate:
-        ld      (x86_real_opcode), a
-        call    x86_real_fetch8
-        ret     c
-        ld      (x86_alu_src), a
-        call    x86_real_fetch8
-        ret     c
-        ld      (x86_alu_src+1), a
-        ld      hl, (x86_reg_ax)
-        ld      (x86_alu_dst), hl
-        xor     a
-        ld      (x86_alu_dst_is_mem), a
-        ld      (x86_alu_dst_reg), a       ; AX is register 0
-        ld      a, (x86_real_opcode)
-        and     #38
-        ld      (x86_alu_mode), a          ; ADD=00, SUB=28, CMP=38
-        xor     a                           ; immediate forms have no carry/borrow input
-        ld      (x86_alu_carry_in), a
-        jp      x86_real_alu_execute
-
-; -------------------------------------------------------------------------
-; Group-1 word immediate: 81/83 r/m16,imm.
-; Register-direct forms implement ADD/OR/ADC/SBB/AND/SUB/XOR/CMP.
-; Opcode 83 sign-extends its imm8 operand exactly as the 8086 specifies.
-; -------------------------------------------------------------------------
-x86_real_group1_word_immediate:
-        ld      (x86_real_opcode), a
-        ; The Group-1 dispatch enters with IP still at the opcode byte on
-        ; this BIOS path. Advance once so the following fetch reads ModR/M.
-        ; This matches the verified D2/F7 fetch alignment correction.
-        ld      hl, (x86_reg_ip)
-        inc     hl
-        ld      (x86_reg_ip), hl
-        call    x86_real_fetch8
-        ret     c
-        ld      (x86_group1_word_modrm), a
-        and     #C0
-        cp      #C0
-        jr      z, .word_register_operand
-
-        ; BIOS uses 81 /7 CMP r/m16,imm16 with direct [disp16].
-        ; Honor the active segment prefix (the observed form is ES:[0072]).
-        ld      a, (x86_group1_word_modrm)
-        and     #38
-        cp      #38
-        jp      nz, x86_real_group1_word_unsupported
-        ld      a, (x86_group1_word_modrm)
-        and     #C7
-        cp      #06
-        jp      nz, x86_real_group1_word_unsupported
-        ld      a, (x86_group1_word_modrm)
-        call    x86_real_mov_decode_modrm
-        ret     c
-        call    x86_real_alu_read_memory_word
-        ret     c
-        ld      (x86_alu_dst), hl
-        xor     a
-        ld      (x86_alu_dst_reg), a
-        jr      .word_operand_ready
-
-.word_register_operand:
-        ld      a, (x86_group1_word_modrm)
-        and     #38
-        ld      (x86_alu_mode), a
-        ld      a, (x86_group1_word_modrm)
-        and     7
-        ld      (x86_alu_dst_reg), a
-        call    x86_alu_read_reg16
-        ld      (x86_alu_dst), hl
-
-.word_operand_ready:
-        ld      a, (x86_group1_word_modrm)
-        and     #38
-        ld      (x86_alu_mode), a
-
-        call    x86_real_fetch8
-        ret     c
-        ld      (x86_alu_src), a
-        ld      a, (x86_real_opcode)
-        cp      #83
-        jr      nz, .word_immediate_high
-        ld      a, (x86_alu_src)
-        bit     7, a
-        ld      a, 0
-        jr      z, .word_immediate_sign_ready
-        dec     a
-.word_immediate_sign_ready:
-        ld      (x86_alu_src+1), a
-        jr      .word_operands_ready
-.word_immediate_high:
-        call    x86_real_fetch8
-        ret     c
-        ld      (x86_alu_src+1), a
-.word_operands_ready:
-        xor     a
-        ld      (x86_alu_dst_is_mem), a
-        ld      (x86_alu_carry_in), a
-
-        ld      a, (x86_alu_mode)
-        cp      #08
-        jp      z, x86_real_group1_word_logic
-        cp      #20
-        jp      z, x86_real_group1_word_logic
-        cp      #30
-        jp      z, x86_real_group1_word_logic
-        cp      #10
-        jr      z, .word_capture_carry
-        cp      #18
-        jp      nz, x86_real_alu_execute
-.word_capture_carry:
-        ld      a, (x86_reg_flags)
-        and     1
-        ld      (x86_alu_carry_in), a
-        jp      x86_real_alu_execute
-
-x86_real_group1_word_logic:
-        ld      hl, (x86_alu_dst)
-        ld      de, (x86_alu_src)
-        ld      a, (x86_alu_mode)
-        cp      #08
-        jr      z, .word_or
-        cp      #20
-        jr      z, .word_and
-        ld      a, l
-        xor     e
-        ld      l, a
-        ld      a, h
-        xor     d
-        ld      h, a
-        jr      .word_logic_done
-.word_or:
-        ld      a, l
-        or      e
-        ld      l, a
-        ld      a, h
-        or      d
-        ld      h, a
-        jr      .word_logic_done
-.word_and:
-        ld      a, l
-        and     e
-        ld      l, a
-        ld      a, h
-        and     d
-        ld      h, a
-.word_logic_done:
-        ld      (x86_logic_result), hl
-        ld      a, 2
-        ld      (x86_logic_width), a
-        call    x86_real_logic_update_flags
-        ld      a, (x86_alu_dst_reg)
-        ld      hl, (x86_logic_result)
-        call    x86_alu_write_reg16
-        jp      x86_real_next
-
-x86_real_group1_word_unsupported:
-        ld      a, (x86_real_opcode)
-        ld      (x86_real_unsupported_opcode), a
-        ld      a, 2
-        ld      (x86_exit_status), a
-        scf
-        ret
-
-x86_group1_word_modrm: dw 0
-
 x86_real_alu_modrm16:
         ld      (x86_real_opcode), a
         call    x86_real_fetch8
@@ -262,13 +96,13 @@ x86_real_alu_modrm16:
         cp      #10
         jr      z, .capture_carry
         cp      #18
-        jp      nz, x86_real_alu_execute
+        jr      nz, .execute
 .capture_carry:
         ld      a, (x86_reg_flags)
         and     1
         ld      (x86_alu_carry_in), a
 
-x86_real_alu_execute:
+.execute:
         ld      a, (x86_alu_mode)
         or      a
         jr      z, .add
@@ -834,11 +668,9 @@ x86_alu_result:      dw 0
 x86_alu_new_flags:   dw 0
 
 x86_guest_alu_image:
-        db #B0,#7F                 ; MOV AL,7F
-        db #04,#01                 ; ADD AL,01 -> 80 (opcode 04)
         db #B8,#FF,#7F             ; MOV AX,7FFF
-        db #05,#01,#00             ; ADD AX,0001 -> 8000 (opcode 05)
         db #B9,#01,#00             ; MOV CX,0001
+        db #03,#C1                 ; ADD AX,CX -> 8000
         db #9C,#5F                 ; PUSHF / POP DI -> 0A96
         db #70,#01,#00             ; JO taken
         db #78,#01,#00             ; JS taken

@@ -38,23 +38,7 @@ p125_atm_video_init::
         push    de
         push    hl
 
-        ; Reset the ATM paging/control latch BEFORE enabling permanent
-        ; DOSEN. On this board #EFF7 is part of the ATM paging control path;
-        ; resetting it after the #0177 shadow-port setup can undo the state
-        ; needed by the TR-DOS overlay.
-        xor     a
-        ld      bc, #EFF7
-        out     (c), a
-
-        ; ROM2=1 (D4) is required for TR-DOS overlay; D3 selects alternate
-        ; video pages 7/3. This is #18, matching the host display setup.
-        ld      a, #18
-        ld      bc, #7FFD
-        out     (c), a
-        ld      (#5C3B), a
-
-        ; Open shadow ports and hold DOSEN permanently (A9=0) using the
-        ; documented TR-DOS ROM trampoline. Do this AFTER the paging reset.
+        ; Open ATM shadow ports through the still-mapped TR-DOS ROM.
         ld      bc, p125_atm_ports_open_done
         push    bc
         ld      bc, #2A53
@@ -64,18 +48,19 @@ p125_atm_video_init::
         jp      #3D2F
 
 p125_atm_ports_open_done:
-        ; Window 0 must use ROM with D7=1 so its ROM page selection is
-        ; coupled to ROM2/DOSEN. #BF selects the low ROM page with the
-        ; DOSEN-controlled low ROM select: BASIC-48 when DOSEN=0, TR-DOS
-        ; when DOSEN=1. This is the ATM2+ documented auto-TR-DOS mapping.
-        ld      a, #BF
-        ld      bc, #3FF7
+        ; Preserve the active ROM selection from the Spectrum 128K BANKM
+        ; shadow. In particular, do NOT force bit 4: TR-DOS must remain mapped
+        ; after video init because later file operations call ROM entry #3D13.
+        ; Set only bit 3 to select the alternate screen while preserving all
+        ; other #7FFD latch bits, including the TR-DOS ROM selection.
+        ld      a, (#5C3B)
+        or      #08
+        ld      bc, #7FFD
         out     (c), a
-
+        ld      (#5C3B), a
 
         ; Map the alternate screen pages while the 32-byte mode trampoline
-        ; is installed at #FFEC. Window 3 uses a fixed RAM page here; the
-        ; TR-DOS auto-select mux is configured separately in window 0.
+        ; is installed at #FFEC, the safe ATM mode-switch address.
         ld      a, P125_VIDEO_PAGE7
         ld      bc, #7FF7
         out     (c), a
@@ -106,8 +91,8 @@ p125_atm_ports_open_done:
         jp      #FFEC
 
 p125_atm_video_mode_ready:
-        ; Restore CPU-visible host/staging pages. Keep D7 clear on #FFF7 so
-        ; window 3 remains fixed to RAM page 0 for the TR-DOS staging buffer.
+        ; Restore CPU-visible host/staging pages. The video controller keeps
+        ; displaying alternate pages 7/3 selected by #7FFD bit 3.
         ld      a, P125_HOST_PAGE5
         ld      bc, #7FF7
         out     (c), a

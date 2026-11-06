@@ -44,14 +44,6 @@ C_10MHZ         EQU #30
 C_12MHZ         EQU #10
 C_20MHZ         EQU #20
 C_24MHZ         EQU #00
-
-; NeoGS FPGA timer and interrupt controller (Z80-local I/O ports).
-TIM_FRQ         EQU #0E
-INTENA          EQU #0C
-INTREQ          EQU #0D
-B_TIMER_INT     EQU 0
-M_TIMER_INT     EQU #01
-
 B_PAN4CH        EQU 6
 M_PAN4CH        EQU #40
 B_INV7B         EQU 7
@@ -99,21 +91,6 @@ CMD_RUN_X86_REAL EQU #0B
 CMD_LOAD_BIOS   EQU #0C
 CMD_BOOT_BIOS   EQU #0D
 CMD_VIDEO_CRC_TEST EQU #0E
-CMD_DMA_READ_TEST EQU #0F       ; host reads NeoGS RAM through ZX DMA window
-CMD_HOST_INPUT   EQU #10       ; ATM keyboard matrix snapshot via host-to-NeoGS DMA
-
-; Live keyboard mailbox: physical page 03, WIN1 offset 3000h (logical 7000h).
-NGS_KBD_DMA_HAD  EQU #00
-NGS_KBD_DMA_MAD  EQU #F0
-NGS_KBD_DMA_LAD  EQU #00
-NGS_KBD_MATRIX_SIZE EQU 8
-
-; Reverse ZX DMA self-test: NeoGS physical page #03, offset #2000.
-NGS_DMA_TEST_SOURCE_HAD EQU #00
-NGS_DMA_TEST_SOURCE_MAD EQU #E0
-NGS_DMA_TEST_SOURCE_LAD EQU #00
-NGS_DMA_TEST_LENGTH     EQU #0100
-NGS_DMA_TEST_HOST_ADDR  EQU #C000
 
 ; Project125 bootstrap handshake bytes.
 NGS_BOOTSTRAP_READY_ACK EQU #A1

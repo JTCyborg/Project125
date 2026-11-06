@@ -21,7 +21,7 @@ BIOS_VIDEO_COLUMNS EQU 42
 BIOS_VIDEO_ROWS    EQU 12
 BIOS_VIDEO_MODE    EQU #03
 
-bios_int10_dispatch_impl:
+bios_int10_dispatch:
         ld      hl, (x86_reg_ax)
         ld      a, h
         cp      #00
@@ -38,7 +38,7 @@ bios_int10_dispatch_impl:
         ret
 
 ; Install IVT[10h] -> 0000:5200 (firmware service trap).
-bios_int10_install_vector_impl:
+bios_int10_install_vector:
         ld      hl, 0
         ld      (x86_mem_segment), hl
         ld      hl, #0040
@@ -102,10 +102,10 @@ bios_int10_set_mode:
 
         ; Host control frame: 00 00 = clear the 6x8 debug console.
         xor     a
-        call    bios_video_stream_byte
+        call    neo_send_data_byte
         ret     c
         xor     a
-        jp      bios_video_stream_byte
+        jp      neo_send_data_byte
 
 ; AH=0Fh — return current project text mode, width and active page.
 bios_int10_get_mode:
@@ -143,16 +143,16 @@ bios_int10_set_cursor:
 
         ; Host control frame: 00 01 row col.
         xor     a
-        call    bios_video_stream_byte
+        call    neo_send_data_byte
         ret     c
         ld      a, 1
-        call    bios_video_stream_byte
+        call    neo_send_data_byte
         ret     c
         ld      a, (bios_video_row)
-        call    bios_video_stream_byte
+        call    neo_send_data_byte
         ret     c
         ld      a, (bios_video_col)
-        jp      bios_video_stream_byte
+        jp      neo_send_data_byte
 
 ; AH=03h — read page-zero cursor into DH:DL.
 bios_int10_get_cursor:
@@ -184,7 +184,7 @@ bios_int10_teletype:
         ld      (bios_video_char), a
 .teletype_ascii:
         ld      a, (bios_video_char)
-        call    bios_video_stream_byte
+        call    neo_send_data_byte
         ret     c
 
         ld      a, (bios_video_char)
@@ -233,22 +233,6 @@ bios_int10_teletype:
         or      a
         ret
 
-; Host-console streaming is diagnostic output, not a CPU execution fault.
-; A DBIT/host timeout must not unwind INT 10h and terminate the guest BIOS.
-; Count transport failures in resident memory so the BIOS stop trace can report
-; whether the host console was back-pressured while POST continued.
-bios_video_stream_byte:
-        call    neo_send_data_byte
-        ret     nc
-        ld      a, (bios_video_stream_errors)
-        cp      #FF
-        jr      z, .stream_counted
-        inc     a
-        ld      (bios_video_stream_errors), a
-.stream_counted:
-        or      a                       ; clear carry: keep executing guest BIOS
-        ret
-
 ; Store project cursor word at BDA 00450h: low=column, high=row.
 bios_video_store_cursor:
         ld      hl, #0450
@@ -286,14 +270,14 @@ bios_video_write_word:
 ; round-trip, 42-column wrap, CR/LF, and the streamed host console path.
 ; Expected final AX=1A10h, DX=020Fh, BDA cursor=020Fh.
 ; -------------------------------------------------------------------------
-bios_int10_video_test_impl:
+bios_int10_video_test:
         xor     a
         ld      (x86_real_bounds_enable), a
         call    x86_mem_init
         ld      hl, x86_bios_video_test_image
         ld      de, #5002
         ld      bc, x86_bios_video_test_image_end - x86_bios_video_test_image
-        call bank69_copy_image_to_guest
+        call    x86_real_copy_image
         jp      c, bios_video_test_fail_1
 
         ; Verify POST installed IVT[10h] -> 0000:5200.
@@ -340,7 +324,7 @@ bios_int10_video_test_impl:
         ld      hl, #0202
         ld      (x86_reg_flags), hl
 
-        call bank69_call_x86_real_execute
+        call    x86_real_execute
         jp      c, bios_video_test_fail_3
 
         ld      hl, (x86_reg_ax)

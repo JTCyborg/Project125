@@ -1,6 +1,6 @@
 ; =========================================================================
 ; PROJECT125 — Dallas DS12887 RTC driver for ATM Turbo 2+
-; Version: D1.07
+; Version: D1.06
 ;
 ; ATM710 dual interface:
 ;   Native GLUK: EFF7 bit 7 gate, DFF7 index, BFF7 data.
@@ -20,11 +20,20 @@ DS12887_PROBE::
         push    de
         push    hl
 
+        ld      hl, ds12887_banner
+        call    p125_trace_port
+
         ; First try the native GLUK/ATM DFF7/BFF7 interface.
         xor     a
         ld      (ds12887_backend), a
         call    DS12887_OPEN
         call    DS12887_READ_STATUS
+        ld      hl, ds12887_gluk_dump
+        call    p125_trace_port
+        call    DS12887_PRINT_STATUS
+        ld      hl, ds12887_crlf
+        call    p125_trace_port
+
         ; A floating/unimplemented port often reads FF. A valid DS12887
         ; has Status D exactly 80h and Status A divider bits 010b.
         call    DS12887_VALIDATE_STATUS
@@ -37,6 +46,11 @@ DS12887_PROBE::
         ld      (ds12887_backend), a
         call    DS12887_OPEN
         call    DS12887_READ_STATUS
+        ld      hl, ds12887_smuc_status_dump
+        call    p125_trace_port
+        call    DS12887_PRINT_STATUS
+        ld      hl, ds12887_crlf
+        call    p125_trace_port
         ; Read back the SMUC system port after selecting address mode.
         ; Unreal Speccy decodes SMUC only while CF_DOSPORTS is active;
         ; an FF readback therefore identifies a closed DOS-port gate.
@@ -50,8 +64,19 @@ DS12887_PROBE::
         ld      bc, #5FBE
         in      a, (c)
         ld      (ds12887_smuc_control), a
+        ld      hl, ds12887_smuc_dump
+        call    p125_trace_port
+        ld      a, (ds12887_smuc_control)
+        call    DS12887_PRINT_HEX8
+        ld      hl, ds12887_crlf
+        call    p125_trace_port
 
 ds12887_probe_status_ready:
+        ld      hl, ds12887_selected_dump
+        call    p125_trace_port
+        call    DS12887_PRINT_STATUS
+        ld      hl, ds12887_crlf
+        call    p125_trace_port
         call    DS12887_VALIDATE_STATUS
         jp      c, ds12887_probe_invalid
 
@@ -61,16 +86,37 @@ ds12887_probe_status_ready:
         call    DS12887_READ_SNAPSHOT
         jp      c, ds12887_probe_read_error
 
+        ld      hl, ds12887_found
+        call    p125_trace_port
+
+        ld      hl, ds12887_raw_time
+        call    p125_trace_port
+        ld      a, (ds12887_hours)
+        call    DS12887_PRINT_HEX8
+        ld      a, ':'
+        call    DS12887_PRINT_CHAR
+        ld      a, (ds12887_minutes)
+        call    DS12887_PRINT_HEX8
+        ld      a, ':'
+        call    DS12887_PRINT_CHAR
+        ld      a, (ds12887_seconds)
+        call    DS12887_PRINT_HEX8
+        ld      hl, ds12887_crlf
+        call    p125_trace_port
         jp      ds12887_probe_done
 
 ds12887_probe_invalid:
         xor     a
         ld      (ds12887_available), a
+        ld      hl, ds12887_invalid
+        call    p125_trace_port
         jp      ds12887_probe_done
 
 ds12887_probe_read_error:
         xor     a
         ld      (ds12887_available), a
+        ld      hl, ds12887_read_error
+        call    p125_trace_port
 
 ds12887_probe_done:
         call    DS12887_CLOSE
@@ -189,13 +235,9 @@ DS12887_OPEN:
         out     (c), a
         jr      ds12887_open_done
 ds12887_open_smuc:
-        ; SMUC FFBA is not a plain 0/1 selector: D6-D4 and D0
-        ; must retain the documented fixed pattern 111...1. With D7=0,
-        ; #71 selects RTC address/read mode on DFBA. Writing #00 corrupts
-        ; the SMUC multiplexed ISA address/control configuration and can
-        ; interfere with later TR-DOS disk operations.
+        ; SMUC bit 7 = 0 selects CMOS address mode on DFBA.
         ld      bc, #FFBA
-        ld      a, #71
+        xor     a
         out     (c), a
 ds12887_open_done:
         pop     bc
@@ -413,6 +455,16 @@ DS12887_PRINT_CHAR:
         pop     bc
         ret
 
+ds12887_banner:      defb "[DS12887 D1.06] GLUK/SMUC AUTO", 13, 10, 0
+ds12887_found:       defb "[DS12887] VRT OK; READ-ONLY CLOCK ACCESS", 13, 10, 0
+ds12887_gluk_dump:   defb "[DS12887] GLUK D/A/B=", 0
+ds12887_smuc_status_dump: defb "[DS12887] SMUC D/A/B=", 0
+ds12887_selected_dump: defb "[DS12887] SELECTED D/A/B=", 0
+ds12887_smuc_dump:   defb "[DS12887] SMUC ID #5FBE=", 0
+ds12887_invalid:     defb "[DS12887] VRT BIT 7 CLEAR (CHECK CMOS PORT/POWER)", 13, 10, 0
+ds12887_read_error:  defb "[DS12887] UIP/SNAPSHOT READ ERROR", 13, 10, 0
+ds12887_raw_time:    defb "[DS12887] RAW H:M:S=", 0
+ds12887_crlf:        defb 13, 10, 0
 
 ds12887_available:   defb 0
 ds12887_backend:     defb 0
