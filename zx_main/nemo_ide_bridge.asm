@@ -35,8 +35,12 @@ atm_storage_poll_and_service:
         jr      nz,.pull_ready
         jr      .restore_command
 .pull_armed:
-        ; Reverse DMA payload is descriptor + one 512-byte sector slot.
+        ; The first ROM-window read is the mandatory DMA pipeline byte.
+        ; Discard it, then restart at address 0000h for the actual payload.
         ld      hl,ATM_STORAGE_DMA_WINDOW
+        ld      a,(hl)
+        ld      hl,ATM_STORAGE_DMA_WINDOW
+        ; Reverse DMA payload is descriptor + one 512-byte sector slot.
         ld      de,ATM_STORAGE_PACKET
         ld      bc,ATM_STORAGE_PACKET_SIZE
         ldir
