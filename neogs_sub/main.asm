@@ -1149,7 +1149,7 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261106-43",13,10
+        defb "[NGS] BUILD 20261106-44",13,10
         defb "[NGS] BASE COMMIT 226BC91",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
@@ -2084,14 +2084,14 @@ x86_host_storage_pull:
 
 x86_host_storage_push:
         ; ATM returns a fixed 513-byte frame at physical page 14:C000.
-        ld      a,14
+        ld      a,13
         rrca
         out     (MPAGEX),a
         ld      a,C_DMA_ZX
         out     (DMA_MOD),a
-        ld      a,#14
+        ld      a,#13
         out     (DMA_HAD),a
-        ld      a,#C0
+        ld      a,#D0
         out     (DMA_MAD),a
         xor     a
         out     (DMA_LAD),a
@@ -2120,14 +2120,14 @@ x86_host_storage_push:
         xor     a
         out     (DMA_CST),a
         ; Copy completion status; successful READ also copies its sector.
-        ld      a,(#C000)
+        ld      a,(#D000)
         ld      (x86_storage_completion_status),a
         or      a
         jr      nz,.push_failed
         ld      a,(x86_storage_operation)
         cp      1
         jr      nz,.push_complete
-        ld      hl,#C001
+        ld      hl,#D001
         ld      de,x86_ata_buffer
         ld      bc,512
         ldir
