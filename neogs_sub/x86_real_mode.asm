@@ -411,6 +411,7 @@ x86_real_execute:
         ld      (x86_io_trace_count), a
         ld      (x86_io_guest_trace_count), a
         ld      (x86_stack_trace_count), a
+        ld      (x86_heartbeat_trace_count), a
         ld      (x86_hlt_trace_count), a
         ld      (x86_post_int10_trace_active), a
         ld      (x86_post_int10_trace_started), a
@@ -444,13 +445,13 @@ x86_real_dispatch:
         or      a
         jr      nz, x86_real_dispatch_no_progress
         ld      a, h
-        and     #07
+        and     #1F
         jr      nz, x86_real_dispatch_no_progress
-        ; Progress heartbeat disabled to keep spectrum_out.txt compact.
-        ; x86_real_progress_enable remains active for BIOS instruction-budget renewal.
+        ; One short direct-#EF heartbeat every 8192 guest instructions.
+        ; It is capped at 16 records and does not use DMA or alter guest state.
         ld      a, (x86_real_progress_enable)
         or      a
-        ; call  nz, bios_progress_emit
+        call    nz, x86_real_heartbeat_trace
 x86_real_dispatch_no_progress:
         ; Service a pending ATM keyboard DMA snapshot every 256 guest
         ; instructions. The mailbox is independent of the guest I/O bus.
@@ -2080,6 +2081,61 @@ x86_post_int10_instruction_trace:
         pop     bc
         pop     af
         ret
+
+ ; Sparse heartbeat after the initial POST10 instruction trace expires.
+; Uses the direct #EF diagnostic path and is strictly bounded.
+x86_real_heartbeat_trace:
+        ld      a, (x86_heartbeat_trace_count)
+        cp      16
+        ret     nc
+        inc     a
+        ld      (x86_heartbeat_trace_count), a
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_heartbeat_trace_prefix
+        call    x86_trace_puts
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      hl, x86_heartbeat_trace_ax
+        call    x86_trace_puts
+        ld      hl, (x86_reg_ax)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      hl, x86_heartbeat_trace_cx
+        call    x86_trace_puts
+        ld      hl, (x86_reg_cx)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_heartbeat_trace_prefix: defb "[X86 HB] ",0
+x86_heartbeat_trace_ax:     defb " AX=",0
+x86_heartbeat_trace_cx:     defb " CX=",0
+x86_heartbeat_trace_count:  db 0
 
 x86_post_int10_trace_prefix: defb "[X86 POST10] ",0
 x86_post_int10_trace_ax:     defb " AX=",0
