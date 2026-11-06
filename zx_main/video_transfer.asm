@@ -140,6 +140,7 @@ p125_video_present_text:
         inc     de
         call    p125_video_map_vga_attribute
         push    bc
+        push    de                      ; preserve the advancing attribute pointer
         ld      b,a
         ld      a,(hl)
         inc     hl
@@ -152,6 +153,7 @@ p125_video_present_text:
         ld      a,(hl)
         inc     hl
         call    p125_screen_write_guest_cell
+        pop     de
         pop     bc
         ld      a,(p125_video_col)
         inc     a
