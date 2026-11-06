@@ -467,9 +467,22 @@ x86_fdc_read_fifo:
 
 x86_fdc_write_dor:
         ld      a,(x86_io_value)
-        ld      (x86_fdc_dor),a
+        ld      b,a
+        ld      a,(x86_fdc_dor)
+        ld      (x86_fdc_dor),b
+        bit     2,b
+        jr      z,.reset_asserted
+        ; A low-to-high RESET transition completes the controller reset.
+        ; The 765 reports reset completion through IRQ6 and Sense Interrupt.
         bit     2,a
         jr      nz,.done
+        ld      a,#C0                  ; reset interrupt, drive 0
+        ld      (x86_fdc_pending_st0),a
+        xor     a
+        ld      (x86_fdc_pending_cylinder),a
+        call    x86_fdc_raise_irq6
+        jr      .done
+.reset_asserted:
         xor     a
         ld      (x86_fdc_phase),a
         ld      (x86_fdc_command_count),a
@@ -601,6 +614,8 @@ x86_fdc_specify:
         ld      (x86_fdc_command_count),a
         ret
 x86_fdc_seek:
+        ; The drive is absent, but SEEK/RECALIBRATE still terminate through
+        ; the controller interrupt path. ST0=48h reports abnormal/not-ready.
         ld      a,#48
         ld      (x86_fdc_pending_st0),a
         ld      a,(x86_fdc_command)
@@ -616,7 +631,7 @@ x86_fdc_seek:
         xor     a
         ld      (x86_fdc_phase),a
         ld      (x86_fdc_command_count),a
-        ret
+        jp      x86_fdc_raise_irq6
 x86_fdc_no_media:
         ld      hl,x86_fdc_result
         ld      (hl),#48                ; abnormal termination, not ready
@@ -639,6 +654,18 @@ x86_fdc_no_media:
         ld      (hl),a
         ld      a,7
         ld      (x86_fdc_result_count),a
+        ; Read/write/read-ID/format completion is reported on IRQ6; the
+        ; BIOS IRQ handler sets BDA 0040:003E bit 7 before reading results.
+        call    x86_fdc_raise_irq6
+; Assert the emulated master PIC's IRQ6 request. x86_io_tick delivers
+; it at the next guest instruction boundary using the programmed PIC vector
+; and mask, exactly like PIT IRQ0 and keyboard IRQ1.
+x86_fdc_raise_irq6:
+        ld      a,(x86_pic_pending)
+        set     6,a
+        ld      (x86_pic_pending),a
+        ret
+
 x86_fdc_result_phase:
         xor     a
         ld      (x86_fdc_result_index),a
