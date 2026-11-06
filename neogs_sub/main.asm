@@ -4389,6 +4389,8 @@ x86_real_group_f6:
         and     #38
         cp      #28
         jp      z, x86_real_f6_imul
+        cp      #30
+        jp      z, x86_real_f6_div
         ld      a, (x86_f6_modrm)
         cp      #D0
         jp      z, x86_real_f6_not_al
@@ -4429,20 +4431,8 @@ x86_real_f6_test_immediate:
 ; magnitudes, followed by two's-complement correction. This is independent
 ; of the Z80 host's physical ports and uses only the x86 register/memory model.
 x86_real_f6_imul:
-        ld      a, (x86_f6_modrm)
-        and     #C0
-        cp      #C0
-        jr      z, .imul_register
-        ld      a, (x86_f6_modrm)
-        call    x86_real_mov_decode_modrm
+        call    x86_real_f6_read_operand
         ret     c
-        call    x86_real_alu8_read_memory
-        ret     c
-        jr      .imul_operand_ready
-.imul_register:
-        ld      a, (x86_f6_modrm)
-        and     7
-        call    x86_alu8_read_reg
 .imul_operand_ready:
         ld      (x86_f6_operand), a
         ld      a, (x86_reg_ax)
