@@ -133,10 +133,6 @@ main_loop:
         jp      z, command_dma_read_test
         cp      CMD_VIDEO_PULL
         jp      z, command_video_pull
-        cp      CMD_STORAGE_PULL
-        jp      z, command_storage_pull
-        cp      CMD_STORAGE_PUSH
-        jp      z, command_storage_push
 
         ; Unknown command: release CBIT so the host cannot deadlock.
         xor     a
