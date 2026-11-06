@@ -3,6 +3,7 @@ name: Project125 build verification
 on:
   push:
     branches:
+      - main
       - neogs-driver-rewrite
   workflow_dispatch:
 
