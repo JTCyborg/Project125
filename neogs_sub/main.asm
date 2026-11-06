@@ -2243,66 +2243,65 @@ x86_host_video_trace_planes:
         ld      a,(x86_host_video_trace_count)
         cp      3
         jr      nc,.done
+
+        ; Do not spend a trace slot while BIOS is still clearing the screen.
+        ; Wait until printable text appears on the BIOS cursor row (row 6,
+        ; starting at column 7: plane offset 01E7).
+        ld      a,83
+        rrca
+        out     (MPAGEX),a
+        ld      hl,#C1E7
+        ld      b,80
+.scan_text:
+        ld      a,(hl)
+        cp      #21
+        jr      c,.scan_next
+        cp      #7F
+        jr      c,.text_found
+.scan_next:
+        inc     hl
+        djnz    .scan_text
+        jr      .done
+
+.text_found:
+        ld      a,(x86_host_video_trace_count)
         inc     a
         ld      (x86_host_video_trace_count),a
 
-        ld      hl,x86_host_video_trace_p0
-        call    neo_trace_ef_string
-        ld      a,83
-        rrca
-        out     (MPAGEX),a
-        ld      hl,#C000
-        ld      b,16
-.p0:
-        ld      a,(hl)
-        call    neo_trace_ef_hex8
-        ld      a,' '
-        out     (#EF),a
-        inc     hl
-        djnz    .p0
-        ld      a,13
-        out     (#EF),a
-        ld      a,10
-        out     (#EF),a
-
-        ld      hl,x86_host_video_trace_p1
-        call    neo_trace_ef_string
-        ld      a,87
-        rrca
-        out     (MPAGEX),a
-        ld      hl,#C000
-        ld      b,16
-.p1:
-        ld      a,(hl)
-        call    neo_trace_ef_hex8
-        ld      a,' '
-        out     (#EF),a
-        inc     hl
-        djnz    .p1
-        ld      a,13
-        out     (#EF),a
-        ld      a,10
-        out     (#EF),a
-
-        ; BIOS cursor in the captured run is row 6, column 7.
-        ; VGA text guest addresses B83CE/B83CF map to plane offset 01E7.
-        ; Read the actual cell from each plane, not only the screen origin.
-        ld      hl,x86_host_video_trace_cell
+        ; Capture 32 character cells beginning at the BIOS cursor position.
+        ld      hl,x86_host_video_trace_text_p0
         call    neo_trace_ef_string
         ld      a,83
         rrca
         out     (MPAGEX),a
         ld      hl,#C1E7
+        ld      b,32
+.text_p0:
         ld      a,(hl)
         call    neo_trace_ef_hex8
         ld      a,' '
         out     (#EF),a
+        inc     hl
+        djnz    .text_p0
+        ld      a,13
+        out     (#EF),a
+        ld      a,10
+        out     (#EF),a
+
+        ld      hl,x86_host_video_trace_text_p1
+        call    neo_trace_ef_string
         ld      a,87
         rrca
         out     (MPAGEX),a
         ld      hl,#C1E7
+        ld      b,32
+.text_p1:
         ld      a,(hl)
         call    neo_trace_ef_hex8
+        ld      a,' '
+        out     (#EF),a
+        inc     hl
+        djnz    .text_p1
         ld      a,13
         out     (#EF),a
         ld      a,10
@@ -2341,12 +2340,10 @@ neo_trace_ef_nibble:
         out     (#EF),a
         ret
 
-x86_host_video_trace_p0:
-        defb "[VGA P0] ",0
-x86_host_video_trace_p1:
-        defb "[VGA P1] ",0
-x86_host_video_trace_cell:
-        defb "[VGA CELL] ",0
+x86_host_video_trace_text_p0:
+        defb "[VGA TEXT P0] ",0
+x86_host_video_trace_text_p1:
+        defb "[VGA TEXT P1] ",0
 x86_host_video_trace_count:
         db 0
 
