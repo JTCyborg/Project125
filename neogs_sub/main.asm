@@ -467,7 +467,6 @@ command_video_pull:
         ld      a,(hl)
         ld      (de),a
         inc     hl
-        inc     hl
         inc     de
         dec     bc
         ld      a,b
@@ -483,7 +482,6 @@ command_video_pull:
 .vga_attr_copy:
         ld      a,(hl)
         ld      (de),a
-        inc     hl
         inc     hl
         inc     de
         dec     bc
@@ -1151,7 +1149,7 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261106-37",13,10
+        defb "[NGS] BUILD 20261106-38",13,10
         defb "[NGS] BASE COMMIT 226BC91",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
