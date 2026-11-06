@@ -2591,6 +2591,14 @@ x86_shift_original:   dw 0
 
 ; D3 E8: SHR AX,CL. The 8086 uses the full CL count (no 5-bit mask).
 ; The BIOS POST uses CL=6. Count zero leaves operand and FLAGS unchanged.
+; D2 has a byte ModR/M operand; fetch it once and pass the exact byte to
+; the resident dispatcher, which selects the implementation by /reg.
+x86_real_shift_byte_cl:
+        call    x86_real_fetch8
+        ret     c
+        call    x86_fetch_capture_modrm
+        jp      x86_resident_shift_byte_cl_dispatch
+
 x86_real_shift_word_cl:
         call    x86_real_fetch8
         ret     c
