@@ -2808,7 +2808,6 @@ x86_real_f6_imul:
 .imul_loop:
         srl     a
         jr      nc, .imul_no_add
-        add     hl, de
         ex      de, hl
         add     hl, de
         ex      de, hl
@@ -2851,6 +2850,12 @@ x86_real_f6_imul:
         ld      hl, x86_f6_new_flags
         set     2, (hl)
 .imul_zf:
+        ld      a, (x86_f6_original_al)
+        bit     7, a
+        jr      z, .imul_sign_ready
+        ld      hl, x86_f6_new_flags
+        set     7, (hl)
+.imul_sign_ready:
         ld      hl, (x86_reg_ax)
         ld      a, h
         or      l
