@@ -25,6 +25,11 @@ x86_storage_read8:
         or      a
         sbc     hl,de
         jp      z,x86_fdc_read_dir
+        ld      hl,(x86_io_port)
+        ld      de,#03F6
+        or      a
+        sbc     hl,de
+        jp      z,x86_ata_read_status
 
         ld      a,(x86_io_port+1)
         cp      #01
@@ -68,6 +73,11 @@ x86_storage_write8:
         or      a
         sbc     hl,de
         jp      z,x86_fdc_write_ccr
+        ld      hl,(x86_io_port)
+        ld      de,#03F6
+        or      a
+        sbc     hl,de
+        jp      z,x86_ata_write_control
 
         ld      a,(x86_io_port+1)
         cp      #01
@@ -102,6 +112,21 @@ x86_ata_read_error:
         ret
 x86_ata_read_status:
         ld      a,(x86_ata_status)
+        or      a
+        ret
+x86_ata_write_control:
+        ld      a,(x86_io_value)
+        ld      (x86_ata_control),a
+        bit     2,a
+        jr      z,.reset_released
+        ld      a,#80
+        ld      (x86_ata_status),a
+        ret
+.reset_released:
+        xor     a
+        ld      (x86_ata_error),a
+        ld      a,#50
+        ld      (x86_ata_status),a
         or      a
         ret
 x86_ata_read_data:
@@ -627,6 +652,7 @@ x86_ata_taskfile:       defs 8,0
 x86_ata_status:         db #50
 x86_ata_error:          db 0
 x86_ata_command_reg:    db 0
+x86_ata_control:         db 0
 x86_ata_buffer_index:   dw 0
 x86_ata_sectors_remaining: dw 0
 x86_ata_current_lba:   defs 4,0
