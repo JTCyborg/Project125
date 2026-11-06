@@ -407,6 +407,9 @@ x86_real_fetch_out_of_range:
         jp      x86_real_fetch_out_of_range_resident
 
 x86_real_execute:
+        xor     a
+        ld      (x86_io_trace_count), a
+        ld      (x86_hlt_trace_count), a
         ; One concise marker proves control reached the actual x86 interpreter.
         ld      hl, x86_dbg_core_enter
         call    neo_trace_ef_string
@@ -1919,9 +1922,13 @@ x86_real_ret_far_imm:
         jp      x86_real_next
 
 x86_real_hlt:
+        ; Log the guest HLT instruction once per encounter, before entering
+        ; the interrupt wait loop. Cap records to keep BIOS logs manageable.
+        call    x86_real_hlt_trace
         ; HLT suspends guest execution until a maskable interrupt is accepted.
         ; The deterministic PIT clock continues while halted.
 .hlt_wait:
+
         call    x86_host_input_service_poll
         call    x86_io_tick
         ret     c
@@ -1931,6 +1938,67 @@ x86_real_hlt:
         xor     a
         ld      (x86_io_irq_delivered), a
         jp      x86_real_dispatch
+
+x86_real_hlt_trace:
+        ld      a, (x86_hlt_trace_count)
+        cp      16
+        ret     nc
+        inc     a
+        ld      (x86_hlt_trace_count), a
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_hlt_trace_prefix
+        call    x86_trace_puts
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        dec     hl
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      hl, x86_hlt_trace_flags
+        call    x86_trace_puts
+        ld      hl, (x86_reg_flags)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      hl, x86_hlt_trace_sssp
+        call    x86_trace_puts
+        ld      hl, (x86_reg_ss)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_sp)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_hlt_trace_prefix: defb "[X86 HLT] CS:IP=",0
+x86_hlt_trace_flags:  defb " FLAGS=",0
+x86_hlt_trace_sssp:   defb " SS:SP=",0
+x86_hlt_trace_count:  db 0
 
 x86_real_budget_exhausted:
         ; BIOS POST can legitimately execute more than 65535 architectural

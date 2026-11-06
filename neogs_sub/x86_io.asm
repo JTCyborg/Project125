@@ -32,6 +32,9 @@ x86_real_io_instruction:
 
 .port_ready:
         ld      (x86_io_port), hl
+        ; Capture every guest port transaction before the device model runs.
+        ; The direct #EF trace is bounded to the first 64 BIOS I/O operations.
+        call    x86_io_trace_guest_event
 
         ; Opcode bit 1: 0=IN, 1=OUT. Opcode bit 0: 0=byte, 1=word.
         ld      a, (x86_io_opcode)
@@ -512,6 +515,112 @@ x86_pit_activate:
 x86_io_trace_write8:
         ret
 
+; Emit one bounded trace record before each emulated guest IN/OUT.
+; Preserve the complete Z80 working register set and guest register image.
+x86_io_trace_guest_event:
+        ld      a, (x86_io_trace_count)
+        cp      64
+        ret     nc
+        inc     a
+        ld      (x86_io_trace_count), a
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      hl, x86_io_trace_guest_prefix
+        call    x86_trace_puts
+        ld      a, (x86_io_opcode)
+        ld      b, a
+        and     2
+        ld      hl, x86_io_trace_guest_in
+        jr      z, .direction_ready
+        ld      hl, x86_io_trace_guest_out
+.direction_ready:
+        call    x86_trace_puts
+        ld      a, b
+        and     1
+        ld      hl, x86_io_trace_guest_byte
+        jr      z, .width_ready
+        ld      hl, x86_io_trace_guest_word
+.width_ready:
+        call    x86_trace_puts
+        ld      hl, x86_io_trace_guest_op
+        call    x86_trace_puts
+        ld      a, (x86_io_opcode)
+        call    x86_trace_hex8
+        ld      hl, x86_io_trace_guest_at
+        call    x86_trace_puts
+        ld      hl, (x86_reg_cs)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      a, ':'
+        out     (#EF), a
+        ld      hl, (x86_reg_ip)
+        ld      a, (x86_io_opcode)
+        cp      #EC
+        jr      nc, .ip_is_dx_form
+        dec     hl
+        dec     hl
+        jr      .ip_ready
+.ip_is_dx_form:
+        dec     hl
+.ip_ready:
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      hl, x86_io_trace_guest_port
+        call    x86_trace_puts
+        ld      hl, (x86_io_port)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        ld      a, (x86_io_opcode)
+        and     2
+        jr      z, .read_value
+        ld      hl, x86_io_trace_guest_value
+        call    x86_trace_puts
+        ld      a, (x86_io_opcode)
+        and     1
+        jr      nz, .write_word_value
+        ld      a, (x86_io_value)
+        call    x86_trace_hex8
+        jr      .line_end
+.write_word_value:
+        ld      hl, (x86_io_value)
+        ld      a, h
+        call    x86_trace_hex8
+        ld      a, l
+        call    x86_trace_hex8
+        jr      .line_end
+.read_value:
+        ld      hl, x86_io_trace_guest_pending
+        call    x86_trace_puts
+.line_end:
+        ld      a, 13
+        out     (#EF), a
+        ld      a, 10
+        out     (#EF), a
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+x86_io_trace_guest_prefix: defb "[X86 IO] ",0
+x86_io_trace_guest_in:     defb "IN",0
+x86_io_trace_guest_out:    defb "OUT",0
+x86_io_trace_guest_byte:   defb "8 ",0
+x86_io_trace_guest_word:   defb "16 ",0
+x86_io_trace_guest_op:     defb "OP=",0
+x86_io_trace_guest_at:     defb " CS:IP=",0
+x86_io_trace_guest_port:   defb " PORT=",0
+x86_io_trace_guest_value:  defb " VALUE=",0
+x86_io_trace_guest_pending:defb " VALUE=--",0
+
 ; Called once per guest instruction. Delivers the unmasked IRQ0 only when IF=1.
 ; IBM PC/XT 8255/PPI model used by the 5150 BIOS.
 ; PA (60h) is the XT keyboard data latch. A PB6 low-to-high transition
@@ -741,6 +850,7 @@ x86_io_test_fail:
         ret
 
 x86_io_opcode:       db 0
+x86_io_trace_count:  db 0
 x86_io_port:         dw 0
 x86_io_value:        dw 0
 x86_io_test_latch:   dw 0
