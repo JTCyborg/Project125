@@ -2963,6 +2963,75 @@ x86_resident_shift_word_shr_one:
         ld      (x86_mov_value), hl
         jp      x86_real_mov_write_rm
 
+; D1 /7: SAR r/m16,1. Arithmetic right shift preserves the sign bit.
+; PCem sets CF/PF/AF/ZF/SF, clears OF, and preserves other FLAGS.
+x86_resident_shift_word_sar_one:
+        xor     a
+        ld      (x86_mov_width), a
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_shift_original), hl
+        ld      a, l
+        and     #01
+        ld      (x86_shift_carry), a
+        sra     h
+        rr      l
+        ld      (x86_shift_result), hl
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .sar_word_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.sar_word_parity:
+        ld      hl, (x86_shift_result)
+        ld      a, l
+        and     a
+        jp      pe, .sar_word_set_pf
+        jr      .sar_word_zero
+.sar_word_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.sar_word_zero:
+        ld      hl, (x86_shift_result)
+        ld      a, h
+        or      l
+        jr      nz, .sar_word_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.sar_word_sign:
+        ld      hl, (x86_shift_result)
+        bit     7, h
+        jr      z, .sar_word_af
+        ld      hl, x86_shift_new_flags
+        set     7, (hl)
+.sar_word_af:
+        ld      hl, x86_shift_new_flags
+        set     4, (hl)
+        ld      hl, (x86_reg_flags)
+        ld      de, #F72A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        ld      hl, (x86_shift_result)
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
 ; D3 group-2 dispatch. Full r/m16 SHL implementation lives in overlay69.
 x86_resident_shift_word_mem_shl_cl:
         ld      b, a                       ; preserve the complete ModR/M byte
