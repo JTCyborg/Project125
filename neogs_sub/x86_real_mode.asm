@@ -2782,6 +2782,7 @@ x86_real_group_f6_unsupported:
 ; Only status FLAGS are updated; CF and control/reserved bits are preserved.
 x86_real_incdec_r8:
         ld      (x86_real_opcode), a
+        ; Record the ModR/M byte independently of shift/other decoder traces.
         call    x86_real_fetch8
         ret     c
         ld      (x86_incdec8_modrm), a
