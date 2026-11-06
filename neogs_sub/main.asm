@@ -1149,7 +1149,7 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261106-40",13,10
+        defb "[NGS] BUILD 20261106-41",13,10
         defb "[NGS] BASE COMMIT 226BC91",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
@@ -2021,6 +2021,7 @@ x86_host_input_service_poll:
 ; acknowledges the complete 4000-byte payload with the #FF end marker.
 ; -------------------------------------------------------------------------
 x86_host_video_service:
+        call    x86_host_video_trace_planes
         ; The current resident window-2 mapping is not assumed. Select the
         ; reserved frame slot page for the staging copy.
         ld      a,#A7
@@ -2096,6 +2097,98 @@ x86_host_video_service:
         out     (DMA_CST),a
         out     (CLRCBIT),a
         ret
+
+; Dump the first 16 bytes of both VGA text planes on the first three
+; live snapshots. This is direct #EF diagnostics only: no DMA/DBIT use.
+; It distinguishes missing guest VRAM writes from a bad frame handoff.
+x86_host_video_trace_planes:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      a,(x86_host_video_trace_count)
+        cp      3
+        jr      nc,.done
+        inc     a
+        ld      (x86_host_video_trace_count),a
+
+        ld      hl,x86_host_video_trace_p0
+        call    neo_trace_ef_string
+        ld      a,83
+        rrca
+        out     (MPAGEX),a
+        ld      hl,#C000
+        ld      b,16
+.p0:
+        ld      a,(hl)
+        call    neo_trace_ef_hex8
+        ld      a,' '
+        out     (#EF),a
+        inc     hl
+        djnz    .p0
+        ld      a,13
+        out     (#EF),a
+        ld      a,10
+        out     (#EF),a
+
+        ld      hl,x86_host_video_trace_p1
+        call    neo_trace_ef_string
+        ld      a,87
+        rrca
+        out     (MPAGEX),a
+        ld      hl,#C000
+        ld      b,16
+.p1:
+        ld      a,(hl)
+        call    neo_trace_ef_hex8
+        ld      a,' '
+        out     (#EF),a
+        inc     hl
+        djnz    .p1
+        ld      a,13
+        out     (#EF),a
+        ld      a,10
+        out     (#EF),a
+.done:
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
+
+; A=byte. Preserve the caller's loop counter and AF.
+neo_trace_ef_hex8:
+        push    af
+        push    bc
+        ld      b,a
+        rrca
+        rrca
+        rrca
+        rrca
+        call    neo_trace_ef_nibble
+        ld      a,b
+        and     #0F
+        call    neo_trace_ef_nibble
+        pop     bc
+        pop     af
+        ret
+
+neo_trace_ef_nibble:
+        and     #0F
+        add     a,'0'
+        cp      '9'+1
+        jr      c,.emit
+        add     a,7
+.emit:
+        out     (#EF),a
+        ret
+
+x86_host_video_trace_p0:
+        defb "[VGA P0] ",0
+x86_host_video_trace_p1:
+        defb "[VGA P1] ",0
+x86_host_video_trace_count:
+        db 0
 
 ; Compare the eight 5-bit rows and enqueue XT make/break scan codes.
 x86_kbd_process_matrix:
