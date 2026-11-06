@@ -2083,7 +2083,7 @@ x86_host_storage_pull:
         ret
 
 x86_host_storage_push:
-        ; ATM returns a fixed 513-byte frame at physical page 14:C000.
+        ; ATM returns a fixed 513-byte frame at reserved physical page 13:D000.
         ld      a,13
         rrca
         out     (MPAGEX),a
