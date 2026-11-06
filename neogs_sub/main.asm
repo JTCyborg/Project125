@@ -455,6 +455,10 @@ command_dma_read_test:
 
 ; CMD_VIDEO_PULL: stage VGA plane 0/1 text bytes in frame slot A, then reverse DMA.
 command_video_pull:
+        ; The final host snapshot is dispatched here after BIOS execution has
+        ; returned to main_loop. Capture the guest text planes on this path too;
+        ; the live-execution service below is not used for this final request.
+        call    x86_host_video_trace_planes
         ld      a,#A7
         out     (MPAG),a
         ld      a,83
