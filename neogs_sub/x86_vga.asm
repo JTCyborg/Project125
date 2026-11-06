@@ -294,8 +294,8 @@ x86_vga_mem_read8:
         call    x86_vga_decode_aperture
         ret     c
         ; Load VGA latches from the unmodified aperture address, as PCem does.
-        ; In chain-2 mode CPU A0 selects the plane; the address is rounded
-        ; down to an even byte address (not divided by two).
+        ; In chain-2 mode CPU A0 selects the plane; the plane offset is
+        ; aperture_offset >> 1 (CPU A0 is removed from the address).
         ld      a,(x86_vga_gc_regs+5)
         and     #10
         jr      z,.read_plane_normal
@@ -306,6 +306,8 @@ x86_vga_mem_read8:
         and     2
         or      b
         ld      (x86_vga_read_plane),a
+        ; Normalize the plane offset before loading any of the four latches.
+        call    x86_vga_offset_even
         jr      .read_latches
 .read_plane_normal:
         ld      a,(x86_vga_gc_regs+4)
@@ -331,13 +333,11 @@ x86_vga_mem_read8:
         ld      a,(x86_vga_gc_regs+5)
         and     #08
         jr      nz,.read_mode1
-        ; Chain-2 mode-0 reads return the selected plane byte at addr&FFFE.
+        ; Chain-2 mode-0 reads use the selected plane at aperture_offset >> 1.
         ld      a,(x86_vga_gc_regs+5)
         and     #10
         jr      z,.read_mode0_latch
-        ld      a,(x86_vga_offset)
-        and     #FE
-        ld      (x86_vga_offset),a
+        ; x86_vga_offset was normalized before the latch fetch above.
         ld      a,(x86_vga_read_plane)
         call    x86_vga_map_plane
         ld      a,(hl)
@@ -546,9 +546,13 @@ x86_vga_mem_write8:
         ret
 
 x86_vga_offset_even:
-        ld      a,(x86_vga_offset)
-        and     #FE
-        ld      (x86_vga_offset),a
+        ; Chain-2/odd-even: CPU A0 selects plane 0/1. The remaining
+        ; aperture address bits are shifted right once to form the plane
+        ; byte offset, exactly as the 8086 VGA odd/even address decoder.
+        ld      hl,(x86_vga_offset)
+        srl     h
+        rr      l
+        ld      (x86_vga_offset),hl
         ret
 
 x86_vga_get_latch:
