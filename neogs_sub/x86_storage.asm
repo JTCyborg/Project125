@@ -673,3 +673,4 @@ x86_fdc_result:         defs 10,0
 x86_fdc_result_count:   db 0
 x86_fdc_result_index:   db 0
 x86_fdc_pending_st0:    db #80
+x86_fdc_pending_cylinder: db 0
