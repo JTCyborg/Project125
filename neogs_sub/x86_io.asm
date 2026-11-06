@@ -519,11 +519,11 @@ x86_io_trace_write8:
 ; Emit one bounded trace record before each emulated guest IN/OUT.
 ; Preserve the complete Z80 working register set and guest register image.
 x86_io_trace_guest_event:
-        ld      a, (x86_io_trace_count)
+        ld      a, (x86_io_guest_trace_count)
         cp      64
         ret     nc
         inc     a
-        ld      (x86_io_trace_count), a
+        ld      (x86_io_guest_trace_count), a
         push    af
         push    bc
         push    de
@@ -851,7 +851,7 @@ x86_io_test_fail:
         ret
 
 x86_io_opcode:       db 0
-x86_io_trace_count:  db 0
+x86_io_guest_trace_count:  db 0
 x86_io_port:         dw 0
 x86_io_value:        dw 0
 x86_io_test_latch:   dw 0
