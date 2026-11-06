@@ -266,6 +266,19 @@ bank_call_x86_shift_shl_cl:
         pop     af
         ret
 
+; Overlay68 -> overlay69: D2 /7 SAR r/m8,CL implementation.
+bank_call_x86_shift_sar_byte_cl:
+        push    af                      ; preserve the incoming ModR/M byte
+        ld      a, NGS_FW_BANK69_MPAG
+        out     (MPAG), a
+        pop     af
+        call    x86_shift_sar_byte_cl_impl
+        push    af
+        ld      a, NGS_FW_BANK68_MPAG
+        out     (MPAG), a
+        pop     af
+        ret
+
 ; Overlay69 -> overlay68 decoder/read/write gateways. AF (including carry)
 ; and HL return values are preserved across the physical bank switch.
 bank69_call_x86_mov_decode_modrm:
