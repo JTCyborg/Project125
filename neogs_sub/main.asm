@@ -2394,6 +2394,46 @@ x86_host_video_trace_staging:
         pop     af
         ret
 
+; A=byte. Preserve the caller's loop counter and AF.
+neo_trace_ef_hex8:
+        push    af
+        push    bc
+        ld      b,a
+        rrca
+        rrca
+        rrca
+        rrca
+        call    neo_trace_ef_nibble
+        ld      a,b
+        and     #0F
+        call    neo_trace_ef_nibble
+        pop     bc
+        pop     af
+        ret
+
+neo_trace_ef_nibble:
+        and     #0F
+        add     a,'0'
+        cp      '9'+1
+        jr      c,.emit
+        add     a,7
+.emit:
+        out     (#EF),a
+        ret
+
+x86_host_video_trace_text_p0:
+        defb "[VGA TEXT P0] ",0
+x86_host_video_trace_text_p1:
+        defb "[VGA TEXT P1] ",0
+x86_host_video_trace_stage_chars:
+        defb "[VGA STAGE P79 CHAR] ",0
+x86_host_video_trace_stage_attrs:
+        defb "[VGA STAGE P79 ATTR] ",0
+x86_host_video_trace_found:
+        db 0
+x86_host_video_trace_found_addr:
+        dw #C000
+
 ; Compare the eight 5-bit rows and enqueue XT make/break scan codes.
 x86_kbd_process_matrix:
         xor     a
