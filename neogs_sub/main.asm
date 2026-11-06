@@ -2245,9 +2245,7 @@ x86_host_video_service:
 ; live snapshots. This is direct #EF diagnostics only: no DMA/DBIT use.
 ; It distinguishes missing guest VRAM writes from a bad frame handoff.
 x86_host_video_trace_planes:
-        push    af
-        push    bc
-        push    hl
+        ; Caller sets up all registers used after this diagnostic.
         ; Dump first 8 bytes from character plane (page 83).
         ld      a,83
         rrca
@@ -2282,17 +2280,12 @@ x86_host_video_trace_planes:
         out     (#EF),a
         ld      a,10
         out     (#EF),a
-        pop     hl
-        pop     bc
-        pop     af
         ret
 
 ; The frame slot is physical page 79 (MPAG=#A7), DMA base 13:C000.
 ; Verify the staged character and attribute streams after both page copies.
 x86_host_video_trace_staging:
-        push    af
-        push    bc
-        push    hl
+        ; Caller does not consume register values after this diagnostic.
         ld      hl,x86_host_video_trace_stage_chars
         call    neo_trace_ef_string
         ld      hl,#8000
@@ -2319,9 +2312,6 @@ x86_host_video_trace_staging:
         out     (#EF),a
         ld      a,10
         out     (#EF),a
-        pop     hl
-        pop     bc
-        pop     af
         ret
 
 ; A=byte. Preserve the caller's loop counter and AF.
@@ -2359,11 +2349,6 @@ x86_host_video_trace_stage_chars:
         defb "[VGA STAGE P79 CHAR] ",0
 x86_host_video_trace_stage_attrs:
         defb "[VGA STAGE P79 ATTR] ",0
-x86_host_video_trace_found:
-        db 0
-x86_host_video_trace_found_addr:
-        dw #C000
-
 ; Compare the eight 5-bit rows and enqueue XT make/break scan codes.
 x86_kbd_process_matrix:
         xor     a
