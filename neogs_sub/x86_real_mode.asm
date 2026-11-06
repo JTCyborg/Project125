@@ -825,6 +825,9 @@ x86_real_dispatch_no_progress:
         jp      z, x86_real_ret_near_imm
         cp      #CA
         jp      z, x86_real_ret_far_imm
+        ; FE group: byte INC/DEC r/m8 (/0,/1), register and memory forms.
+        cp      #FE
+        jp      z, x86_real_incdec_r8
 
         ld      (x86_real_unsupported_opcode), a
         ld      a, 2
