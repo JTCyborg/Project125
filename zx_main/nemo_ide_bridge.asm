@@ -84,7 +84,7 @@ atm_nemo_ide_execute:
         jr      .failed
 .read:
         call    atm_nemo_ide_select_and_issue
-        ret     c
+        jr      c,.failed
         call    atm_nemo_ide_wait_drq
         jr      c,.failed
         ld      ix,ATM_STORAGE_RESULT+1
