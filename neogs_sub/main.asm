@@ -1151,8 +1151,8 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261106-30",13,10
-        defb "[NGS] BASE COMMIT C88DAA1",13,10,0
+        defb "[NGS] BUILD 20261106-31",13,10
+        defb "[NGS] BASE COMMIT 226BC91",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
 trace_bios_reset_in:  defb "[P RESET IN]",13,10,0
@@ -2712,6 +2712,8 @@ x86_resident_shift_byte_cl_dispatch:
         jp      z, x86_resident_shift_byte_ror_cl
         cp      #20                    ; /4 SHL r/m8,CL
         jp      z, x86_resident_shift_byte_shl_cl
+        cp      #28                    ; /5 SHR r/m8,CL
+        jp      z, x86_resident_shift_byte_shr_cl
         cp      #30                    ; /6 SAL r/m8,CL (same operation as SHL)
         jp      z, x86_resident_shift_byte_shl_cl
         jp      x86_real_shift_byte_cl_unsupported
@@ -2803,6 +2805,97 @@ x86_resident_shift_byte_shl_cl:
 .shl_cl_merge_preserve_of:
         ld      de, #FF3A              ; preserve undefined OF and AF
 .shl_cl_merge_apply:
+        ld      hl, (x86_reg_flags)
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+
+        ld      a, (x86_shift_result)
+        ld      l, a
+        ld      h, 0
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+; D2 /5: SHR r/m8,CL. Operates on the same decoded byte memory/register
+; operand path as SHL; the full 8086 CL count is used without an 80186 mask.
+x86_resident_shift_byte_shr_cl:
+        ld      a, 1
+        ld      (x86_mov_width), a
+        ld      a, (x86_shift_diag_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        ld      a, (x86_reg_cx)
+        or      a
+        jp      z, x86_real_next
+        ld      (x86_shift_count), a
+        ld      (x86_shift_original_count), a
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      a, l
+        ld      (x86_shift_original), a
+        ld      (x86_shift_result), a
+.shr_cl_loop:
+        ld      a, (x86_shift_result)
+        srl     a
+        ld      (x86_shift_result), a
+        ld      a, 0
+        adc     a, 0
+        ld      (x86_shift_carry), a
+        ld      a, (x86_shift_count)
+        dec     a
+        ld      (x86_shift_count), a
+        jr      nz, .shr_cl_loop
+
+        ; SHR defines CF/PF/ZF/SF. OF is defined only for count=1
+        ; (the original sign bit); AF and undefined OF are preserved.
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ld      a, (x86_shift_carry)
+        or      a
+        jr      z, .shr_cl_parity
+        ld      hl, x86_shift_new_flags
+        set     0, (hl)
+.shr_cl_parity:
+        ld      a, (x86_shift_result)
+        and     a
+        jp      pe, .shr_cl_set_pf
+        jr      .shr_cl_zero
+.shr_cl_set_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.shr_cl_zero:
+        ld      a, (x86_shift_result)
+        or      a
+        jr      nz, .shr_cl_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.shr_cl_sign:
+        ld      a, (x86_shift_original_count)
+        cp      1
+        jr      nz, .shr_cl_merge_preserve_of
+        ld      a, (x86_shift_original)
+        bit     7, a
+        jr      z, .shr_cl_merge
+        ld      hl, x86_shift_new_flags+1
+        set     3, (hl)
+.shr_cl_merge:
+        ld      de, #F73A              ; clear CF/PF/ZF/SF/OF; preserve AF
+        jr      .shr_cl_merge_apply
+.shr_cl_merge_preserve_of:
+        ld      de, #FF3A              ; preserve undefined OF and AF
+.shr_cl_merge_apply:
         ld      hl, (x86_reg_flags)
         ld      a, h
         and     d
