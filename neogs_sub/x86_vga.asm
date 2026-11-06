@@ -1,6 +1,7 @@
 ; PROJECT 125 — resident VGA planar core.
-; Implemented: Sequencer/GC indexed registers, Attribute Controller index/data
-; flip-flop, Misc Output, Status 1, aperture selection, four 64 KiB planes,
+; Implemented: Sequencer/GC indexed registers, Attribute Controller
+; index/data flip-flop and palette-enable latch, Misc Output, Status 1,
+; aperture selection with aperture-relative offsets, four 64 KiB planes,
 ; read modes 0/1, write modes 0/1, latches, set/reset, rotate, logical ops,
 ; bit mask and Sequencer Map Mask.
 ; Pending: CRTC, DAC, scanout, chain-4, odd/even and write modes 2/3.
@@ -32,6 +33,11 @@ x86_vga_io_read8:
         or      a
         sbc     hl,de
         jp      z,.misc
+        ld      hl,(x86_io_port)
+        ld      de,#03C0
+        or      a
+        sbc     hl,de
+        jp      z,.attr_index_read
         ld      hl,(x86_io_port)
         ld      de,#03C1
         or      a
@@ -76,6 +82,13 @@ x86_vga_io_read8:
         ret
 .misc:
         ld      a,(x86_vga_misc_output)
+        or      a
+        ret
+.attr_index_read:
+        ld      a,(x86_vga_attr_index)
+        ld      b,a
+        ld      a,(x86_vga_attr_palette_enable)
+        or      b
         or      a
         ret
 .attr_data:
@@ -182,6 +195,9 @@ x86_vga_io_write8:
         ld      a,(x86_io_value)
         and     #1F
         ld      (x86_vga_attr_index),a
+        ld      a,(x86_io_value)
+        and     #20
+        ld      (x86_vga_attr_palette_enable),a
         ld      a,1
         ld      (x86_vga_attr_data_phase),a
         or      a
@@ -219,19 +235,18 @@ x86_vga_decode_aperture:
         ld      a,(x86_mem_addr+1)
         bit     7,a
         jr      z,.no
-        jr      .offset_32
+        jr      .offset_32_b800
 .b000:
         ld      a,(x86_mem_addr+1)
         bit     7,a
         jr      nz,.no
-.offset_32:
         ld      a,(x86_mem_addr+1)
-        and     #7F
-        ld      (x86_vga_offset+1),a
-        ld      a,(x86_mem_addr)
-        ld      (x86_vga_offset),a
-        or      a
-        ret
+        sub     #B0
+        jr      .store_offset_hi
+.offset_32_b800:
+        ld      a,(x86_mem_addr+1)
+        sub     #B8
+        jr      .store_offset_hi
 .a000:
         ld      a,(x86_vga_gc_regs+6)
         and     #0C
@@ -240,7 +255,11 @@ x86_vga_decode_aperture:
         cp      #0C
         jr      z,.no
 .offset_full:
+        ; 128 KiB A0000h-BFFFFh and 64 KiB A0000h-AFFFFh are
+        ; relative to A0000h, not the raw physical high byte.
         ld      a,(x86_mem_addr+1)
+        sub     #A0
+.store_offset_hi:
         ld      (x86_vga_offset+1),a
         ld      a,(x86_mem_addr)
         ld      (x86_vga_offset),a
@@ -506,6 +525,7 @@ x86_vga_logic:
 x86_vga_seq_index:       db 0
 x86_vga_gc_index:        db 0
 x86_vga_attr_index:      db 0
+x86_vga_attr_palette_enable: db 0
 x86_vga_attr_data_phase: db 0
 x86_vga_misc_output:     db 1
 x86_vga_status_toggle:   db 0
