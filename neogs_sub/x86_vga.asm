@@ -431,9 +431,9 @@ x86_vga_mem_write8:
         ld      a,(x86_vga_gc_regs+5)
         and     3
         cp      1
-        jr      z,.mode1
+        jp      z,.mode1
         or      a
-        jr      nz,.unsupported
+        jp      nz,.unsupported
         ld      a,(x86_mem_value)
         ld      b,a
         ld      a,(x86_vga_gc_regs+3)

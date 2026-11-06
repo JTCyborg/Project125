@@ -445,11 +445,6 @@ bios_video_test_fail:
         scf
         ret
 
-bios_video_row: db 0
-bios_video_col: db 0
-bios_video_char: db 0
-bios_video_write_value: db 0
-
 ; Guest program is assembled as a byte stream at physical 0000:5002.
 x86_bios_video_test_image:
         ; AH=00h set mode 03h.
