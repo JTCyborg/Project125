@@ -242,11 +242,8 @@ x86_storage_build_mailbox:
         and     #0F
         ld      (hl),a
         inc     hl
+        ; Preserve ATA sector-count byte: zero encodes 256 sectors.
         ld      a,(x86_ata_taskfile+2)
-        or      a
-        jr      nz,.count
-        ld      a,#FF
-.count:
         ld      (hl),a
         inc     hl
         xor     a
