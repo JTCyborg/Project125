@@ -4045,14 +4045,95 @@ x86_real_group_f7:
         ; use the same complete ModR/M effective-address path here.
         ld      a, (x86_f7_modrm)
         and     #38
+        cp      #00
+        jp      z, x86_real_f7_test_word
+        cp      #08
+        jp      z, x86_real_f7_test_word
         cp      #10
         jp      z, x86_real_f7_not_word
-
         cp      #30
         jp      nz, x86_real_group_f7_unsupported
         ld      a, #F6
         ld      (x86_shift_diag_stage), a
         jp      x86_real_f7_div_word
+
+; F7 /0 and /1: TEST r/m16, imm16 (8086 treats both encodings as TEST).
+; Operand decoding uses the shared ModR/M/EA implementation. CF and OF are
+; cleared, SF/ZF/PF come from the AND result, AF is undefined and preserved.
+x86_real_f7_test_word:
+        xor     a
+        ld      (x86_mov_width), a
+        ld      a, (x86_f7_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_f7_test_operand), hl
+
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_f7_test_immediate), a
+        call    x86_real_fetch8
+        ret     c
+        ld      h, a
+        ld      a, (x86_f7_test_immediate)
+        ld      l, a
+        ld      (x86_f7_test_immediate), hl
+
+        ld      hl, (x86_f7_test_operand)
+        ld      de, (x86_f7_test_immediate)
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      (x86_f7_test_result), hl
+
+        xor     a
+        ld      (x86_shift_new_flags), a
+        ld      (x86_shift_new_flags+1), a
+        ; PF is even parity of the low result byte.
+        ld      a, l
+        and     a
+        jp      pe, .test_pf
+        jr      .test_zero
+.test_pf:
+        ld      hl, x86_shift_new_flags
+        set     2, (hl)
+.test_zero:
+        ld      hl, (x86_f7_test_result)
+        ld      a, h
+        or      l
+        jr      nz, .test_sign
+        ld      hl, x86_shift_new_flags
+        set     6, (hl)
+.test_sign:
+        ld      hl, (x86_f7_test_result)
+        bit     7, h
+        jr      z, .test_merge
+        ld      hl, x86_shift_new_flags+1
+        set     7, (hl)
+.test_merge:
+        ; Same architectural flag mask as TEST r/m8,imm8.
+        ld      hl, (x86_reg_flags)
+        ld      de, #F73A
+        ld      a, h
+        and     d
+        ld      h, a
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      de, (x86_shift_new_flags)
+        ld      a, h
+        or      d
+        ld      h, a
+        ld      a, l
+        or      e
+        ld      l, a
+        ld      (x86_reg_flags), hl
+        jp      x86_real_next
+
 
 ; F7 /2: NOT r/m16. Supports all eight registers and every 8086 memory
 ; addressing form, including BP=>SS and an active segment override.
@@ -4286,6 +4367,9 @@ x86_real_group_f7_unsupported:
         scf
         ret
 
+x86_f7_test_operand:      dw 0
+x86_f7_test_immediate:    dw 0
+x86_f7_test_result:       dw 0
 x86_f7_modrm:              db 0
 x86_f7_divisor:            dw 0
 x86_f7_quotient:           dw 0
