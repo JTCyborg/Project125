@@ -2248,14 +2248,14 @@ x86_host_video_trace_planes:
         cp      3
         jr      nc,.done
 
-        ; Do not spend a trace slot while BIOS is still clearing the screen.
-        ; Wait until printable text appears on the BIOS cursor row (row 6,
-        ; starting at column 7: plane offset 01E7).
+        ; BIOS cursor position is dynamic. Scan the complete 80x25 text
+        ; character plane instead of assuming that the first message starts
+        ; at row 6, column 7.
         ld      a,83
         rrca
         out     (MPAGEX),a
-        ld      hl,#C1E7
-        ld      b,80
+        ld      hl,#C000
+        ld      bc,#07D0
 .scan_text:
         ld      a,(hl)
         cp      #21
@@ -2264,21 +2264,28 @@ x86_host_video_trace_planes:
         jr      c,.text_found
 .scan_next:
         inc     hl
-        djnz    .scan_text
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,.scan_text
         jr      .done
 
 .text_found:
+        ld      (x86_host_video_trace_found_addr),hl
         ld      a,(x86_host_video_trace_count)
         inc     a
         ld      (x86_host_video_trace_count),a
 
-        ; Capture 32 character cells beginning at the BIOS cursor position.
         ld      hl,x86_host_video_trace_text_p0
         call    neo_trace_ef_string
-        ld      a,83
-        rrca
-        out     (MPAGEX),a
-        ld      hl,#C1E7
+        ld      hl,(x86_host_video_trace_found_addr)
+        ld      a,h
+        call    neo_trace_ef_hex8
+        ld      a,l
+        call    neo_trace_ef_hex8
+        ld      a,' '
+        out     (#EF),a
+        ld      hl,(x86_host_video_trace_found_addr)
         ld      b,32
 .text_p0:
         ld      a,(hl)
@@ -2294,10 +2301,10 @@ x86_host_video_trace_planes:
 
         ld      hl,x86_host_video_trace_text_p1
         call    neo_trace_ef_string
+        ld      hl,(x86_host_video_trace_found_addr)
         ld      a,87
         rrca
         out     (MPAGEX),a
-        ld      hl,#C1E7
         ld      b,32
 .text_p1:
         ld      a,(hl)
@@ -2350,6 +2357,8 @@ x86_host_video_trace_text_p1:
         defb "[VGA TEXT P1] ",0
 x86_host_video_trace_count:
         db 0
+x86_host_video_trace_found_addr:
+        dw #C000
 
 ; Compare the eight 5-bit rows and enqueue XT make/break scan codes.
 x86_kbd_process_matrix:
