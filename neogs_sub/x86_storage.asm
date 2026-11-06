@@ -262,6 +262,8 @@ x86_ata_decrement_remaining:
         ld      hl,(x86_ata_sectors_remaining)
         dec     hl
         ld      (x86_ata_sectors_remaining),hl
+        ld      a,l
+        ld      (x86_ata_taskfile+2),a
         ld      a,h
         or      l
         ret
@@ -269,18 +271,29 @@ x86_ata_decrement_remaining:
 x86_ata_increment_lba:
         ld      hl,x86_ata_current_lba
         inc     (hl)
-        ret     nz
+        jr      nz,.sync_taskfile
         inc     hl
         inc     (hl)
-        ret     nz
+        jr      nz,.sync_taskfile
         inc     hl
         inc     (hl)
-        ret     nz
+        jr      nz,.sync_taskfile
         inc     hl
         ld      a,(hl)
         inc     a
         and     #0F
         ld      (hl),a
+.sync_taskfile:
+        ld      hl,x86_ata_current_lba
+        ld      de,x86_ata_taskfile+3
+        ld      bc,3
+        ldir
+        ld      a,(x86_ata_current_lba+3)
+        ld      b,a
+        ld      a,(x86_ata_taskfile+6)
+        and     #F0
+        or      b
+        ld      (x86_ata_taskfile+6),a
         ret
 
 ; Called by the DMA completion service after status/data have arrived.
