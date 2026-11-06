@@ -287,8 +287,6 @@ bank69_call_x86_mov_decode_modrm:
         ld      a, NGS_FW_BANK68_MPAG
         out     (MPAG), a
         pop     af
-        xor     a
-        ld      (x86_mov_width), a       ; D3 always operates on r/m16
         ld      a, (x86_shift_modrm_shared)
         call    x86_real_mov_decode_modrm
         push    af
