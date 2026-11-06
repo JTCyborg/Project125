@@ -1,0 +1,507 @@
+; =========================================================================
+; PROJECT125 guest storage devices: NEC765 FDC + ATA task file.
+; Guest x86 ports only. Physical NEMO-IDE access is reserved for ATM Z80.
+; =========================================================================
+
+; Carry clear = port handled, carry set = not this device.
+x86_storage_read8:
+        ld      hl,(x86_io_port)
+        ld      de,#03F4
+        or      a
+        sbc     hl,de
+        jr      z,x86_fdc_read_msr
+        ld      hl,(x86_io_port)
+        ld      de,#03F5
+        or      a
+        sbc     hl,de
+        jr      z,x86_fdc_read_fifo
+        ld      hl,(x86_io_port)
+        ld      de,#03F2
+        or      a
+        sbc     hl,de
+        jr      z,x86_fdc_read_dor
+        ld      hl,(x86_io_port)
+        ld      de,#03F7
+        or      a
+        sbc     hl,de
+        jr      z,x86_fdc_read_dir
+
+        ld      a,(x86_io_port+1)
+        cp      #01
+        jr      nz,.unhandled
+        ld      a,(x86_io_port)
+        cp      #F0
+        jr      c,.unhandled
+        cp      #F8
+        jr      nc,.unhandled
+        cp      #F0
+        jr      z,x86_ata_read_data
+        cp      #F1
+        jr      z,x86_ata_read_error
+        cp      #F7
+        jr      z,x86_ata_read_status
+        sub     #F0
+        ld      e,a
+        ld      d,0
+        ld      hl,x86_ata_taskfile
+        add     hl,de
+        ld      a,(hl)
+        or      a
+        ret
+.unhandled:
+        scf
+        ret
+
+x86_storage_write8:
+        ld      hl,(x86_io_port)
+        ld      de,#03F2
+        or      a
+        sbc     hl,de
+        jr      z,x86_fdc_write_dor
+        ld      hl,(x86_io_port)
+        ld      de,#03F5
+        or      a
+        sbc     hl,de
+        jr      z,x86_fdc_write_fifo
+        ld      hl,(x86_io_port)
+        ld      de,#03F7
+        or      a
+        sbc     hl,de
+        jr      z,x86_fdc_write_ccr
+
+        ld      a,(x86_io_port+1)
+        cp      #01
+        jr      nz,.unhandled
+        ld      a,(x86_io_port)
+        cp      #F0
+        jr      c,.unhandled
+        cp      #F8
+        jr      nc,.unhandled
+        cp      #F7
+        jr      z,x86_ata_command
+        cp      #F0
+        jr      z,x86_ata_write_data
+        sub     #F0
+        ld      e,a
+        ld      d,0
+        ld      hl,x86_ata_taskfile
+        add     hl,de
+        ld      a,(x86_io_value)
+        ld      (hl),a
+        or      a
+        ret
+.unhandled:
+        scf
+        ret
+
+; ATA primary channel. IDENTIFY reports a device but zero capacity until
+; the ATM bridge has discovered the physical NEMO-IDE device.
+x86_ata_read_error:
+        ld      a,(x86_ata_error)
+        or      a
+        ret
+x86_ata_read_status:
+        ld      a,(x86_ata_status)
+        or      a
+        ret
+x86_ata_read_data:
+        ld      hl,(x86_ata_buffer_index)
+        ld      de,x86_ata_buffer
+        add     hl,de
+        ld      a,(hl)
+        call    x86_ata_advance_index
+        or      a
+        ret
+x86_ata_write_data:
+        ld      a,(x86_ata_status)
+        bit     3,a
+        ret     z
+        ld      hl,(x86_ata_buffer_index)
+        ld      de,x86_ata_buffer
+        add     hl,de
+        ld      a,(x86_io_value)
+        ld      (hl),a
+        call    x86_ata_advance_index
+        or      a
+        ret
+x86_ata_advance_index:
+        ld      hl,(x86_ata_buffer_index)
+        inc     hl
+        ld      (x86_ata_buffer_index),hl
+        ld      de,512
+        or      a
+        sbc     hl,de
+        ret     c
+        xor     a
+        ld      (x86_ata_status),a
+        ld      (x86_ata_buffer_index),a
+        ld      (x86_ata_buffer_index+1),a
+        ret
+
+x86_ata_command:
+        ld      a,(x86_io_value)
+        ld      (x86_ata_command_reg),a
+        ld      a,#80
+        ld      (x86_ata_status),a
+        xor     a
+        ld      (x86_ata_error),a
+        ld      (x86_ata_buffer_index),a
+        ld      (x86_ata_buffer_index+1),a
+        ld      a,(x86_ata_command_reg)
+        cp      #EC
+        jr      z,x86_ata_identify
+        cp      #20
+        jr      z,x86_ata_read_sectors
+        cp      #30
+        jr      z,x86_ata_write_sectors
+        cp      #E7
+        jr      z,x86_ata_flush
+        jr      x86_ata_abort
+
+x86_ata_identify:
+        ld      hl,x86_ata_buffer
+        ld      de,512
+        xor     a
+.clear:
+        ld      (hl),a
+        inc     hl
+        dec     de
+        ld      a,d
+        or      e
+        jr      nz,.clear
+        ld      hl,x86_ata_buffer
+        ld      (hl),#40
+        ld      hl,x86_ata_buffer+98
+        ld      (hl),#00
+        inc     hl
+        ld      (hl),#02
+        ld      a,#58
+        ld      (x86_ata_status),a
+        or      a
+        ret
+
+x86_ata_read_sectors:
+        ld      a,1
+        jr      x86_ata_submit_request
+x86_ata_write_sectors:
+        ld      a,2
+        jr      x86_ata_submit_request
+x86_ata_flush:
+        ld      a,3
+x86_ata_submit_request:
+        ld      (x86_storage_operation),a
+        call    x86_storage_build_mailbox
+        ld      a,(x86_storage_transport_online)
+        or      a
+        jr      nz,.pending
+        jr      x86_ata_abort
+.pending:
+        ; ATM completes asynchronously and writes status/data into the slot.
+        ; Do not block the Z80 interpreter while waiting for DMA completion.
+        ld      a,#80
+        ld      (x86_ata_status),a
+        or      a
+        ret
+
+x86_ata_abort:
+        ld      a,#04
+        ld      (x86_ata_error),a
+        ld      a,#51
+        ld      (x86_ata_status),a
+        or      a
+        ret
+
+; Stable 16-byte bridge request:
+; A5 signature, op, device, sequence, LBA[3:0], count, flags, status, reserved.
+x86_storage_build_mailbox:
+        ld      hl,x86_storage_mailbox
+        ld      (hl),#A5
+        inc     hl
+        ld      a,(x86_storage_operation)
+        ld      (hl),a
+        inc     hl
+        xor     a
+        ld      (hl),a
+        inc     hl
+        ld      a,(x86_storage_sequence)
+        inc     a
+        ld      (x86_storage_sequence),a
+        ld      (hl),a
+        inc     hl
+        ld      a,(x86_ata_taskfile+3)
+        ld      (hl),a
+        inc     hl
+        ld      a,(x86_ata_taskfile+4)
+        ld      (hl),a
+        inc     hl
+        ld      a,(x86_ata_taskfile+5)
+        ld      (hl),a
+        inc     hl
+        ld      a,(x86_ata_taskfile+6)
+        and     #0F
+        ld      (hl),a
+        inc     hl
+        ld      a,(x86_ata_taskfile+2)
+        or      a
+        jr      nz,.count
+        ld      a,#FF
+.count:
+        ld      (hl),a
+        inc     hl
+        xor     a
+        ld      (hl),a
+        inc     hl
+        ld      (hl),a
+        inc     hl
+        ld      b,5
+.reserved:
+        ld      (hl),a
+        inc     hl
+        djnz    .reserved
+        ret
+
+; NEC765/8272-compatible FDC, with no A:/B: media installed.
+x86_fdc_read_dor:
+        ld      a,(x86_fdc_dor)
+        or      a
+        ret
+x86_fdc_read_dir:
+        ld      a,#80                   ; disk-change, no media
+        or      a
+        ret
+x86_fdc_read_msr:
+        ld      a,(x86_fdc_phase)
+        cp      2
+        jr      z,.result
+        cp      1
+        jr      z,.command
+        ld      a,#80                   ; RQM, idle
+        or      a
+        ret
+.result:
+        ld      a,#D0                   ; RQM + DIO
+        or      a
+        ret
+.command:
+        ld      a,#90                   ; RQM, host-to-controller
+        or      a
+        ret
+x86_fdc_read_fifo:
+        ld      a,(x86_fdc_phase)
+        cp      2
+        jr      nz,.empty
+        ld      a,(x86_fdc_result_index)
+        ld      e,a
+        ld      d,0
+        ld      hl,x86_fdc_result
+        add     hl,de
+        ld      a,(hl)
+        push    af
+        inc     e
+        ld      a,e
+        ld      (x86_fdc_result_index),a
+        ld      a,(x86_fdc_result_count)
+        cp      e
+        jr      nz,.more
+        xor     a
+        ld      (x86_fdc_phase),a
+        ld      (x86_fdc_result_index),a
+.more:
+        pop     af
+        or      a
+        ret
+.empty:
+        ld      a,#FF
+        or      a
+        ret
+
+x86_fdc_write_dor:
+        ld      a,(x86_io_value)
+        ld      (x86_fdc_dor),a
+        bit     2,a
+        jr      nz,.done
+        xor     a
+        ld      (x86_fdc_phase),a
+        ld      (x86_fdc_command_count),a
+        ld      (x86_fdc_result_count),a
+.done:
+        or      a
+        ret
+x86_fdc_write_ccr:
+        ld      a,(x86_io_value)
+        and     3
+        ld      (x86_fdc_ccr),a
+        or      a
+        ret
+x86_fdc_write_fifo:
+        ld      a,(x86_fdc_phase)
+        cp      2
+        ret     z
+        ld      a,(x86_fdc_command_count)
+        ld      e,a
+        ld      d,0
+        ld      hl,x86_fdc_command
+        add     hl,de
+        ld      a,(x86_io_value)
+        ld      (hl),a
+        inc     e
+        ld      a,e
+        ld      (x86_fdc_command_count),a
+        ld      a,e
+        cp      1
+        jr      nz,.parameters
+        ld      a,(x86_io_value)
+        and     #1F
+        cp      #03
+        jr      z,.len3
+        cp      #04
+        jr      z,.len2
+        cp      #07
+        jr      z,.len2
+        cp      #08
+        jr      z,.len1
+        cp      #0F
+        jr      z,.len3
+        cp      #05
+        jr      z,.len9
+        cp      #06
+        jr      z,.len9
+        cp      #09
+        jr      z,.len9
+        cp      #0A
+        jr      z,.len2
+        cp      #0D
+        jr      z,.len6
+        jr      x86_fdc_invalid
+.len1:  ld      a,1
+        jr      .setlen
+.len2:  ld      a,2
+        jr      .setlen
+.len3:  ld      a,3
+        jr      .setlen
+.len6:  ld      a,6
+        jr      .setlen
+.len9:  ld      a,9
+.setlen:
+        ld      (x86_fdc_command_length),a
+        ld      a,1
+        ld      (x86_fdc_phase),a
+        ret
+.parameters:
+        ld      a,(x86_fdc_command_count)
+        ld      b,a
+        ld      a,(x86_fdc_command_length)
+        cp      b
+        ret     nz
+        jp      x86_fdc_execute
+
+x86_fdc_invalid:
+        ld      a,#80
+        ld      (x86_fdc_result),a
+        ld      a,1
+        ld      (x86_fdc_result_count),a
+        jp      x86_fdc_result_phase
+
+x86_fdc_execute:
+        ld      a,(x86_fdc_command)
+        and     #1F
+        cp      #08
+        jr      z,x86_fdc_sense_interrupt
+        cp      #04
+        jr      z,x86_fdc_sense_drive
+        cp      #03
+        jr      z,x86_fdc_specify
+        cp      #07
+        jr      z,x86_fdc_seek
+        cp      #0F
+        jr      z,x86_fdc_seek
+        cp      #05
+        jr      z,x86_fdc_no_media
+        cp      #06
+        jr      z,x86_fdc_no_media
+        cp      #09
+        jr      z,x86_fdc_no_media
+        cp      #0A
+        jr      z,x86_fdc_no_media
+        cp      #0D
+        jr      z,x86_fdc_no_media
+        jr      x86_fdc_invalid
+
+x86_fdc_sense_interrupt:
+        ld      hl,x86_fdc_result
+        ld      (hl),#80
+        inc     hl
+        ld      (hl),0
+        ld      a,2
+        ld      (x86_fdc_result_count),a
+        jp      x86_fdc_result_phase
+x86_fdc_sense_drive:
+        ld      a,#10                   ; track zero, drive not ready
+        ld      (x86_fdc_result),a
+        ld      a,1
+        ld      (x86_fdc_result_count),a
+        jp      x86_fdc_result_phase
+x86_fdc_specify:
+        xor     a
+        ld      (x86_fdc_phase),a
+        ld      (x86_fdc_command_count),a
+        ret
+x86_fdc_seek:
+        ld      a,#48
+        ld      (x86_fdc_pending_st0),a
+        xor     a
+        ld      (x86_fdc_phase),a
+        ld      (x86_fdc_command_count),a
+        ret
+x86_fdc_no_media:
+        ld      hl,x86_fdc_result
+        ld      (hl),#48                ; abnormal termination, not ready
+        inc     hl
+        ld      (hl),#04                ; no data / no media
+        inc     hl
+        xor     a
+        ld      (hl),a
+        inc     hl
+        ld      a,(x86_fdc_command+2)
+        ld      (hl),a
+        inc     hl
+        ld      a,(x86_fdc_command+3)
+        ld      (hl),a
+        inc     hl
+        ld      a,(x86_fdc_command+4)
+        ld      (hl),a
+        inc     hl
+        ld      a,(x86_fdc_command+5)
+        ld      (hl),a
+        ld      a,7
+        ld      (x86_fdc_result_count),a
+x86_fdc_result_phase:
+        xor     a
+        ld      (x86_fdc_result_index),a
+        ld      (x86_fdc_command_count),a
+        ld      a,2
+        ld      (x86_fdc_phase),a
+        ret
+
+; 16-byte NeoGS->ATM mailbox; physical device access is ATM-only.
+x86_ata_taskfile:       defs 8,0
+x86_ata_status:         db #50
+x86_ata_error:          db 0
+x86_ata_command_reg:    db 0
+x86_ata_buffer_index:   dw 0
+x86_ata_buffer:         defs 512,0
+x86_storage_transport_online: db 0
+x86_storage_operation:  db 0
+x86_storage_sequence:   db 0
+x86_storage_mailbox:    defs 16,0
+
+x86_fdc_dor:            db #0C
+x86_fdc_ccr:            db 0
+x86_fdc_phase:          db 0
+x86_fdc_command:        defs 10,0
+x86_fdc_command_count:  db 0
+x86_fdc_command_length: db 0
+x86_fdc_result:         defs 10,0
+x86_fdc_result_count:   db 0
+x86_fdc_result_index:   db 0
+x86_fdc_pending_st0:    db #80
