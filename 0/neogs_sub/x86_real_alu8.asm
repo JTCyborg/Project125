@@ -9,11 +9,92 @@
 ; Logical instructions clear CF/OF and deterministically clear undefined AF.
 ; =========================================================================
 
+; ADD AL,imm8 (04) and ADC AL,imm8 (14). Route through byte ALU.
+x86_real_alu8_accumulator_immediate:
+        ld      (x86_real_opcode), a
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_alu8_src), a
+        ld      a, (x86_reg_ax)
+        ld      (x86_alu8_dst), a
+        xor     a
+        ld      (x86_alu8_dst_is_mem), a
+        ld      (x86_alu8_dst_reg), a       ; AL is byte register 0
+        ld      (x86_alu8_no_write), a
+        ld      (x86_alu8_is_logic), a
+        ld      a, (x86_real_opcode)
+        and     #38
+        ld      (x86_alu8_mode), a
+        xor     a
+        ld      (x86_alu8_carry_in), a
+        ld      a, (x86_alu8_mode)
+        cp      #10
+        jp      nz, x86_real_alu8_execute_core
+        ; ADC consumes the incoming x86 CF.
+        ld      a, (x86_reg_flags)
+        and     1
+        ld      (x86_alu8_carry_in), a
+        jp      x86_real_alu8_execute_core
+
+; OR AL,imm8 (0C) and AND AL,imm8 (24).
+; Logical flags use the common byte-width helper (CF/AF/OF cleared).
+x86_real_logic8_accumulator_immediate:
+        ld      (x86_real_opcode), a
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_logic_src), a
+        ld      a, (x86_reg_ax)
+        ld      (x86_logic_dst), a
+        ld      a, (x86_real_opcode)
+        cp      #0C
+        jr      z, .or_immediate
+        cp      #24
+        jr      z, .and_immediate
+        ld      a, (x86_logic_dst)
+        ld      b, a
+        ld      a, (x86_logic_src)
+        xor     b
+        jr      .logic_immediate_done
+.and_immediate:
+        ld      a, (x86_logic_dst)
+        ld      b, a
+        ld      a, (x86_logic_src)
+        and     b
+        jr      .logic_immediate_done
+.or_immediate:
+        ld      a, (x86_logic_dst)
+        ld      b, a
+        ld      a, (x86_logic_src)
+        or      b
+.logic_immediate_done:
+        ld      (x86_logic_result), a
+        xor     a
+        ld      (x86_logic_result+1), a
+        ld      a, 1
+        ld      (x86_logic_width), a
+        call    x86_real_logic_update_flags
+        ld      a, (x86_reg_ax+1)
+        ld      h, a
+        ld      a, (x86_logic_result)
+        ld      l, a
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
+
 ; -------------------------------------------------------------------------
 ; 8-bit arithmetic and logical ModR/M forms.
 ; A=opcode. Byte register encoding: AL,CL,DL,BL,AH,CH,DH,BH.
 ; -------------------------------------------------------------------------
 x86_real_alu8_modrm:
+        push    af
+        ld      a, (trace_alu8_once)
+        or      a
+        jr      nz, .alu8_trace_done
+        ld      a, 1
+        ld      (trace_alu8_once), a
+        ld      hl, trace_alu8_entry
+        call    neo_trace_ef_string
+.alu8_trace_done:
+        pop     af
         ld      (x86_real_opcode), a
         call    x86_real_fetch8
         ret     c
@@ -162,13 +243,13 @@ x86_real_alu8_modrm:
 .mark_logic:
         ld      a, 1
         ld      (x86_alu8_is_logic), a
-        jp      .carry_ready
+        jp      x86_real_alu8_execute_core
 .force_test:
         ld      a, #20
         ld      (x86_alu8_mode), a
         ld      a, 1
         ld      (x86_alu8_is_logic), a
-        jp      .carry_ready
+        jp      x86_real_alu8_execute_core
 
 .capture_carry:
         xor     a
@@ -177,12 +258,12 @@ x86_real_alu8_modrm:
         cp      #10
         jr      z, .read_carry
         cp      #18
-        jr      nz, .carry_ready
+        jp      nz, x86_real_alu8_execute_core
 .read_carry:
         ld      a, (x86_reg_flags)
         and     1
         ld      (x86_alu8_carry_in), a
-.carry_ready:
+x86_real_alu8_execute_core:
         ld      a, (x86_alu8_is_logic)
         or      a
         jp      nz, .execute_logic
@@ -475,6 +556,182 @@ x86_real_alu8_update_flags:
         ld      l, a
         ld      (x86_reg_flags), hl
         ret
+
+; -------------------------------------------------------------------------
+; Group-1 byte immediate: 80/82 r/m8,imm8.
+; Register-direct forms are fully decoded for all eight ALU operations.
+; Memory forms stop explicitly until the immediate-memory writeback path is
+; enabled; this avoids silently corrupting a guest operand.
+; -------------------------------------------------------------------------
+x86_real_group1_byte_immediate:
+        ld      (x86_real_opcode), a
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_group1_byte_modrm), a
+        and     #C0
+        cp      #C0
+        jp      z, .register_operand
+
+        ; Memory destination: decode the complete 8086 effective address,
+        ; read r/m8, then apply the immediate through the shared byte ALU.
+        ; This covers all Group-1 operations, including BIOS 80 /2 ADC.
+        ld      a, (x86_group1_byte_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_alu8_read_memory
+        ret     c
+        ld      (x86_alu8_dst), a
+        ld      a, (x86_group1_byte_modrm)
+        and     #38
+        ld      (x86_alu8_mode), a
+        ld      a, 1
+        ld      (x86_alu8_dst_is_mem), a
+        xor     a
+        ld      (x86_alu8_no_write), a
+        ld      (x86_alu8_is_logic), a
+        ld      (x86_alu8_carry_in), a
+
+        ld      a, (x86_alu8_mode)
+        cp      #08
+        jr      z, .memory_logic
+        cp      #20
+        jr      z, .memory_logic
+        cp      #30
+        jr      z, .memory_logic
+        cp      #38
+        jr      z, .memory_compare
+        cp      #10
+        jr      z, .memory_carry
+        cp      #18
+        jr      z, .memory_carry
+        jr      .memory_fetch_immediate
+.memory_logic:
+        ld      a, 1
+        ld      (x86_alu8_is_logic), a
+        jr      .memory_fetch_immediate
+.memory_compare:
+        ld      a, 1
+        ld      (x86_alu8_no_write), a
+        jr      .memory_fetch_immediate
+.memory_carry:
+        ld      a, (x86_reg_flags)
+        and     1
+        ld      (x86_alu8_carry_in), a
+.memory_fetch_immediate:
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_alu8_src), a
+        jp      x86_real_alu8_execute_core
+
+.register_operand:
+        ld      a, (x86_group1_byte_modrm)
+        and     #38
+        ld      (x86_alu8_mode), a
+        ld      a, (x86_group1_byte_modrm)
+        and     7
+        ld      (x86_alu8_dst_reg), a
+        call    x86_alu8_read_reg
+        ld      (x86_alu8_dst), a
+
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_alu8_src), a
+
+        xor     a
+        ld      (x86_alu8_dst_is_mem), a
+        ld      (x86_alu8_no_write), a
+        ld      (x86_alu8_is_logic), a
+        ld      (x86_alu8_carry_in), a
+
+        ld      a, (x86_alu8_mode)
+        cp      #08
+        jr      z, .byte_logic
+        cp      #20
+        jr      z, .byte_logic
+        cp      #30
+        jr      z, .byte_logic
+        cp      #38
+        jr      z, .byte_compare
+        cp      #10
+        jr      z, .byte_carry
+        cp      #18
+        jr      z, .byte_carry
+        jr      .byte_execute
+.byte_logic:
+        ld      a, 1
+        ld      (x86_alu8_is_logic), a
+        jr      .byte_execute
+.byte_compare:
+        ld      a, 1
+        ld      (x86_alu8_no_write), a
+        ; The byte core identifies CMP by the arithmetic opcode field.
+        ld      a, #3C
+        ld      (x86_real_opcode), a
+        jr      .byte_execute
+.byte_carry:
+        ld      a, (x86_reg_flags)
+        and     1
+        ld      (x86_alu8_carry_in), a
+.byte_execute:
+        jp      x86_real_alu8_execute_core
+
+x86_real_group1_byte_unsupported:
+        ld      a, (x86_real_opcode)
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
+x86_group1_byte_modrm: db 0
+
+; XOR AX,imm16 (35). Logical FLAGS: CF/AF/OF cleared, PF/ZF/SF set.
+x86_real_logic16_accumulator_immediate:
+        ld      (x86_real_opcode), a
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_logic_src), a
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_logic_src+1), a
+        ld      hl, (x86_reg_ax)
+        ld      (x86_logic_dst), hl
+        ld      a, (x86_real_opcode)
+        cp      #25
+        jr      z, .and_immediate
+        ; XOR AX,imm16 (35).
+        ld      a, #30
+        ld      (x86_logic_mode), a
+        ld      hl, (x86_logic_dst)
+        ld      de, (x86_logic_src)
+        ld      a, l
+        xor     e
+        ld      l, a
+        ld      a, h
+        xor     d
+        ld      h, a
+        jr      .logic_result_ready
+.and_immediate:
+        ; AND AX,imm16 (25).
+        ld      a, #20
+        ld      (x86_logic_mode), a
+        ld      hl, (x86_logic_dst)
+        ld      de, (x86_logic_src)
+        ld      a, l
+        and     e
+        ld      l, a
+        ld      a, h
+        and     d
+        ld      h, a
+.logic_result_ready:
+        ld      (x86_logic_result), hl
+        ld      a, 2
+        ld      (x86_logic_width), a
+        call    x86_real_logic_update_flags
+        ; Re-read the computed result: the flag helper may use HL internally.
+        ld      hl, (x86_logic_result)
+        ld      (x86_reg_ax), hl
+        jp      x86_real_next
 
 ; -------------------------------------------------------------------------
 ; 16-bit register-direct OR/AND/XOR/TEST forms.
@@ -1502,5 +1759,14 @@ x86_guest_alu8_logic_image:
         db #B1,#01                 ; MOV CL,01
         db #02,#D1                 ; ADD DL,CL -> 80
         db #B1,#0F                 ; Restore CL; CX=0F0F
+        db #B0,#0F                 ; MOV AL,0F
+        db #0C,#30                 ; OR AL,30 -> 3F
+        db #24,#CF                 ; AND AL,CF -> 0F
+        db #34,#80                 ; XOR AL,80 -> 8F
+        db #B0,#F0                 ; Restore AL for AX regression
         db #F4
 x86_guest_alu8_logic_image_end:
+
+; One-shot byte ALU entry diagnostic.
+trace_alu8_once: db 0
+trace_alu8_entry: defb "[X86 ALU8]",13,10,0

@@ -11,7 +11,243 @@
 ; Default segment is DS; BP-based forms default to SS. ES/CS/SS/DS override prefixes are supported.
 ; =========================================================================
 
+; -------------------------------------------------------------------------
+; 8C/8E — MOV between a segment register and r/m16.
+; 8C /r: MOV r/m16,Sreg (ES,CS,SS,DS are readable).
+; 8E /r: MOV Sreg,r/m16 (ES,SS,DS are writable; loading CS is invalid).
+; -------------------------------------------------------------------------
+; -------------------------------------------------------------------------
+; C6/C7 — MOV r/m8,imm8 and MOV r/m16,imm16.
+; Only ModR/M /0 is defined by the 8086 encoding.
+; The common ModR/M decoder consumes displacement bytes before the immediate.
+; -------------------------------------------------------------------------
+x86_real_mov_immediate_rm:
+        ld      (x86_mov_opcode), a
+        call    x86_real_fetch8
+        ret     c
+        call    x86_real_mov_decode_modrm
+        ret     c
+        ; PCem Project124's 808x.c C7 path consumes ModR/M with fetchea()
+        ; and does not reject the reg field. Preserve that compatibility:
+        ; C7 CE is treated as MOV SI,imm16 (the /1 bits are ignored).
+        ld      a, (x86_mov_opcode)
+        cp      #C6
+        jr      z, .byte_immediate
+
+        ; C7: immediate word, little-endian.
+        xor     a
+        ld      (x86_mov_width), a
+        call    x86_real_mov_fetch16
+        ret     c
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+.byte_immediate:
+        ld      a, 1
+        ld      (x86_mov_width), a
+        call    x86_real_fetch8
+        ret     c
+        ld      l, a
+        ld      h, 0
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+x86_real_mov_immediate_invalid:
+        ld      a, (x86_mov_opcode)
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
+x86_real_mov_segment:
+        ld      (x86_mov_opcode), a
+        call    x86_real_fetch8
+        ret     c
+        call    x86_real_mov_decode_modrm
+        ret     c
+        xor     a
+        ld      (x86_mov_width), a
+
+        ld      a, (x86_mov_opcode)
+        cp      #8E
+        jr      z, .load_segment
+
+        ; 8C: read selected segment register, then write r/m16.
+        ld      a, (x86_mov_reg)
+        cp      0
+        jr      z, .store_es
+        cp      1
+        jr      z, .store_cs
+        cp      2
+        jr      z, .store_ss
+        cp      3
+        jr      z, .store_ds
+        jp      x86_real_mov_immediate_invalid
+.store_es:
+        ld      hl, (x86_reg_es)
+        jr      .store_rm
+.store_cs:
+        ld      hl, (x86_reg_cs)
+        jr      .store_rm
+.store_ss:
+        ld      hl, (x86_reg_ss)
+        jr      .store_rm
+.store_ds:
+        ld      hl, (x86_reg_ds)
+.store_rm:
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
+
+.load_segment:
+        ; 8E /1 (MOV CS,...) and /4../7 are invalid on the 8086.
+        ld      a, (x86_mov_reg)
+        cp      0
+        jr      z, .load_es
+        cp      2
+        jr      z, .load_ss
+        cp      3
+        jr      z, .load_ds
+        jp      x86_real_mov_immediate_invalid
+.load_es:
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_mov_value), hl
+        call    x86_real_trace_es_load
+        ld      (x86_reg_es), hl
+        jp      x86_real_next
+.load_ss:
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_stack_trace_new), hl
+        ld      hl, (x86_reg_ss)
+        ld      (x86_stack_trace_old), hl
+        ld      hl, (x86_stack_trace_new)
+        ld      (x86_reg_ss), hl
+        ld      a, 1
+        ld      (x86_stack_trace_kind), a
+        call    x86_stack_transition_trace
+        jp      x86_real_next
+.load_ds:
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_reg_ds), hl
+        jp      x86_real_next
+
+; 8D LEA r16,m — return the effective offset without reading memory.
+; C4 LES r16,m16:16. The source must be memory; register-direct is invalid.
+; Read the offset word first and the segment word at EA+2, then load r16 and ES.
+x86_real_les:
+        ld      (x86_mov_opcode), a
+        call    x86_real_fetch8
+        ret     c
+        call    x86_real_mov_decode_modrm
+        ret     c
+        ld      a, (x86_mov_is_reg)
+        or      a
+        jp      nz, x86_real_mov_immediate_invalid
+        xor     a
+        ld      (x86_mov_width), a
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_les_offset), hl
+
+        ld      hl, (x86_mov_offset)
+        inc     hl
+        inc     hl
+        ld      (x86_mem_offset), hl
+        ld      hl, (x86_mov_segment)
+        ld      (x86_mem_segment), hl
+        call    x86_mem_read16
+        ret     c
+        ld      (x86_les_segment), hl
+
+        ld      hl, (x86_les_offset)
+        ld      a, (x86_mov_reg)
+        call    x86_alu_write_reg16
+        ld      hl, (x86_les_segment)
+        ld      (x86_reg_es), hl
+        jp      x86_real_next
+
+x86_real_lea:
+        call    x86_real_fetch8
+        ret     c
+        call    x86_real_mov_decode_modrm
+        ret     c
+        ld      a, (x86_mov_is_reg)
+        or      a
+        jr      z, .lea_memory_operand
+        ld      a, #8D
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+.lea_memory_operand:
+        ld      hl, (x86_mov_offset)
+        ld      a, (x86_mov_reg)
+        call    x86_alu_write_reg16
+        jp      x86_real_next
+
+; 86 XCHG r/m8,r8. Flags are not modified by XCHG.
+x86_real_xchg_modrm8:
+        ld      (x86_mov_opcode), a
+        ld      a, 1
+        ld      (x86_mov_width), a
+        call    x86_real_fetch8
+        ret     c
+        call    x86_real_mov_decode_modrm
+        ret     c
+
+        ; Save the original register-field byte before reading r/m.
+        ld      a, (x86_mov_reg)
+        call    x86_alu8_read_reg
+        ld      (x86_mov_value), a
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      a, l
+        ld      (x86_mov_disp_low), a
+
+        ; Write the saved register byte to the r/m destination.
+        ld      a, (x86_mov_is_reg)
+        or      a
+        jr      nz, .xchg_reg_rm
+        ld      hl, (x86_mov_offset)
+        ld      (x86_mem_offset_work), hl
+        ld      hl, (x86_mov_segment)
+        ld      (x86_mem_segment), hl
+        call    x86_mem_calc_phys
+        ld      a, (x86_mov_value)
+        ld      (x86_mem_value), a
+        call    x86_mem_write8
+        ret     c
+        jr      .xchg_write_reg
+
+.xchg_reg_rm:
+        ld      a, (x86_mov_value)
+        ld      (x86_alu8_result), a
+        ld      a, (x86_mov_reg_operand)
+        call    x86_alu8_write_reg
+        ; The register-direct r/m operand now contains the old reg-field byte.
+
+.xchg_write_reg:
+        ld      a, (x86_mov_disp_low)
+        ld      (x86_alu8_result), a
+        ld      a, (x86_mov_reg)
+        call    x86_alu8_write_reg
+        jp      x86_real_next
+
 x86_real_mov_modrm:
+        push    af
+        ld      a, (trace_mov_once)
+        or      a
+        jr      nz, .mov_trace_done
+        ld      a, 1
+        ld      (trace_mov_once), a
+        ld      hl, trace_mov_entry
+        call    neo_trace_ef_string
+.mov_trace_done:
+        pop     af
         ld      (x86_mov_opcode), a
         call    x86_real_fetch8
         ret     c
@@ -365,6 +601,8 @@ x86_mov_value:         dw 0
 ; x86_mov_trace_stage:   db 0
 x86_mov_reg_temp:      db 0
 x86_mov_disp_low:      db 0
+x86_les_offset:        dw 0
+x86_les_segment:       dw 0
 
 ; -------------------------------------------------------------------------
 ; Extended 8086 MOV addressing regression.
@@ -937,3 +1175,6 @@ x86_mov_memory_test_image_end:
 ;         jp      x86_mov_trace_hex8
 ;
 ;
+; One-shot MOV decoder entry diagnostic.
+trace_mov_once: db 0
+trace_mov_entry: defb "[X86 MOV]",13,10,0

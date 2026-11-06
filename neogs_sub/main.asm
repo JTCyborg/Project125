@@ -4045,95 +4045,14 @@ x86_real_group_f7:
         ; use the same complete ModR/M effective-address path here.
         ld      a, (x86_f7_modrm)
         and     #38
-        cp      #00
-        jp      z, x86_real_f7_test_word
-        cp      #08
-        jp      z, x86_real_f7_test_word
         cp      #10
         jp      z, x86_real_f7_not_word
+
         cp      #30
         jp      nz, x86_real_group_f7_unsupported
         ld      a, #F6
         ld      (x86_shift_diag_stage), a
         jp      x86_real_f7_div_word
-
-; F7 /0 and /1: TEST r/m16, imm16 (8086 treats both encodings as TEST).
-; Operand decoding uses the shared ModR/M/EA implementation. CF and OF are
-; cleared, SF/ZF/PF come from the AND result, AF is undefined and preserved.
-x86_real_f7_test_word:
-        xor     a
-        ld      (x86_mov_width), a
-        ld      a, (x86_f7_modrm)
-        call    x86_real_mov_decode_modrm
-        ret     c
-        call    x86_real_mov_read_rm
-        ret     c
-        ld      (x86_f7_test_operand), hl
-
-        call    x86_real_fetch8
-        ret     c
-        ld      (x86_f7_test_immediate), a
-        call    x86_real_fetch8
-        ret     c
-        ld      h, a
-        ld      a, (x86_f7_test_immediate)
-        ld      l, a
-        ld      (x86_f7_test_immediate), hl
-
-        ld      hl, (x86_f7_test_operand)
-        ld      de, (x86_f7_test_immediate)
-        ld      a, l
-        and     e
-        ld      l, a
-        ld      a, h
-        and     d
-        ld      h, a
-        ld      (x86_f7_test_result), hl
-
-        xor     a
-        ld      (x86_shift_new_flags), a
-        ld      (x86_shift_new_flags+1), a
-        ; PF is even parity of the low result byte.
-        ld      a, l
-        and     a
-        jp      pe, .test_pf
-        jr      .test_zero
-.test_pf:
-        ld      hl, x86_shift_new_flags
-        set     2, (hl)
-.test_zero:
-        ld      hl, (x86_f7_test_result)
-        ld      a, h
-        or      l
-        jr      nz, .test_sign
-        ld      hl, x86_shift_new_flags
-        set     6, (hl)
-.test_sign:
-        ld      hl, (x86_f7_test_result)
-        bit     7, h
-        jr      z, .test_merge
-        ld      hl, x86_shift_new_flags+1
-        set     7, (hl)
-.test_merge:
-        ; Same architectural flag mask as TEST r/m8,imm8.
-        ld      hl, (x86_reg_flags)
-        ld      de, #F73A
-        ld      a, h
-        and     d
-        ld      h, a
-        ld      a, l
-        and     e
-        ld      l, a
-        ld      de, (x86_shift_new_flags)
-        ld      a, h
-        or      d
-        ld      h, a
-        ld      a, l
-        or      e
-        ld      l, a
-        ld      (x86_reg_flags), hl
-        jp      x86_real_next
-
 
 ; F7 /2: NOT r/m16. Supports all eight registers and every 8086 memory
 ; addressing form, including BP=>SS and an active segment override.
@@ -4367,140 +4286,12 @@ x86_real_group_f7_unsupported:
         scf
         ret
 
-x86_f7_test_operand:      dw 0
-x86_f7_test_immediate:    dw 0
-x86_f7_test_result:       dw 0
 x86_f7_modrm:              db 0
 x86_f7_divisor:            dw 0
 x86_f7_quotient:           dw 0
 x86_f7_remainder:          dw 0
 x86_f7_remainder_carry:    db 0
 x86_f7_count:              db 0
-
-; F6 Group-3 byte handler is resident to preserve the 16 KiB overlay68 limit.
-; The operand decoder and memory helpers remain in overlay68 and are callable
-; because WIN2 stays mapped while the interpreter dispatches this handler.
-; F6 group: TEST /0,/1 and NOT AL (/2) plus signed IMUL /5.
-; IMUL accepts every 8086 ModR/M effective-address form and segment override.
-x86_real_group_f6:
-        call    x86_real_fetch8
-        ret     c
-        ld      (x86_f6_modrm), a
-        and     #38
-        cp      #28
-        jp      z, x86_real_f6_imul
-        cp      #30
-        jp      z, x86_real_f6_div
-        ld      a, (x86_f6_modrm)
-        cp      #D0
-        jp      z, x86_real_f6_not_al
-        ld      a, (x86_f6_modrm)
-        and     #38
-        jp      nz, x86_real_group_f6_unsupported ; unsupported Group-3 byte suboperations
-
-        ld      a, (x86_f6_modrm)
-        and     #C0
-        cp      #C0
-        jp      z, x86_real_f6_test_register
-        ld      a, (x86_f6_modrm)
-        call    x86_real_mov_decode_modrm
-        ret     c
-        call    x86_real_alu8_read_memory
-        ret     c
-        ld      (x86_f6_operand), a
-        jp      x86_real_f6_test_immediate
-
-x86_real_f6_test_register:
-        ld      a, (x86_f6_modrm)
-        and     7
-        call    x86_alu8_read_reg
-        ld      (x86_f6_operand), a
-
-x86_real_f6_test_immediate:
-        call    x86_real_fetch8
-        ret     c
-        ld      b, a
-        ld      a, (x86_f6_operand)
-        and     b
-        ld      (x86_shift_result), a
-        call    x86_real_test8_update_flags
-        jp      x86_real_next
-
-; F6 /5 IMUL r/m8: signed AL * signed operand -> AX.
-; The multiply is implemented as an eight-step unsigned shift/add on
-; magnitudes, followed by two's-complement correction. This is independent
-; of the Z80 host's physical ports and uses only the x86 register/memory model.
-x86_real_f6_imul:
-        call    x86_real_f6_read_operand
-        ret     c
-        ld      (x86_f6_operand), a
-        ld      a, (x86_reg_ax)
-        ld      (x86_f6_original_al), a
-        ld      (x86_f6_multiplicand), a
-        xor     a
-        ld      (x86_f6_sign), a
-
-        ; Convert signed AL to an unsigned magnitude.
-        ld      a, (x86_f6_multiplicand)
-        bit     7, a
-        jr      z, .imul_multiplicand_positive
-        ld      a, 1
-        ld      (x86_f6_sign), a
-        ld      a, (x86_f6_multiplicand)
-        neg
-        ld      (x86_f6_multiplicand), a
-.imul_multiplicand_positive:
-        ld      a, (x86_f6_operand)
-        bit     7, a
-        jr      z, .imul_operand_positive
-        ld      a, (x86_f6_sign)
-        xor     1
-        ld      (x86_f6_sign), a
-        ld      a, (x86_f6_operand)
-        neg
-        ld      (x86_f6_operand), a
-.imul_operand_positive:
-        ld      a, (x86_f6_multiplicand)
-        ld      l, a
-        ld      h, 0
-        ld      de, 0
-        ld      a, (x86_f6_operand)
-        ld      b, 8
-.imul_loop:
-        srl     a
-        jr      nc, .imul_no_add
-        ex      de, hl
-        add     hl, de
-        ex      de, hl
-.imul_no_add:
-        ; DE is the accumulated product; HL is the shifted multiplicand.
-        add     hl, hl
-        djnz    .imul_loop
-        ; Product is in DE. Negate it when operand signs differ.
-        ld      a, (x86_f6_sign)
-        or      a
-        jr      z, .imul_store
-        ex      de, hl
-        xor     a
-        sub     l
-        ld      l, a
-        ld      a, 0
-        sbc     a, h
-        ld      h, a
-        ex      de, hl
-.imul_store:
-        ld      (x86_f6_product), de
-        ld      hl, (x86_reg_ax)
-        ld      a, (x86_f6_product)
-        ld      l, a
-        ld      a, (x86_f6_product+1)
-        ld      h, a
-        ld      (x86_reg_ax), hl
-
-        jp      x86_real_f6_imul_update_flags
-
-
-
 
 neogs_resident_end:
 
@@ -4509,6 +4300,19 @@ neogs_resident_end:
 ; in one physical bank while executing. WIN2 is mapped at logical $8000.
         ORG     $8000
 neogs_overlay68_start:
+; Temporary bank-window probe: this code must execute from physical page 68.
+neogs_overlay68_probe:
+        ; A complete CR/LF record is visible in the shared log. A lone 'P'
+        ; was not a reliable probe because the log reader may discard
+        ; unterminated single-character output.
+        push    hl
+        ld      hl, trace_overlay68_probe
+        call    neo_trace_ef_string
+        pop     hl
+        ret
+
+trace_overlay68_probe:
+        defb "[NGS BANK68 PROBE]",13,10,0
         INCLUDE "x86_modrm.asm"
         INCLUDE "x86_real_mode.asm"
         INCLUDE "x86_real_alu8.asm"

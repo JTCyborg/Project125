@@ -237,50 +237,6 @@ x86_real_xchg_modrm8:
         call    x86_alu8_write_reg
         jp      x86_real_next
 
-; 87 XCHG r/m16,r16. Flags are not modified by XCHG.
-x86_real_xchg_modrm16:
-        ld      (x86_mov_opcode), a
-        xor     a
-        ld      (x86_mov_width), a
-        call    x86_real_fetch8
-        ret     c
-        call    x86_real_mov_decode_modrm
-        ret     c
-
-        ; Preserve the original reg-field word, then read the r/m word.
-        ld      a, (x86_mov_reg)
-        call    x86_real_mov_read_reg
-        ret     c
-        ld      (x86_mov_value), hl
-        call    x86_real_mov_read_rm
-        ret     c
-        ld      (x86_mov_disp_word), hl
-
-        ; Store the old reg-field value into r/m without changing flags.
-        ld      a, (x86_mov_is_reg)
-        or      a
-        jr      nz, .xchg_reg_rm
-        ld      hl, (x86_mov_offset)
-        ld      (x86_mem_offset), hl
-        ld      hl, (x86_mov_segment)
-        ld      (x86_mem_segment), hl
-        ld      hl, (x86_mov_value)
-        ld      (x86_mem_word_value), hl
-        call    x86_mem_write16
-        ret     c
-        jr      .xchg_write_reg
-
-.xchg_reg_rm:
-        ld      hl, (x86_mov_value)
-        ld      a, (x86_mov_reg_operand)
-        call    x86_alu_write_reg16
-
-.xchg_write_reg:
-        ld      hl, (x86_mov_disp_word)
-        ld      a, (x86_mov_reg)
-        call    x86_alu_write_reg16
-        jp      x86_real_next
-
 x86_real_mov_modrm:
         push    af
         ld      a, (trace_mov_once)
@@ -637,7 +593,6 @@ x86_mov_width:         db 0
 x86_mov_offset:        dw 0
 x86_mov_segment:       dw 0
 x86_mov_value:         dw 0
-x86_mov_disp_word:     dw 0
 ; x86_mov_diag_value:    dw 0
 ; x86_mov_diag_offset:   dw 0
 ; x86_mov_diag_segment:  dw 0

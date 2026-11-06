@@ -16,12 +16,26 @@ if not exist "bios\BIOS.BIN" (
     goto :finish
 )
 if not exist "build" mkdir "build"
+if errorlevel 1 goto :failed
+
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "tools\verify_bios.ps1"
 if errorlevel 1 goto :failed
 
 echo [BUILD] Assembling NeoGS resident firmware...
-%SJASMPLUS% --msg=all neogs_sub\build_firmware.asm
+echo [DEBUG] Listing: build\NEOGS.lst
+echo [DEBUG] Symbol map: build\NEOGS.map
+%SJASMPLUS% --msg=all --lst=build\NEOGS.lst --lstlab=sort --sym=build\NEOGS.map neogs_sub\build_firmware.asm
 if errorlevel 1 goto :failed
+if not exist "build\NEOGS.lst" (
+    echo ERROR: build\NEOGS.lst was not produced.
+    set "BUILD_RESULT=1"
+    goto :finish
+)
+if not exist "build\NEOGS.map" (
+    echo ERROR: build\NEOGS.map was not produced.
+    set "BUILD_RESULT=1"
+    goto :finish
+)
 if not exist "build\neogs_code.bin" (
     echo ERROR: build\neogs_code.bin was not produced.
     set "BUILD_RESULT=1"
@@ -39,10 +53,22 @@ if errorlevel 1 goto :failed
 
 if exist "disk_A.trd" del /Q "disk_A.trd"
 echo [BUILD] Assembling ATM host and exporting TR-DOS disk...
-%SJASMPLUS% --msg=all zx_main\main.asm
+echo [DEBUG] Listing: build\ATM.lst
+echo [DEBUG] Symbol map: build\ATM.map
+%SJASMPLUS% --msg=all --lst=build\ATM.lst --lstlab=sort --sym=build\ATM.map zx_main\main.asm
 if errorlevel 1 (
     echo ERROR: ATM host assembly / TR-DOS export failed.
     goto :failed
+)
+if not exist "build\ATM.lst" (
+    echo ERROR: build\ATM.lst was not produced.
+    set "BUILD_RESULT=1"
+    goto :finish
+)
+if not exist "build\ATM.map" (
+    echo ERROR: build\ATM.map was not produced.
+    set "BUILD_RESULT=1"
+    goto :finish
 )
 if not exist "disk_A.trd" (
     echo ERROR: disk_A.trd was not produced.
@@ -54,7 +80,7 @@ if errorlevel 1 goto :failed
 
 echo.
 echo BUILD COMPLETED.
-dir "build\neogs_code.bin" "build\neogs_bootstrap.bin" "build\disk_A.trd" "bios\BIOS.BIN"
+dir "build\ATM.lst" "build\ATM.map" "build\NEOGS.lst" "build\NEOGS.map" "build\neogs_code.bin" "build\neogs_bootstrap.bin" "build\disk_A.trd" "bios\BIOS.BIN"
 goto :finish
 
 :failed

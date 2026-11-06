@@ -168,9 +168,9 @@ For the currently selected Project124 Turbo XT BIOS candidate, the 8-KiB image i
 
 ### 10.3 Physical RAM capacity gate
 
-The complete allocation through page 82 requires at least 83 unique physical 16-KiB pages in the board's RAM map (pages are numbered from zero). This is 1,359,872 bytes of addressable physical RAM. A 2-MiB NeoGS board with 128 unique pages satisfies the numerical requirement; the actual board must still be probed for aliases/mirroring and write/read integrity before these pages are accepted.
+The complete allocation through page 98 requires at least 99 unique physical 16-KiB pages in the board's RAM map (pages are numbered from zero). This is 1,622,016 bytes of addressable physical RAM. A 2-MiB NeoGS board with 128 unique pages satisfies the numerical requirement; the actual board must still be probed for aliases/mirroring and write/read integrity before these pages are accepted.
 
-If fewer than 83 unique pages are verified, Project125 must report a memory-budget failure and must not silently overlap firmware, BIOS backing, guest RAM, video buffers, stack or DMA. The 128-KiB firmware, 64-KiB BIOS backing and 64-KiB video reservations are architectural requirements; any alternative physical placement requires an explicit revised map and tests.
+If fewer than 99 unique pages are verified, Project125 must report a memory-budget failure and must not silently overlap firmware, BIOS backing, guest RAM, VGA VRAM, frame buffers, stack or DMA. The 128-KiB firmware, 64-KiB BIOS backing, 256-KiB VGA VRAM and 64-KiB frame-buffer reservations are architectural requirements; any alternative physical placement requires an explicit revised map and tests.
 
 ### 10.4 Loader and runtime invariants
 
@@ -224,19 +224,105 @@ The buffers are reserved permanently and are excluded from firmware, BIOS, x86 g
 
 ### 11.4 Bank mapping and DMA constraints
 
-Pages 79-82 are physical backing pages, not permanently visible Z80 addresses. The page manager may map them through a window only when that mapping cannot evict currently executing code, stack or interrupt handlers. If WIN2 is used, overlay code must enter through a resident bank-call gateway and must not continue executing from the bank being replaced. WIN3 remains under the x86 guest-memory backend unless a separately validated arbitration protocol temporarily grants it.
+Pages 79-82 and 83-98 are physical backing pages, not permanently visible Z80 addresses. The page manager may map them through a window only when that mapping cannot evict currently executing code, stack or interrupt handlers. If WIN2 is used, overlay code must enter through a resident bank-call gateway and must not continue executing from the bank being replaced. WIN3 remains under the x86 guest-memory backend unless a separately validated arbitration protocol temporarily grants it.
 
 Do not assume ATM transport DMA can directly address these pages. Before enabling zero-copy transfer, prove physical page visibility, address encoding, alignment and DMA completion semantics on hardware. Until then, copy/stream through the established bounded transport path. Video DMA must not reuse the Project124 WIN1 DMA frame (#5000-#7FFF) while it is owned by another transfer.
 
 ### 11.5 Updated physical RAM capacity gate
 
-The highest reserved page is now page 82. Project125 therefore requires at least **83 unique physical 16-KiB pages** (83 × 16,384 = 1,359,872 bytes) with no aliasing for the complete reference allocation:
+The highest reserved page is now page 98. Project125 therefore requires at least **99 unique physical 16-KiB pages** (99 × 16,384 = 1,622,016 bytes) with no aliasing for the complete reference allocation:
 - page 0 resident firmware;
 - pages 4-67 x86 guest RAM;
 - pages 68-74 firmware overlays;
 - pages 75-78 BIOS backing;
-- pages 79-82 video frame buffers.
+- pages 79-82 ATM video frame buffers;
+- pages 83-98 VGA guest video memory (256 KiB: four 64-KiB planes).
 
-A nominal 2-MiB NeoGS board has 128 pages and satisfies the numerical budget, subject to physical probing and alias/write-read tests. A board that cannot prove 83 unique pages must fail memory initialization rather than overlap any reservation.
+A nominal 2-MiB NeoGS board has 128 pages and satisfies the numerical budget, subject to physical probing and alias/write-read tests. A board that cannot prove 99 unique pages must fail memory initialization rather than overlap any reservation.
 
-These 64 KiB are a fixed video transfer-buffer reservation, not the ATM's own physical video RAM and not additional guest x86 RAM. They provide two complete frame slots for NeoGS-to-ATM graphics presentation.
+The 64-KiB frame-buffer area is the fixed double-buffered video transfer reservation, not the ATM's own physical video RAM and not guest VGA memory. The separate 256-KiB pages 83-98 reservation is the VGA adapter's backing store.
+
+
+## 12. Implemented firmware profile A — 48 KiB total
+
+The selected implementation uses a 16-KiB resident segment and two independently mapped 16-KiB overlay banks. This is the currently built profile; pages 70-74 remain reserved for future expansion and are not part of the 48-KiB package.
+
+| Firmware section | Physical page | Z80 placement | Maximum | Current assembled size |
+|---|---:|---|---:|---:|
+| Resident core | 0 | WIN0 $0000-$3FFF | 16 KiB | 3,101 bytes |
+| 8086 interpreter and instruction modules | 68 | WIN2 $8000-$BFFF | 16 KiB | 12,829 bytes |
+| BIOS INT 10h video services/tests | 69 | WIN2 $8000-$BFFF | 16 KiB | 1,086 bytes |
+| **Total firmware payload** | **0, 68, 69** | **three physical pages** | **48 KiB** | **17,016 bytes** |
+
+WIN2 defaults to physical page 68. MPAG encodings are ROR8(page): page 68 = #22 and page 69 = #A2. The permanent Z80 stack remains in WIN1/page 3, so overlay switches never move the active stack. WIN3 remains owned by the x86 physical-memory backend and continues to use MPAGEX.
+
+Shared 8086 architectural registers and state are kept in the resident segment. The resident bank gateways switch WIN2 for cross-bank calls and restore the caller's bank before returning:
+- Resident -> page 68: interpreter entry points and CPU tests.
+- Page 68 -> page 69: BIOS INT 10h dispatch.
+- Page 69 -> page 68: interpreter execution from the BIOS video test harness.
+- Page 69 copies its own test image to guest memory while page 69 remains mapped; MPAGEX is used for guest writes and does not disturb WIN2.
+
+### 12.1 V1 transfer package
+
+The stock GS105a #14/#13 loader and the proven V1 DBIT byte-stream handshake are retained. Only the payload format after the V1 length exchange is extended.
+
+The NEOFW.C package begins with a 16-byte manifest:
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 0 | 4 | ASCII signature `P125` |
+| 4 | 2 | Resident segment length |
+| 6 | 2 | Page-68 segment length |
+| 8 | 2 | Page-69 segment length |
+| 10 | 2 | Resident CRC-16 |
+| 12 | 2 | Page-68 CRC-16 |
+| 14 | 2 | Page-69 CRC-16 |
+| 16 | variable | Resident, page 68, page 69 payloads in that order |
+
+Lengths and CRC values are little-endian WORDs. CRC is CRC-16/CCITT with polynomial #1021, initial value #FFFF, no reflection and no final XOR. The standard `123456789` vector is #29B1.
+
+The V1 bootstrap:
+1. Receives the 16-bit package length and acknowledges it using the existing V1 handshake.
+2. Validates the `P125` signature, section lengths, exact total length and 48-KiB payload ceiling.
+3. Writes the resident segment to physical page 0.
+4. Maps WIN2 to page 68 and writes its segment.
+5. Maps WIN2 to page 69 and writes its segment.
+6. Validates each segment CRC before proceeding and restores page 68 before jumping to address 0000h.
+
+Maximum package length is #C010 bytes (48 KiB payload plus 16-byte manifest). The bootstrap remains below its 2-KiB load limit.
+
+### 12.2 TR-DOS disk staging
+
+A single Spectrum 16-KiB window cannot hold the complete NEOFW.C file. The host assembler therefore stages up to three consecutive 16-KiB chunks in separate physical Spectrum pages. The first chunk creates NEOFW.C; subsequent chunks use SjASMPlus SAVETRD append mode.
+
+SjASMPlus append mode updates the allocated sector count but deliberately leaves the original byte-length field unchanged. `tools/finalize_project125_trd.ps1` patches the directory entry to the exact package length after assembly. The runtime host still opens and streams one ordinary sequential NEOFW.C file.
+
+### 12.3 Build and verification
+
+Run the complete build from the repository root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/build_project125.ps1
+```
+
+The build assembles the resident segment, both overlays and V1 bootstrap; packages the P125 manifest and CRCs; assembles the ATM host/TR-DOS image; and finalizes the NEOFW.C directory length.
+
+The GitHub Actions build for this profile completed successfully: all NeoGS and host assembly passes, package generation, three-page TR-DOS staging, and directory-length finalization passed. This is a source/build verification only. It does not replace hardware validation of physical page mapping, CRC receive behavior, bank-call execution, TR-DOS loading or BIOS runtime.
+
+## 13. Fixed physical reservation — guest VGA memory
+
+Project125 reserves 256 KiB of NeoGS physical RAM for the emulated VGA adapter. This is separate from the two 32-KiB ATM frame slots (pages 79-82).
+
+| Physical NeoGS page(s) | Capacity | VGA plane | Purpose |
+|---|---:|---|---|
+| Pages 83-86 | 64 KiB | Plane 0 | VGA plane backing |
+| Pages 87-90 | 64 KiB | Plane 1 | VGA plane backing |
+| Pages 91-94 | 64 KiB | Plane 2 | VGA plane backing |
+| Pages 95-98 | 64 KiB | Plane 3 | VGA plane backing |
+| **Pages 83-98** | **256 KiB** | **4 × 64 KiB** | **Guest VGA video memory** |
+
+The physical page range is reserved now and excluded from x86 guest general RAM, firmware, BIOS backing, ATM frame buffers, DMA scratch and any future allocator. Each plane is four contiguous 16-KiB physical pages. These pages are backing storage only; they are not permanently mapped into a Z80 logical window.
+
+The guest VGA aperture A0000h-BFFFFh is a 128-KiB CPU-visible aperture. It must not be implemented as a flat direct mapping to the 256-KiB backing store. VGA Sequencer Map Mask, Graphics Controller Read Map Select, read/write modes, latches, set/reset, rotate, logical operations and bit masks determine plane access. The VGA memory backend must translate aperture accesses into the four plane stores. The 256-KiB allocation does not itself claim that this register/plane logic or VGA rendering is implemented.
+
+The existing frame buffers A/B remain the presentation handoff to ATM. The VGA backend renders or converts the selected guest mode into one of those 32-KiB slots; the transport retains its existing ownership/ACK rules.

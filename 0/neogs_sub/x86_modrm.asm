@@ -210,22 +210,7 @@ x86_modrm_truncated:
         scf
         ret
 
-; Canonical 8086 register state. These are not yet wired into the legacy
-; four-opcode interpreter; the ModR/M decoder consumes these fields.
-x86_reg_ax: dw 0
-x86_reg_cx: dw 0
-x86_reg_dx: dw 0
-x86_reg_bx: dw 0
-x86_reg_sp: dw 0
-x86_reg_bp: dw 0
-x86_reg_si: dw 0
-x86_reg_di: dw 0
-x86_reg_es: dw 0
-x86_reg_cs: dw 0
-x86_reg_ss: dw 0
-x86_reg_ds: dw 0
-x86_reg_ip: dw 0
-x86_reg_flags: dw 0
+; Architectural register state is resident in neogs_sub/main.asm.
 
 x86_modrm_byte: db 0
 x86_modrm_mod: db 0

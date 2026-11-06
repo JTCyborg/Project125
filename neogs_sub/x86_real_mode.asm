@@ -716,8 +716,6 @@ x86_real_dispatch_no_progress:
         jp      z, x86_real_mov_immediate_rm
         cp      #86
         jp      z, x86_real_xchg_modrm8
-        cp      #87
-        jp      z, x86_real_xchg_modrm16
         cp      #88
         jp      c, .not_mov_rm_reg
         cp      #8C
@@ -2708,6 +2706,79 @@ x86_real_shift_cl_unsupported:
         scf
         ret
 
+; F6 /0 TEST r/m8,imm8 and F6 D0 NOT AL.
+; BIOS paths observed here use direct [disp16] and register-direct operands.
+x86_real_group_f6:
+        call    x86_real_fetch8
+        ret     c
+        ld      (x86_f6_modrm), a
+        cp      #D0
+        jp      z, x86_real_f6_not_al
+        ld      a, (x86_f6_modrm)
+        and     #38
+        jp      nz, x86_real_group_f6_unsupported ; only /0 TEST is implemented
+
+        ld      a, (x86_f6_modrm)
+        and     #C0
+        cp      #C0
+        jp      z, x86_real_f6_test_register
+        or      a
+        jp      nz, x86_real_group_f6_unsupported
+        ld      a, (x86_f6_modrm)
+        and     7
+        cp      6
+        jp      nz, x86_real_group_f6_unsupported
+        call    x86_real_mov_fetch16
+        ret     c
+        ld      (x86_mem_offset), hl
+        ld      (x86_mem_offset_work), hl
+        ld      hl, (x86_reg_ds)
+        ld      a, (x86_real_seg_override_active)
+        or      a
+        jr      z, .f6_segment_ready
+        ld      hl, (x86_real_seg_override)
+.f6_segment_ready:
+        ld      (x86_mem_segment), hl
+        call    x86_mem_calc_phys
+        ; Detailed F6 effective-address trace disabled.
+        call    x86_mem_read8
+        ret     c
+        ld      (x86_f6_operand), a
+        jp      x86_real_f6_test_immediate
+
+x86_real_f6_test_register:
+        ld      a, (x86_f6_modrm)
+        and     7
+        call    x86_alu8_read_reg
+        ld      (x86_f6_operand), a
+
+x86_real_f6_test_immediate:
+        call    x86_real_fetch8
+        ret     c
+        ld      b, a
+        ld      a, (x86_f6_operand)
+        and     b
+        ld      (x86_shift_result), a
+        call    x86_real_test8_update_flags
+        jp      x86_real_next
+
+x86_real_f6_not_al:
+        ld      a, (x86_reg_ax)
+        cpl
+        ld      (x86_reg_ax), a
+        jp      x86_real_next
+
+x86_f6_modrm: db 0
+x86_f6_operand: db 0
+
+x86_real_group_f6_unsupported:
+        ld      a, #F6
+        ld      (x86_real_unsupported_opcode), a
+        ld      a, 2
+        ld      (x86_exit_status), a
+        scf
+        ret
+
 ; FE /0,/1 register-direct byte INC/DEC. Only status FLAGS are updated;
 ; CF and all control/reserved bits are preserved as required by 8086.
 x86_real_incdec_r8:
@@ -3354,159 +3425,3 @@ x86_f7_handler_read_error: defb " HANDLER READ ERROR",0
 x86_f7_frame_word:         dw 0
 x86_f7_int00_failed:       defb "[NGS X86] INT00 ENTRY FAILED SS:SP=",0
 x86_f7_exception_kind:     db 0
-
-; F6 IMUL flag calculation is kept in Overlay68 to balance the 16 KiB
-; resident/overlay budgets. The resident F6 arithmetic core calls here only
-; while Overlay68 is mapped. Guest register and F6 scratch state remain resident.
-x86_real_f6_imul_update_flags:
-        ; PCem reference semantics: PF/SF are sampled from pre-IMUL AL,
-        ; ZF from the 16-bit result, and CF/OF are set iff AH is nonzero.
-        xor     a
-        ld      (x86_f6_new_flags), a
-        ld      (x86_f6_new_flags+1), a
-        ld      a, (x86_f6_original_al)
-        and     a
-        jp      pe, .imul_pf
-        jr      .imul_zf
-.imul_pf:
-        ld      hl, x86_f6_new_flags
-        set     2, (hl)
-.imul_zf:
-        ld      a, (x86_f6_original_al)
-        bit     7, a
-        jr      z, .imul_sign_ready
-        ld      hl, x86_f6_new_flags
-        set     7, (hl)
-.imul_sign_ready:
-        ld      hl, (x86_reg_ax)
-        ld      a, h
-        or      l
-        jr      nz, .imul_cf
-        ld      hl, x86_f6_new_flags
-        set     6, (hl)
-.imul_cf:
-        ld      a, (x86_reg_ax+1)
-        or      a
-        jr      z, .imul_merge
-        ld      hl, x86_f6_new_flags
-        set     0, (hl)
-        set     3, (hl)
-.imul_merge:
-        ld      hl, (x86_reg_flags)
-        ld      de, #772A
-        ld      a, h
-        and     d
-        ld      h, a
-        ld      a, l
-        and     e
-        ld      l, a
-        ld      de, (x86_f6_new_flags)
-        ld      a, h
-        or      d
-        ld      h, a
-        ld      a, l
-        or      e
-        ld      l, a
-        ld      (x86_reg_flags), hl
-        jp      x86_real_next
-
-; F6 tail handlers and scratch data are also banked with the F6 flag helper.
-; The resident dispatcher reaches these only while Overlay68 is selected.
-x86_real_f6_not_al:
-        ld      a, (x86_reg_ax)
-        cpl
-        ld      (x86_reg_ax), a
-        jp      x86_real_next
-
-x86_f6_modrm: db 0
-x86_f6_operand: db 0
-x86_f6_multiplicand: db 0
-x86_f6_original_al: db 0
-x86_f6_sign: db 0
-x86_f6_product: dw 0
-x86_f6_new_flags: dw 0
-
-x86_real_group_f6_unsupported:
-        ld      a, #F6
-        ld      (x86_real_unsupported_opcode), a
-        ld      a, 2
-        ld      (x86_exit_status), a
-        scf
-        ret
-
-; Shared F6 r/m8 operand fetch. Resident F6 handlers call into Overlay68
-; while bank 68 is selected; return A=operand and Carry on a memory fault.
-x86_real_f6_read_operand:
-        ld      a, (x86_f6_modrm)
-        and     #C0
-        cp      #C0
-        jr      z, .register
-        ld      a, (x86_f6_modrm)
-        call    x86_real_mov_decode_modrm
-        ret     c
-        jp      x86_real_alu8_read_memory
-.register:
-        ld      a, (x86_f6_modrm)
-        and     7
-        jp      x86_alu8_read_reg
-
-; F6 /6 DIV r/m8: unsigned AX / operand -> AL=quotient, AH=remainder.
-; PCem truncates the quotient to AL and raises INT 0 only for divisor zero.
-; Reuse the resident F7 16-bit scratch words for a 16-step restoring divide.
-x86_real_f6_div:
-        call    x86_real_f6_read_operand
-        ret     c
-        ld      (x86_f7_divisor), a
-        xor     a
-        ld      (x86_f7_divisor+1), a
-        ld      a, (x86_f7_divisor)
-        or      a
-        jr      z, .divide_zero
-
-        ld      hl, (x86_reg_ax)
-        ld      (x86_f7_quotient), hl
-        ld      hl, 0
-        ld      (x86_f7_remainder), hl
-        ld      a, 16
-        ld      (x86_f7_count), a
-
-.div_loop:
-        ; Shift the next dividend bit into the partial remainder.
-        ld      hl, (x86_f7_quotient)
-        add     hl, hl
-        ld      (x86_f7_quotient), hl
-        ld      hl, (x86_f7_remainder)
-        adc     hl, hl
-        ld      (x86_f7_remainder), hl
-
-        ; Subtract the 8-bit divisor when remainder >= divisor.
-        ld      de, (x86_f7_divisor)
-        or      a
-        sbc     hl, de
-        jr      c, .div_no_subtract
-        ld      (x86_f7_remainder), hl
-        ld      hl, (x86_f7_quotient)
-        set     0, l
-        ld      (x86_f7_quotient), hl
-.div_no_subtract:
-        ld      a, (x86_f7_count)
-        dec     a
-        ld      (x86_f7_count), a
-        jr      nz, .div_loop
-
-        ; The 16-bit quotient is truncated to AL, matching PCem's 808x.c.
-        ld      hl, (x86_f7_quotient)
-        ld      a, l
-        ld      (x86_reg_ax), a
-        ld      hl, (x86_f7_remainder)
-        ld      a, l
-        ld      (x86_reg_ax+1), a
-        jp      x86_real_next
-
-.divide_zero:
-        ; 8086 divide error: push FLAGS, CS, return IP and enter vector 0.
-        xor     a
-        call    x86_int_enter
-        ret     c
-        jp      x86_real_next
-

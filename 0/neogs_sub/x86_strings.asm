@@ -7,6 +7,16 @@
 ; =========================================================================
 
 x86_real_string_instruction:
+        push    af
+        ld      a, (trace_string_once)
+        or      a
+        jr      nz, .string_trace_done
+        ld      a, 1
+        ld      (trace_string_once), a
+        ld      hl, trace_string_entry
+        call    neo_trace_ef_string
+.string_trace_done:
+        pop     af
         ld      (x86_string_opcode), a
         ld      a, (x86_real_rep_mode)
         or      a
@@ -27,8 +37,32 @@ x86_real_string_instruction:
         ld      (x86_reg_cx), hl
         ld      a, h
         or      l
-        jp      z, x86_real_next
+        jr      nz, .rep_remaining
+        call    x86_string_rep_scas_summary
+        jp      x86_real_next
+.rep_remaining:
 
+        ; REP can perform thousands of memory operations inside one opcode.
+        ; The normal instruction-boundary poll is not reached until REP ends.
+        ; Service the host keyboard mailbox every 256 completed elements so
+        ; a long BIOS POST memory sweep cannot starve the ATM DMA handshake.
+        ld      a, l
+        or      a
+        call    z, x86_host_input_service_poll
+        ld      hl, (x86_reg_cx)
+
+        ; Report progress independently of the architectural instruction budget.
+        ld      a, l
+        or      a
+        jr      nz, .x86_string_no_progress
+        ld      a, h
+        and     #07
+        jr      nz, .x86_string_no_progress
+        ; REP progress heartbeat disabled; keep the execution-budget flag active.
+        ld      a, (x86_real_progress_enable)
+        or      a
+        ; call  nz, bios_progress_emit
+.x86_string_no_progress:
         ; F2/F3 test ZF only for CMPS and SCAS; other string forms repeat
         ; unconditionally. F3 continues while ZF=1, F2 while ZF=0.
         ld      a, (x86_string_opcode)
@@ -43,19 +77,19 @@ x86_real_string_instruction:
         jr      z, .repe
         ld      a, (x86_reg_flags)
         bit     6, a
-        jp      nz, x86_real_next
-        jr      .repeat
+        jr      z, .repeat
+        call    x86_string_rep_scas_summary
+        jp      x86_real_next
 .repe:
         ld      a, (x86_reg_flags)
         bit     6, a
-        jp      z, x86_real_next
+        jr      nz, .repeat
+        call    x86_string_rep_scas_summary
+        jp      x86_real_next
 .repeat:
-        ld      hl, (x86_real_steps)
-        ld      a, h
-        or      l
-        jp      z, x86_real_budget_fail
-        dec     hl
-        ld      (x86_real_steps), hl
+        ; REP is one architectural instruction, not one instruction per
+        ; element. CX is the iteration bound; do not consume the CPU opcode
+        ; budget here. BIOS POST uses REP STOSW for many 16 KiB memory sweeps.
         call    x86_string_iteration
         ret     c
         jr      .after_iteration
@@ -91,6 +125,9 @@ x86_string_cmps:
         ret     c
         ld      (x86_string_other), hl
         call    x86_string_compare
+        ; Guest FLAGS are stored separately. Clear the host Z80 carry from
+        ; SUB/SBC so the caller's RET C reports memory faults only.
+        or      a
         call    x86_string_advance_si
         call    x86_string_advance_di
         ret
@@ -152,6 +189,10 @@ x86_string_scas:
 .compare:
         ld      (x86_string_value), hl
         call    x86_string_compare
+        ; Do not leak the guest comparison borrow into the host carry flag:
+        ; RET C above the string engine is reserved for memory-access faults.
+        or      a
+        call    x86_resident_memtest_scas_trace
         call    x86_string_advance_di
         ret
 
@@ -941,3 +982,7 @@ x86_string_ss_data_end:
 x86_string_es_data:
         db #AA,#BB,#CC,#DD,#EE,#FF,#80,#7F,#00,#66,#65,#77
 x86_string_es_data_end:
+
+; One-shot string/REP engine entry diagnostic.
+trace_string_once: db 0
+trace_string_entry: defb "[X86 STRING]",13,10,0

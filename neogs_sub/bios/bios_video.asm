@@ -66,13 +66,7 @@ bios_video_set_vga_text_state:
 bios_int10_set_mode:
         ld      a,l
         cp      BIOS_VIDEO_MODE
-        jr      z,.supported_mode
-        ; An unsupported video mode is a successful no-op. Do not leak the
-        ; Z80 carry flag from CP into x86_real_int10_service, which treats
-        ; carry as a guest-memory/service failure and aborts interpretation.
-        or      a
-        ret
-.supported_mode:
+        ret     nz
         call    bios_video_set_vga_text_state
         ld      hl,#0449
         ld      a,BIOS_VIDEO_MODE
