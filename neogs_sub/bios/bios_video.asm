@@ -556,97 +556,10 @@ bios_video_write_cell:
         ld      a,(bios_video_attr)
         ld      (x86_mem_value),a
         call    x86_mem_write8
-        ; Read back the exact character/attribute bytes written through the
-        ; VGA odd/even path. This bounded trace identifies whether BIOS text
-        ; reaches guest VRAM before the host frame-transfer code runs.
-        call    bios_video_trace_write_cell
         pop     hl
         pop     de
         pop     bc
         or      a
-        ret
-
-bios_video_trace_write_cell:
-        push    af
-        push    bc
-        push    de
-        push    hl
-        ld      a,(bios_video_trace_write_count)
-        cp      8
-        jp      nc,.no_trace
-        inc     a
-        ld      (bios_video_trace_write_count),a
-
-        ; x86_mem_addr currently points at the attribute byte.
-        ld      hl,(x86_mem_addr)
-        ld      (bios_video_trace_saved_addr),hl
-        ld      a,(x86_mem_addr+2)
-        ld      (bios_video_trace_saved_addr+2),a
-
-        ; Read the character byte at attribute_address-1.
-        dec     hl
-        ld      (x86_mem_addr),hl
-        ld      a,(bios_video_trace_saved_addr+2)
-        ld      (x86_mem_addr+2),a
-        call    x86_mem_read8
-        ld      (bios_video_trace_read_char),a
-
-        ; Read back the attribute byte.
-        ld      hl,(bios_video_trace_saved_addr)
-        ld      (x86_mem_addr),hl
-        ld      a,(bios_video_trace_saved_addr+2)
-        ld      (x86_mem_addr+2),a
-        call    x86_mem_read8
-        ld      (bios_video_trace_read_attr),a
-
-        ld      hl,bios_video_trace_write_prefix
-        call    bios_video_trace_string
-        ld      a,(bios_video_row)
-        call    bios_video_trace_hex8
-        ld      a,':'
-        out     (#EF),a
-        ld      a,(bios_video_col)
-        call    bios_video_trace_hex8
-        ld      a,' '
-        out     (#EF),a
-        ld      a,(bios_video_trace_saved_addr+2)
-        call    bios_video_trace_hex8
-        ld      hl,(bios_video_trace_saved_addr)
-        ld      a,h
-        call    bios_video_trace_hex8
-        ld      a,l
-        call    bios_video_trace_hex8
-        ld      a,' '
-        out     (#EF),a
-        ld      a,(bios_video_char)
-        call    bios_video_trace_hex8
-        ld      a,'/'
-        out     (#EF),a
-        ld      a,(bios_video_attr)
-        call    bios_video_trace_hex8
-        ld      a,' '
-        out     (#EF),a
-        ld      a,(bios_video_trace_read_char)
-        call    bios_video_trace_hex8
-        ld      a,'/'
-        out     (#EF),a
-        ld      a,(bios_video_trace_read_attr)
-        call    bios_video_trace_hex8
-        ld      a,13
-        out     (#EF),a
-        ld      a,10
-        out     (#EF),a
-.done:
-        ; Preserve the original x86_mem_addr scratch value for the caller.
-        ld      hl,(bios_video_trace_saved_addr)
-        ld      (x86_mem_addr),hl
-        ld      a,(bios_video_trace_saved_addr+2)
-        ld      (x86_mem_addr+2),a
-.no_trace:
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
         ret
 
 bios_video_store_cursor:
@@ -959,14 +872,4 @@ bios_video_trace_nibble:
 bios_video_trace_prefix:
         defb "[BIOS INT10] AX BX CX DX CS:IP=",0
 bios_video_trace_count:
-        db 0
-bios_video_trace_write_prefix:
-        defb "[BIOS CELL] RC ADDR W C/A R=",0
-bios_video_trace_write_count:
-        db 0
-bios_video_trace_saved_addr:
-        db 0,0,0
-bios_video_trace_read_char:
-        db 0
-bios_video_trace_read_attr:
         db 0
