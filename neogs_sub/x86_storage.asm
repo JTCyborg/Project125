@@ -541,14 +541,18 @@ x86_fdc_execute:
 
 x86_fdc_sense_interrupt:
         ld      hl,x86_fdc_result
-        ld      (hl),#80
+        ld      a,(x86_fdc_pending_st0)
+        ld      (hl),a
+        ld      a,#80
+        ld      (x86_fdc_pending_st0),a
         inc     hl
-        ld      (hl),0
+        ld      a,(x86_fdc_pending_cylinder)
+        ld      (hl),a
         ld      a,2
         ld      (x86_fdc_result_count),a
         jp      x86_fdc_result_phase
 x86_fdc_sense_drive:
-        ld      a,#10                   ; track zero, drive not ready
+        ld      a,#20                   ; track zero, drive not ready
         ld      (x86_fdc_result),a
         ld      a,1
         ld      (x86_fdc_result_count),a
@@ -561,6 +565,16 @@ x86_fdc_specify:
 x86_fdc_seek:
         ld      a,#48
         ld      (x86_fdc_pending_st0),a
+        ld      a,(x86_fdc_command)
+        and     #1F
+        cp      #0F
+        jr      nz,.recalibrate_cylinder
+        ld      a,(x86_fdc_command+2)
+        jr      .save_pending_cylinder
+.recalibrate_cylinder:
+        xor     a
+.save_pending_cylinder:
+        ld      (x86_fdc_pending_cylinder),a
         xor     a
         ld      (x86_fdc_phase),a
         ld      (x86_fdc_command_count),a
