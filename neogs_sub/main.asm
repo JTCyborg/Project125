@@ -4396,7 +4396,7 @@ x86_real_group_f6:
         jp      z, x86_real_f6_not_al
         ld      a, (x86_f6_modrm)
         and     #38
-        jp      nz, x86_real_group_f6_unsupported ; /1-/7 except /2 AL special and /5
+        jp      nz, x86_real_group_f6_unsupported ; unsupported Group-3 byte suboperations
 
         ld      a, (x86_f6_modrm)
         and     #C0
@@ -4433,7 +4433,6 @@ x86_real_f6_test_immediate:
 x86_real_f6_imul:
         call    x86_real_f6_read_operand
         ret     c
-.imul_operand_ready:
         ld      (x86_f6_operand), a
         ld      a, (x86_reg_ax)
         ld      (x86_f6_original_al), a
