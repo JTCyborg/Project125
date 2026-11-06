@@ -2,9 +2,9 @@
 ; Implemented: Sequencer/GC indexed registers, Attribute Controller
 ; index/data flip-flop and palette-enable latch, Misc Output, Status 1,
 ; aperture selection with aperture-relative offsets, four 64 KiB planes,
-; read modes 0/1, write modes 0/1, latches, set/reset, rotate, logical ops,
-; bit mask and Sequencer Map Mask.
-; Pending: CRTC, DAC, scanout, chain-4, odd/even and write modes 2/3.
+; read modes 0/1, write modes 0/1, chain-2 odd/even text addressing,
+; latches, set/reset, rotate, logical ops, bit mask and Sequencer Map Mask.
+; Pending: CRTC, DAC, scanout, chain-4 and write modes 2/3.
 ; Guest VRAM accesses are mapped to NeoGS pages 83..98; no NeoGS I/O ports.
 
 x86_vga_io_read8:
@@ -293,6 +293,25 @@ x86_vga_map_plane:
 x86_vga_mem_read8:
         call    x86_vga_decode_aperture
         ret     c
+        ; Load VGA latches from the unmodified aperture address, as PCem does.
+        ; In chain-2 mode CPU A0 selects the plane; the address is rounded
+        ; down to an even byte address (not divided by two).
+        ld      a,(x86_vga_gc_regs+5)
+        and     #10
+        jr      z,.read_plane_normal
+        ld      a,(x86_vga_offset)
+        and     1
+        ld      b,a
+        ld      a,(x86_vga_gc_regs+4)
+        and     2
+        or      b
+        ld      (x86_vga_read_plane),a
+        jr      .read_latches
+.read_plane_normal:
+        ld      a,(x86_vga_gc_regs+4)
+        and     3
+        ld      (x86_vga_read_plane),a
+.read_latches:
         xor     a
         call    x86_vga_map_plane
         ld      a,(hl)
@@ -312,8 +331,20 @@ x86_vga_mem_read8:
         ld      a,(x86_vga_gc_regs+5)
         and     #08
         jr      nz,.read_mode1
-        ld      a,(x86_vga_gc_regs+4)
-        and     3
+        ; Chain-2 mode-0 reads return the selected plane byte at addr&FFFE.
+        ld      a,(x86_vga_gc_regs+5)
+        and     #10
+        jr      z,.read_mode0_latch
+        ld      a,(x86_vga_offset)
+        and     #FE
+        ld      (x86_vga_offset),a
+        ld      a,(x86_vga_read_plane)
+        call    x86_vga_map_plane
+        ld      a,(hl)
+        or      a
+        ret
+.read_mode0_latch:
+        ld      a,(x86_vga_read_plane)
         ld      e,a
         ld      d,0
         ld      hl,x86_vga_latches
@@ -374,6 +405,29 @@ x86_vga_compare_one:
 x86_vga_mem_write8:
         call    x86_vga_decode_aperture
         ret     c
+        ; Chain-2 writes use A0 to choose plane pair member and address>>1.
+        ld      a,(x86_vga_seq_regs+4)
+        bit     2,a
+        jr      nz,.write_planar
+        ld      a,(x86_vga_offset)
+        and     1
+        ld      b,a
+        call    x86_vga_offset_even
+        ld      a,(x86_vga_seq_regs+2)
+        and     5
+        ld      c,a
+        ld      a,b
+        or      a
+        ld      a,c
+        jr      z,.odd_even_mask_ready
+        rlca
+.odd_even_mask_ready:
+        ld      (x86_vga_effective_mask),a
+        jr      .write_mode_decode
+.write_planar:
+        ld      a,(x86_vga_seq_regs+2)
+        ld      (x86_vga_effective_mask),a
+.write_mode_decode:
         ld      a,(x86_vga_gc_regs+5)
         and     3
         cp      1
@@ -407,7 +461,7 @@ x86_vga_mem_write8:
         add     hl,de
         ld      a,(hl)
         ld      b,a
-        ld      a,(x86_vga_seq_regs+2)
+        ld      a,(x86_vga_effective_mask)
         and     b
         jr      z,.next_plane
         ; GC1 selects set/reset on this plane; otherwise use rotated CPU data.
@@ -469,7 +523,7 @@ x86_vga_mem_write8:
         add     hl,de
         ld      a,(hl)
         ld      b,a
-        ld      a,(x86_vga_seq_regs+2)
+        ld      a,(x86_vga_effective_mask)
         and     b
         jr      z,.mode1_next
         ld      a,(x86_vga_plane)
@@ -489,6 +543,12 @@ x86_vga_mem_write8:
         ret
 .unsupported:
         or      a
+        ret
+
+x86_vga_offset_even:
+        ld      a,(x86_vga_offset)
+        and     #FE
+        ld      (x86_vga_offset),a
         ret
 
 x86_vga_get_latch:
@@ -535,6 +595,8 @@ x86_vga_attr_regs:       defs 32,0
 x86_vga_bit_table:       db 1,2,4,8
 x86_vga_offset:          dw 0
 x86_vga_plane:           db 0
+x86_vga_read_plane:       db 0
+x86_vga_effective_mask:   db #0F
 x86_vga_latches:         db 0,0,0,0
 x86_vga_compare_result:  db 0
 x86_vga_write_byte:      db 0

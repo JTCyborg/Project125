@@ -131,6 +131,8 @@ main_loop:
         jp      z, command_video_crc_test
         cp      CMD_DMA_READ_TEST
         jp      z, command_dma_read_test
+        cp      CMD_VIDEO_PULL
+        jp      z, command_video_pull
 
         ; Unknown command: release CBIT so the host cannot deadlock.
         xor     a
@@ -449,6 +451,84 @@ command_dma_read_test:
         xor     a
         ld      (neo_dma_error), a
         out     (CLRCBIT), a
+        jp      main_loop
+
+; CMD_VIDEO_PULL: stage VGA plane 0/1 text bytes in frame slot A, then reverse DMA.
+command_video_pull:
+        ld      a,#A7
+        out     (MPAG),a
+        ld      a,83
+        rrca
+        out     (MPAGEX),a
+        ld      hl,#C000
+        ld      de,#8000
+        ld      bc,#07D0
+.vga_char_copy:
+        ld      a,(hl)
+        ld      (de),a
+        inc     hl
+        inc     hl
+        inc     de
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,.vga_char_copy
+
+        ld      a,87
+        rrca
+        out     (MPAGEX),a
+        ld      hl,#C000
+        ld      de,#87D0
+        ld      bc,#07D0
+.vga_attr_copy:
+        ld      a,(hl)
+        ld      (de),a
+        inc     hl
+        inc     hl
+        inc     de
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,.vga_attr_copy
+        ld      a,NGS_FW_BANK68_MPAG
+        out     (MPAG),a
+        ld      a,C_DMA_ZX
+        out     (DMA_MOD),a
+        ld      a,#13
+        out     (DMA_HAD),a
+        ld      a,#C0
+        out     (DMA_MAD),a
+        xor     a
+        out     (DMA_LAD),a
+        ld      a,#80
+        out     (DMA_CST),a
+        xor     a
+        out     (CLRCBIT),a
+        ld      d,DMA_WAIT_OUTER
+.video_pull_outer:
+        ld      bc,DMA_WAIT_LIMIT
+.video_pull_wait:
+        in      a,(ZXSTAT)
+        bit     B_CBIT,a
+        jr      nz,.video_pull_done
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,.video_pull_wait
+        dec     d
+        jr      nz,.video_pull_outer
+        xor     a
+        out     (DMA_CST),a
+        out     (CLRCBIT),a
+        ld      a,1
+        ld      (neo_dma_error),a
+        jp      main_loop
+.video_pull_done:
+        xor     a
+        out     (DMA_CST),a
+        out     (CLRCBIT),a
+        xor     a
+        ld      (neo_dma_error),a
         jp      main_loop
 
 ; Run a TR-DOS payload through the bounded CS:IP real-mode executor.
@@ -1071,8 +1151,8 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261106-27",13,10
-        defb "[NGS] BASE COMMIT E3C4B43",13,10,0
+        defb "[NGS] BUILD 20261106-28",13,10
+        defb "[NGS] BASE COMMIT C471970",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
 trace_bios_reset_in:  defb "[P RESET IN]",13,10,0

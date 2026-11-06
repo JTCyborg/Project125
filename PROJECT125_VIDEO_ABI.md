@@ -1,7 +1,7 @@
 # Project125 — Video Frame ABI v1
 
-Дата: 2026-11-03  
-Статус: начальная спецификация wire descriptor; передача и presenter ещё не реализованы.
+Дата: 2026-11-06  
+Статус: source-level реализация первого text-mode pull path (mode 03h, 80x25); сборка и проверка на ATM/NeoGS ещё не выполнены. Graphics frame ABI v1 остаётся отдельным незавершённым интерфейсом.
 
 ## 1. Назначение
 
@@ -13,7 +13,7 @@ NeoGS формирует кадр в одном из двух зарезерви
 
 Гостевая VGA VRAM выделена отдельно: NeoGS physical pages 83-98, 256 KiB total, four planes of 64 KiB (pages 83-86, 87-90, 91-94 and 95-98 respectively). This is backing storage for the emulated VGA adapter and is not part of the frame-transfer ABI.
 
-The VGA aperture A0000h-BFFFFh is decoded by the VGA register/plane model; it is not a linear alias of all 256 KiB. Sequencer and Graphics Controller state controls plane reads/writes. This reservation is architectural only until the VGA memory/register backend is implemented.
+The VGA aperture A0000h-BFFFFh is decoded by the VGA register/plane model; it is not a linear alias of all 256 KiB. The current source implements the Sequencer/Graphics Controller plane access, latches, read/write modes 0/1 and chain-2 odd/even text addressing. CRTC timing, DAC scanout and graphics presentation remain unimplemented.
 
 ## 3. Физические слоты
 
@@ -91,6 +91,22 @@ The first diagnostic command is CMD_VIDEO_CRC_TEST (0Eh); it is not a frame-tran
 - Validate build, emulator integration, then real ATM/NeoGS hardware separately.
 
 
-## 9. CRC implementation status
+## 9. VGA text-mode pull path — implementation profile
+
+The first ATM text presentation path is separate from the graphics descriptor above:
+
+- Guest mode: VGA mode 03h, 80 columns × 25 rows, 16-colour text.
+- Guest aperture: B8000h-BFFFFh; character bytes are plane 0 and attribute bytes are plane 1.
+- VGA Sequencer chain-2/odd-even addressing is used: CPU even addresses select plane 0, odd addresses select plane 1, with the plane offset equal to CPU aperture offset rounded down to an even byte, matching PCem's chain-2 decoder.
+- NeoGS gathers every second byte from plane 0 and then plane 1 (2,000 bytes per plane) into the first 4,000 bytes of reserved frame slot A (physical page 79).
+- CMD_VIDEO_PULL arms the existing NeoGS-to-ATM ZX DMA direction. ATM discards the documented pipeline byte, reads exactly 4,000 bytes to host staging RAM, then sends the FFh end marker.
+- ATM converts each VGA attribute into the native ATM text attribute layout and writes all 2,000 cells through the existing 80×25 presenter memory mapping.
+
+This path publishes a single snapshot after the BIOS execution command returns. It is not a continuous 70 Hz VGA scanout, does not implement CRTC timing, hardware cursor or text scrolling, and does not implement graphics modes. The reverse-DMA 4,000-byte transfer and ATM cell presenter are source-level changes only until assembled and exercised on hardware. The graphics descriptor, frame sequencing, CRC validation, double-buffer ownership and VSync policy remain separate future work.
+
+The NeoGS command uses pages 79-80 as reserved frame slot A; only its first 4,000 bytes are staging data. Slot B remains untouched. The staging bytes are consumed by the host DMA before slot A may be reused by any other presenter.
+
+
+## 10. CRC implementation status
 
 The shared Z80 routine is in `shared/video_crc16.asm`; its input is A=data byte and HL=current CRC, output HL=updated CRC. The standard `123456789` -> `29B1h` vector is exposed to NeoGS command `CMD_VIDEO_CRC_TEST` (0Eh). ATM host startup invokes the test and checks the returned status/AX. The code has not yet been assembled or run; this is an implementation hook, not a PASS result.
