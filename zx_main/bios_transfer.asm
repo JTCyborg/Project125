@@ -150,6 +150,9 @@ neogs_bios_boot_and_wait:
         out     (GSCOM), a
         ld      hl, #0800
         ld      (bios_boot_timeout_outer), hl
+        ld      hl, #8000
+        ld      (bios_video_poll_counter), hl
+        jr      .bios_boot_outer
 .bios_boot_outer:
         ld      bc, BIOS_HOST_WAIT_LIMIT
 .bios_boot_inner:
@@ -165,6 +168,25 @@ neogs_bios_boot_and_wait:
         ld      (bios_kbd_poll_counter), hl
         call    atm_keyboard_poll_and_send
 .bios_kbd_poll_done:
+        ; Pull a live VGA text snapshot periodically while BIOS POST runs.
+        ; The guest may remain in a keyboard/status wait loop indefinitely,
+        ; so waiting for CMD_BOOT_BIOS completion would never show its screen.
+        ld      hl, (bios_video_poll_counter)
+        dec     hl
+        ld      (bios_video_poll_counter), hl
+        ld      a, h
+        or      l
+        jr      nz, .bios_video_poll_done
+        ld      hl, #8000
+        ld      (bios_video_poll_counter), hl
+        push    bc
+        push    de
+        push    hl
+        call    p125_video_pull_live_and_present
+        pop     hl
+        pop     de
+        pop     bc
+.bios_video_poll_done:
         in      a, (GSSTAT)
         bit     B_DBIT, a
         jr      z, .bios_boot_no_data
@@ -349,6 +371,16 @@ bios_host_tail_error:
         defb    "[BIOS DST FFF0] !", 0
 bios_boot_timeout_outer: dw 0
 bios_kbd_poll_counter: dw #4000
+bios_video_poll_counter: dw #8000
+
+; Live variant restores the long-running BIOS command token after the
+; reverse-DMA frame transaction, allowing the instruction-boundary service
+; poll to continue accepting future video and keyboard requests.
+p125_video_pull_live_and_present:
+        call    p125_video_pull_and_present
+        ld      a, CMD_BOOT_BIOS
+        out     (GSCOM), a
+        ret
 
 ; -------------------------------------------------------------------------
 ; ATM physical keyboard scanner and DMA event transport.

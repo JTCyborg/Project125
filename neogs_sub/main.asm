@@ -1151,7 +1151,7 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261106-35",13,10
+        defb "[NGS] BUILD 20261106-36",13,10
         defb "[NGS] BASE COMMIT 226BC91",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
@@ -1973,6 +1973,8 @@ x86_host_input_service_poll:
         bit     B_CBIT, a
         ret     z
         in      a, (ZXCMD)
+        cp      CMD_VIDEO_PULL
+        jp      z, x86_host_video_service
         cp      CMD_HOST_INPUT
         ret     nz
 
@@ -2011,6 +2013,92 @@ x86_host_input_service_poll:
         out     (DMA_CST), a
         out     (CLRCBIT), a
         call    x86_kbd_process_matrix
+        ret
+
+
+; -------------------------------------------------------------------------
+; Live BIOS text-frame service. The ATM may request a snapshot while the
+; guest BIOS is still executing. Copy VGA text plane 0/1 into frame slot A,
+; arm reverse ZX DMA, and return to the x86 instruction loop after the host
+; acknowledges the complete 4000-byte payload with the #FF end marker.
+; -------------------------------------------------------------------------
+x86_host_video_service:
+        ; The current resident window-2 mapping is not assumed. Select the
+        ; reserved frame slot page for the staging copy.
+        ld      a,#A7
+        out     (MPAG),a
+        ld      a,83
+        rrca
+        out     (MPAGEX),a
+        ld      hl,#C000
+        ld      de,#8000
+        ld      bc,#07D0
+.video_char_copy:
+        ld      a,(hl)
+        ld      (de),a
+        inc     hl
+        inc     hl
+        inc     de
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,.video_char_copy
+
+        ld      a,87
+        rrca
+        out     (MPAGEX),a
+        ld      hl,#C000
+        ld      de,#87D0
+        ld      bc,#07D0
+.video_attr_copy:
+        ld      a,(hl)
+        ld      (de),a
+        inc     hl
+        inc     hl
+        inc     de
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,.video_attr_copy
+
+        ; Restore the interpreter overlay before waiting for host DMA.
+        ld      a,NGS_FW_BANK68_MPAG
+        out     (MPAG),a
+        ld      a,C_DMA_ZX
+        out     (DMA_MOD),a
+        ld      a,#13
+        out     (DMA_HAD),a
+        ld      a,#C0
+        out     (DMA_MAD),a
+        xor     a
+        out     (DMA_LAD),a
+        ld      a,#80
+        out     (DMA_CST),a
+        xor     a
+        out     (CLRCBIT),a
+        ld      d,DMA_WAIT_OUTER
+.video_wait_outer:
+        ld      bc,DMA_WAIT_LIMIT
+.video_wait_host_end:
+        in      a,(ZXSTAT)
+        bit     B_CBIT,a
+        jr      nz,.video_host_end
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,.video_wait_host_end
+        dec     d
+        jr      nz,.video_wait_outer
+        ; On timeout close DMA and restore the BIOS command token. The host
+        ; will also restore it; this makes a lost marker recoverable.
+        xor     a
+        out     (DMA_CST),a
+        out     (CLRCBIT),a
+        ret
+.video_host_end:
+        xor     a
+        out     (DMA_CST),a
+        out     (CLRCBIT),a
         ret
 
 ; Compare the eight 5-bit rows and enqueue XT make/break scan codes.
