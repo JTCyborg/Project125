@@ -147,10 +147,16 @@ x86_ata_advance_index:
         ld      (x86_ata_buffer_index),a
         ld      (x86_ata_buffer_index+1),a
         ld      a,(x86_storage_operation)
+        cp      4
+        jr      z,.identify_consumed
         cp      1
         jr      z,.read_sector_consumed
         cp      2
         jr      z,.write_sector_ready
+        ret
+.identify_consumed:
+        ld      a,#50
+        ld      (x86_ata_status),a
         ret
 .read_sector_consumed:
         call    x86_ata_decrement_remaining
@@ -190,28 +196,13 @@ x86_ata_command:
         jp      x86_ata_abort
 
 x86_ata_identify:
-        ld      hl,x86_ata_buffer
-        ld      de,512
-        xor     a
-.clear:
-        ld      (hl),a
-        inc     hl
-        dec     de
-        ld      a,d
-        or      e
-        jr      nz,.clear
-        ld      hl,x86_ata_buffer
-        ld      (hl),#40
-        ld      hl,x86_ata_buffer+98
-        ld      (hl),#00
-        inc     hl
-        ld      (hl),#02
-        xor     a
-        ld      (x86_ata_buffer_index),a
-        ld      (x86_ata_buffer_index+1),a
-        ld      a,#58
-        ld      (x86_ata_status),a
-        or      a
+        ; Fetch the physical drive's real IDENTIFY DEVICE page through ATM.
+        ; Do not invent geometry/capacity while the physical controller is
+        ; disconnected; the bridge returns an ATA error in that case.
+        ld      hl,1
+        ld      (x86_ata_sectors_remaining),hl
+        ld      a,4
+        call    x86_ata_queue_request
         ret
 
 x86_ata_prepare_transfer:
@@ -299,6 +290,8 @@ x86_ata_transport_complete:
         jr      nz,x86_ata_abort
         ld      a,(x86_storage_operation)
         cp      1
+        jr      z,.read_ready
+        cp      4
         jr      z,.read_ready
         cp      2
         jr      z,.write_done
