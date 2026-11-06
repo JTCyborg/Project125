@@ -40,11 +40,11 @@ x86_storage_read8:
         cp      #F8
         jr      nc,.unhandled
         cp      #F0
-        jr      z,x86_ata_read_data
+        jp      z,x86_ata_read_data
         cp      #F1
-        jr      z,x86_ata_read_error
+        jp      z,x86_ata_read_error
         cp      #F7
-        jr      z,x86_ata_read_status
+        jp      z,x86_ata_read_status
         sub     #F0
         ld      e,a
         ld      d,0
@@ -90,7 +90,7 @@ x86_storage_write8:
         cp      #F7
         jp      z,x86_ata_command
         cp      #F0
-        jr      z,x86_ata_write_data
+        jp      z,x86_ata_write_data
         sub     #F0
         ld      e,a
         ld      d,0
