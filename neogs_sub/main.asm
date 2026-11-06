@@ -2247,106 +2247,42 @@ x86_host_video_service:
 x86_host_video_trace_planes:
         push    af
         push    bc
-        push    de
         push    hl
-        ; Search the complete text plane, but always emit a result. Previously
-        ; an empty/incorrect page returned silently and looked like a missing
-        ; video request, hiding the actual page contents.
+        ; Dump first 8 bytes from character plane (page 83).
         ld      a,83
         rrca
         out     (MPAGEX),a
-        ld      hl,#C000
-        ld      bc,#07D0
-        xor     a
-        ld      (x86_host_video_trace_found),a
-.scan_text:
-        ld      a,(hl)
-        cp      #21
-        jr      c,.scan_next
-        cp      #7F
-        jr      nc,.scan_next
-        ld      (x86_host_video_trace_found_addr),hl
-        ld      a,1
-        ld      (x86_host_video_trace_found),a
-        jr      .text_found
-.scan_next:
-        inc     hl
-        dec     bc
-        ld      a,b
-        or      c
-        jr      nz,.scan_text
-        ld      hl,#C000
-.text_found:
-        ld      (x86_host_video_trace_found_addr),hl
         ld      hl,x86_host_video_trace_text_p0
         call    neo_trace_ef_string
-        ld      a,(x86_host_video_trace_found)
-        or      a
-        jr      nz,.found_marker
-        ld      a,'N'
-        out     (#EF),a
-        ld      a,'O'
-        out     (#EF),a
-        ld      a,'N'
-        out     (#EF),a
-        ld      a,'E'
-        out     (#EF),a
-        jr      .p0_address
-.found_marker:
-        ld      a,'F'
-        out     (#EF),a
-        ld      a,'O'
-        out     (#EF),a
-        ld      a,'U'
-        out     (#EF),a
-        ld      a,'N'
-        out     (#EF),a
-        ld      a,'D'
-        out     (#EF),a
-.p0_address:
-        ld      a,' '
-        out     (#EF),a
-        ld      hl,(x86_host_video_trace_found_addr)
-        ld      a,h
-        call    neo_trace_ef_hex8
-        ld      a,l
-        call    neo_trace_ef_hex8
-        ld      a,' '
-        out     (#EF),a
-        ld      hl,(x86_host_video_trace_found_addr)
-        ld      b,16
-.text_p0:
+        ld      hl,#C000
+        ld      b,8
+.p0:
         ld      a,(hl)
         call    neo_trace_ef_hex8
-        ld      a,' '
-        out     (#EF),a
         inc     hl
-        djnz    .text_p0
+        djnz    .p0
         ld      a,13
         out     (#EF),a
         ld      a,10
         out     (#EF),a
-
-        ld      hl,x86_host_video_trace_text_p1
-        call    neo_trace_ef_string
+        ; Dump first 8 bytes from attribute plane (page 87).
         ld      a,87
         rrca
         out     (MPAGEX),a
-        ld      hl,(x86_host_video_trace_found_addr)
-        ld      b,16
-.text_p1:
+        ld      hl,x86_host_video_trace_text_p1
+        call    neo_trace_ef_string
+        ld      hl,#C000
+        ld      b,8
+.p1:
         ld      a,(hl)
         call    neo_trace_ef_hex8
-        ld      a,' '
-        out     (#EF),a
         inc     hl
-        djnz    .text_p1
+        djnz    .p1
         ld      a,13
         out     (#EF),a
         ld      a,10
         out     (#EF),a
         pop     hl
-        pop     de
         pop     bc
         pop     af
         ret
@@ -2356,19 +2292,16 @@ x86_host_video_trace_planes:
 x86_host_video_trace_staging:
         push    af
         push    bc
-        push    de
         push    hl
         ld      hl,x86_host_video_trace_stage_chars
         call    neo_trace_ef_string
         ld      hl,#8000
-        ld      b,16
-.stage_chars:
+        ld      b,8
+.chars:
         ld      a,(hl)
         call    neo_trace_ef_hex8
-        ld      a,' '
-        out     (#EF),a
         inc     hl
-        djnz    .stage_chars
+        djnz    .chars
         ld      a,13
         out     (#EF),a
         ld      a,10
@@ -2376,20 +2309,17 @@ x86_host_video_trace_staging:
         ld      hl,x86_host_video_trace_stage_attrs
         call    neo_trace_ef_string
         ld      hl,#87D0
-        ld      b,16
-.stage_attrs:
+        ld      b,8
+.attrs:
         ld      a,(hl)
         call    neo_trace_ef_hex8
-        ld      a,' '
-        out     (#EF),a
         inc     hl
-        djnz    .stage_attrs
+        djnz    .attrs
         ld      a,13
         out     (#EF),a
         ld      a,10
         out     (#EF),a
         pop     hl
-        pop     de
         pop     bc
         pop     af
         ret
