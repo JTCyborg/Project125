@@ -6,6 +6,8 @@
 
 x86_shift_shl_cl_impl:
         ld      (x86_shift_modrm69), a
+        xor     a                       ; D3 operates on r/m16
+        ld      (x86_mov_width), a
         ld      a, #20
         ld      (x86_shift_diag_stage), a ; page-69 handler entered
         ld      a, (x86_shift_modrm69)
