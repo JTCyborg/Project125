@@ -3723,27 +3723,39 @@ x86_real_group_f7:
         ld      (x86_shift_diag_mask), a
         ld      a, #F1
         ld      (x86_shift_diag_stage), a
+        ; Decode the Group-3 extension from ModR/M.reg. PCem's reference
+        ; implementation uses fetchea/geteaw/seteaw for every r/m16 form;
+        ; use the same complete ModR/M effective-address path here.
         ld      a, (x86_f7_modrm)
-        cp      #D0
-        jp      z, x86_real_f7_not_ax
-
         and     #38
+        cp      #10
+        jp      z, x86_real_f7_not_word
+
         cp      #30
         jp      nz, x86_real_group_f7_unsupported
         ld      a, #F6
         ld      (x86_shift_diag_stage), a
         jp      x86_real_f7_div_word
 
-x86_real_f7_not_ax:
-        ld      hl, (x86_reg_ax)
+; F7 /2: NOT r/m16. Supports all eight registers and every 8086 memory
+; addressing form, including BP=>SS and an active segment override.
+; NOT does not modify any 8086 status or control flag.
+x86_real_f7_not_word:
+        ld      a, 0
+        ld      (x86_mov_width), a       ; word operand
+        ld      a, (x86_f7_modrm)
+        call    x86_real_mov_decode_modrm
+        ret     c
+        call    x86_real_mov_read_rm
+        ret     c
         ld      a, l
         cpl
         ld      l, a
         ld      a, h
         cpl
         ld      h, a
-        ld      (x86_reg_ax), hl
-        jp      x86_real_next
+        ld      (x86_mov_value), hl
+        jp      x86_real_mov_write_rm
 
 ; F7 /6: DIV r/m16.
 ; The ModR/M decoder supplies the complete 8086 effective address and
