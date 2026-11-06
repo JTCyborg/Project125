@@ -410,6 +410,7 @@ x86_real_execute:
         xor     a
         ld      (x86_io_trace_count), a
         ld      (x86_io_guest_trace_count), a
+        ld      (x86_stack_trace_count), a
         ld      (x86_hlt_trace_count), a
         ld      (x86_post_int10_trace_active), a
         ld      (x86_post_int10_trace_started), a

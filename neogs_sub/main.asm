@@ -1151,7 +1151,7 @@ neo_trace_ef_string:
         ret
 
 neo_firmware_build_id:
-        defb "[NGS] BUILD 20261106-33",13,10
+        defb "[NGS] BUILD 20261106-34",13,10
         defb "[NGS] BASE COMMIT 226BC91",13,10,0
 
 trace_bios_cmd:       defb "[P BIOS CMD]",13,10,0
@@ -3645,6 +3645,14 @@ x86_stack_transition_trace:
         push    bc
         push    de
         push    hl
+        ; #EF is a slow host-visible diagnostic port. Unbounded PUSH/POP
+        ; tracing throttles guest execution enough to distort PIT/IRQ timing.
+        ; Keep only the first 96 records from each BIOS execution.
+        ld      a, (x86_stack_trace_count)
+        cp      96
+        jp      nc, .done
+        inc     a
+        ld      (x86_stack_trace_count), a
         ld      a, (x86_stack_trace_kind)
         cp      2
         jp      z, .trace_sp_register
@@ -3764,8 +3772,9 @@ x86_stack_trace_print_cs_ip:
         ld      hl, (x86_reg_ip)
         call    x86_f7_trace_hex16
         ret
-x86_stack_trace_kind: db 0
-x86_stack_trace_old:  dw 0
+x86_stack_trace_kind:  db 0
+x86_stack_trace_count: db 0
+x86_stack_trace_old:   dw 0
 x86_stack_trace_new:  dw 0
 x86_stack_trace_sp_prefix:    defb "[NGS X86] STACK SP CS:IP=",0
 x86_stack_trace_sp_reg_prefix: defb "[NGS X86] STACK SP-REG CS:IP=",0
