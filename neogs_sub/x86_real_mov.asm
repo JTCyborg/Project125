@@ -135,6 +135,40 @@ x86_real_mov_segment:
         jp      x86_real_next
 
 ; 8D LEA r16,m — return the effective offset without reading memory.
+; C4 LES r16,m16:16. The source must be memory; register-direct is invalid.
+; Read the offset word first and the segment word at EA+2, then load r16 and ES.
+x86_real_les:
+        ld      (x86_mov_opcode), a
+        call    x86_real_fetch8
+        ret     c
+        call    x86_real_mov_decode_modrm
+        ret     c
+        ld      a, (x86_mov_is_reg)
+        or      a
+        jp      nz, x86_real_mov_immediate_invalid
+        xor     a
+        ld      (x86_mov_width), a
+        call    x86_real_mov_read_rm
+        ret     c
+        ld      (x86_les_offset), hl
+
+        ld      hl, (x86_mov_offset)
+        inc     hl
+        inc     hl
+        ld      (x86_mem_offset), hl
+        ld      hl, (x86_mov_segment)
+        ld      (x86_mem_segment), hl
+        call    x86_mem_read16
+        ret     c
+        ld      (x86_les_segment), hl
+
+        ld      hl, (x86_les_offset)
+        ld      a, (x86_mov_reg)
+        call    x86_alu_write_reg16
+        ld      hl, (x86_les_segment)
+        ld      (x86_reg_es), hl
+        jp      x86_real_next
+
 x86_real_lea:
         call    x86_real_fetch8
         ret     c
@@ -567,6 +601,8 @@ x86_mov_value:         dw 0
 ; x86_mov_trace_stage:   db 0
 x86_mov_reg_temp:      db 0
 x86_mov_disp_low:      db 0
+x86_les_offset:        dw 0
+x86_les_segment:       dw 0
 
 ; -------------------------------------------------------------------------
 ; Extended 8086 MOV addressing regression.
